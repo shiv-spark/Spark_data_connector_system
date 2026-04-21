@@ -1,0 +1,5 @@
+# .watchfilesignore
+airflow/dags/
+airflow/logs/
+data/
+backups/

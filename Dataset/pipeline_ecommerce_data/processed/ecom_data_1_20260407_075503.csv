@@ -1,0 +1,54 @@
+product_id,product_name,category,price,quantity,total_amount,color,brand,size
+P001,Wireless Mouse,Electronics,19.99,1,19.99,Black,Logi,None
+P002,Laptop Sleeve,Accessories,15.49,2,30.98,Grey,CaseMate,13-inch
+P003,Running Shoes,Sports,59.99,1,59.99,Blue,Nike,9
+P051,Sports Cap,Clothing,9.99,2,19.98,Black,Adidas,Free-size
+P052,Tablet Cover,Accessories,14.99,1,14.99,Blue,Spigen,10-inch
+P053,Electric Kettle,Home,29.99,1,29.99,Silver,Philips,1.5L
+P054,Gym Gloves,Sports,11.49,2,22.98,Black,Nike,M
+P055,Hard Disk 1TB,Electronics,54.99,1,54.99,Black,Seagate,1TB
+P056,Wall Clock,Home,18.99,1,18.99,White,Ajanta,None
+P057,Canvas Shoes,Clothing,34.99,1,34.99,White,Puma,9
+P058,File Folder Pack,Stationery,6.49,3,19.47,Multi,Classmate,A4
+P059,Camping Tent,Outdoors,89.99,1,89.99,Green,Quechua,2-person
+P060,Hair Dryer,Electronics,24.99,1,24.99,Pink,Philips,None
+P061,Sunglasses,Accessories,15.99,1,15.99,Black,RayBan,Standard
+P062,Cooking Pan,Home,26.99,1,26.99,Black,Tefal,Medium
+P063,Football,Sports,19.99,1,19.99,White,Adidas,Standard
+P064,Smart LED Bulb,Electronics,12.99,2,25.98,White,Wipro,None
+P065,Graphic T-Shirt,Clothing,14.99,2,29.98,Red,Zara,L
+P066,Drawing Pencils Set,Stationery,7.99,2,15.98,Black,FaberCastell,HB
+P067,Travel Suitcase,Outdoors,69.99,1,69.99,Blue,VIP,Medium
+P068,Power Bank 20000mAh,Electronics,29.99,1,29.99,Black,Mi,None
+P069,Leather Wallet,Accessories,19.99,1,19.99,Brown,Woodland,Standard
+P070,Floor Mat,Home,17.99,1,17.99,Grey,HomeCentre,Large
+P071,Badminton Racket,Sports,22.49,1,22.49,Blue,Yonex,Standard
+P072,Wireless Router,Electronics,39.99,1,39.99,White,TPLink,None
+P073,Formal Trousers,Clothing,29.99,1,29.99,Black,VanHeusen,32
+P074,Sticky Tabs Pack,Stationery,4.49,3,13.47,Multi,3M,Small
+P075,Portable Stove,Outdoors,34.99,1,34.99,Silver,Coleman,None
+P076,Air Fryer,Home,89.99,1,89.99,Black,Philips,4L
+P077,Cricket Bat,Sports,49.99,1,49.99,Brown,SG,Full-size
+P078,Smartphone Tripod,Electronics,14.99,1,14.99,Black,Digitek,None
+P079,Handbag,Accessories,39.99,1,39.99,Beige,Caprese,Medium
+P080,Blanket Set,Home,45.99,1,45.99,Blue,Spaces,Large
+P081,Tennis Balls Pack,Sports,9.99,3,29.97,Yellow,Wilson,Standard
+P082,External SSD 512GB,Electronics,79.99,1,79.99,Black,Samsung,512GB
+P083,Denim Jacket,Clothing,59.99,1,59.99,Blue,Levis,L
+P084,Highlighter Set,Stationery,6.99,2,13.98,Multi,Stabilo,Standard
+P085,Hiking Boots,Outdoors,74.99,1,74.99,Brown,Woodland,10
+P086,Table Fan,Home,34.99,1,34.99,White,Usha,None
+P087,Skipping Rope,Sports,7.99,2,15.98,Red,Decathlon,Standard
+P088,Bluetooth Tracker,Electronics,19.99,1,19.99,Black,Tile,None
+P089,Silk Scarf,Accessories,12.99,1,12.99,Pink,FabIndia,Free-size
+P090,Curtains Set,Home,39.99,1,39.99,Beige,HomeCentre,Window
+P091,Volleyball,Sports,21.99,1,21.99,White,Mikasa,Standard
+P092,Wireless Gaming Mouse,Electronics,49.99,1,49.99,Black,Logi,None
+P093,Hooded Sweatshirt,Clothing,34.99,1,34.99,Grey,Nike,XL
+P094,Notebook Set,Stationery,9.99,2,19.98,Multi,Paperkraft,A5
+P095,Folding Chair,Outdoors,29.99,1,29.99,Black,Coleman,Standard
+P096,Vacuum Cleaner,Home,99.99,1,99.99,Red,Eureka,None
+P097,Boxing Gloves,Sports,39.99,1,39.99,Black,Everlast,M
+P098,USB Hub,Electronics,11.99,2,23.98,Black,Portronics,None
+P099,Belt,Accessories,14.99,1,14.99,Brown,Levis,Medium
+P100,Wall Painting,Home,49.99,1,49.99,Multi,Artify,Large

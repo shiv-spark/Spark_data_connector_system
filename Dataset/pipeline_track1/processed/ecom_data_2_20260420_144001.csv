@@ -1,0 +1,59 @@
+product_id,product_name,category,price,quantity,total_amount,color,brand,size
+P051,Sports Cap,Clothing,9.99,2,19.98,Black,Adidas,Free-size
+P052,Tablet Cover,Accessories,14.99,1,14.99,Blue,Spigen,10-inch
+P053,Electric Kettle,Home,29.99,1,29.99,Silver,Philips,1.5L
+P054,Gym Gloves,Sports,11.49,2,22.98,Black,Nike,M
+P055,Hard Disk 1TB,Electronics,54.99,1,54.99,Black,Seagate,1TB
+P056,Wall Clock,Home,18.99,1,18.99,White,Ajanta,None
+P057,Canvas Shoes,Clothing,34.99,1,34.99,White,Puma,9
+P058,File Folder Pack,Stationery,6.49,3,19.47,Multi,Classmate,A4
+P101,Wireless Earphones,Electronics,34.99,1,34.99,Black,Boat,None
+P102,Laptop Backpack,Accessories,39.99,1,39.99,Grey,Wildcraft,35L
+P103,Sports Jacket,Clothing,49.99,1,49.99,Blue,Nike,L
+P104,LED Strip Lights,Home,19.99,2,39.98,Multi,Wipro,None
+P105,Cricket Ball,Sports,12.49,3,37.47,Red,SG,Standard
+P106,USB Cable Pack,Electronics,9.99,4,39.96,White,Anker,None
+P107,Office Chair,Home,89.99,1,89.99,Black,Featherlite,None
+P108,Travel Organizer,Accessories,14.99,2,29.98,Blue,AmazonBasics,Medium
+P109,Denim Shirt,Clothing,29.99,1,29.99,Blue,Levis,M
+P110,Sketch Pens Set,Stationery,8.99,3,26.97,Multi,Camlin,Fine
+P111,Hiking Backpack,Outdoors,59.99,1,59.99,Green,Quechua,40L
+P112,Smart Plug,Electronics,15.99,2,31.98,White,Wipro,None
+P113,Yoga Pants,Clothing,24.99,2,49.98,Black,Reebok,M
+P114,Table Clock,Home,17.99,1,17.99,White,Ajanta,None
+P115,Basketball,Sports,21.99,1,21.99,Orange,Spalding,Standard
+P116,HDMI Cable,Electronics,11.99,3,35.97,Black,AmazonBasics,None
+P117,Travel Pillow,Accessories,13.49,2,26.98,Grey,TravelPro,Standard
+P118,Formal Shirt,Clothing,27.99,1,27.99,White,VanHeusen,L
+P119,Notebook Set Premium,Stationery,12.99,2,25.98,Black,Classmate,A5
+P120,Cooking Knife Set,Home,34.99,1,34.99,Silver,Pigeon,None
+P121,Skipping Rope Pro,Sports,10.99,2,21.98,Black,Decathlon,Standard
+P122,Wireless Keyboard Combo,Electronics,44.99,1,44.99,Black,Logi,None
+P123,Leather Sling Bag,Accessories,49.99,1,49.99,Brown,Caprese,Medium
+P124,Sweatpants,Clothing,19.99,2,39.98,Grey,Puma,L
+P125,Color Pencils Pack,Stationery,6.49,4,25.96,Multi,FaberCastell,Standard
+P126,Camping Stove,Outdoors,39.99,1,39.99,Silver,Coleman,None
+P127,Electric Iron,Home,29.99,1,29.99,White,Philips,None
+P128,Tennis Racket,Sports,54.99,1,54.99,Black,Wilson,Standard
+P129,Portable SSD 1TB,Electronics,119.99,1,119.99,Black,Samsung,1TB
+P130,Hand Gloves Winter,Clothing,9.99,3,29.97,Black,H&M,Free-size
+P131,Sticky Notes Large,Stationery,5.49,3,16.47,Yellow,3M,Large
+P132,Trekking Pole,Outdoors,24.99,2,49.98,Black,Quechua,Standard
+P133,Air Cooler,Home,129.99,1,129.99,White,Bajaj,None
+P134,Football Shoes,Sports,64.99,1,64.99,Black,Nike,10
+P135,Bluetooth Speaker Mini,Electronics,24.99,2,49.98,Blue,JBL,None
+P136,Travel Wallet,Accessories,18.99,1,18.99,Brown,Wildcraft,Standard
+P137,Graphic Hoodie,Clothing,39.99,1,39.99,Black,Zara,L
+P138,Drawing Notebook,Stationery,7.99,3,23.97,White,Artline,A4
+P139,Camping Lantern,Outdoors,19.99,2,39.98,Black,Eveready,None
+P140,Water Jug,Home,14.99,2,29.98,Blue,Milton,2L
+P141,Table Tennis Set,Sports,29.99,1,29.99,Red,Stag,Standard
+P142,USB-C Hub,Electronics,34.99,1,34.99,Grey,Portronics,None
+P143,Clutch Bag,Accessories,22.99,1,22.99,Black,Caprese,Small
+P144,Winter Coat,Clothing,89.99,1,89.99,Grey,Woodland,XL
+P145,Pen Set Deluxe,Stationery,15.99,2,31.98,Black,Parker,Fine
+P146,Hiking Shoes,Outdoors,79.99,1,79.99,Brown,Woodland,9
+P147,Microwave Oven,Home,149.99,1,149.99,Silver,IFB,None
+P148,Dumbbells Set,Sports,59.99,1,59.99,Black,FitLife,10kg
+P149,Wireless Charger Stand,Electronics,19.99,2,39.98,White,Anker,None
+P150,Leather Belt Premium,Accessories,24.99,1,24.99,Brown,Levis,Medium
