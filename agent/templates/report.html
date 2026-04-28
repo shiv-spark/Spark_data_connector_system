@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline Report — {{ pipeline_name }}</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d2e;
+            --surface2: #232740;
+            --border: #2e3348;
+            --text: #e2e4ed;
+            --text-dim: #8b8fa3;
+            --accent: #6c63ff;
+            --accent2: #00d9a6;
+            --danger: #ff5c72;
+            --warning: #ffb347;
+            --success: #00d9a6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        /* ── Header ── */
+        .report-header {
+            background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .report-header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        .report-header .meta {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        /* ── KPI Cards ── */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .kpi-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            text-align: center;
+        }
+        .kpi-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .kpi-card .label {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.25rem;
+        }
+
+        /* ── Quality Badge ── */
+        .quality-section {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .quality-score {
+            font-size: 2.5rem;
+            font-weight: 800;
+        }
+        .grade-A { color: var(--success); }
+        .grade-B { color: #6ccf6c; }
+        .grade-C { color: var(--warning); }
+        .grade-D { color: #ff8c42; }
+        .grade-F { color: var(--danger); }
+        .quality-label { color: var(--text-dim); font-size: 0.85rem; }
+        .quality-grade {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        /* ── Section Cards ── */
+        .section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .section h2 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        /* ── Tables ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        th, td {
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            color: var(--text-dim);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(108, 99, 255, 0.05); }
+
+        /* ── AI Summary ── */
+        .ai-summary {
+            background: linear-gradient(135deg, rgba(108, 99, 255, 0.08), rgba(0, 217, 166, 0.06));
+            border: 1px solid var(--accent);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 1.5rem;
+            white-space: pre-wrap;
+        }
+        .ai-summary h2 { color: var(--accent2); border-bottom-color: var(--accent); }
+
+        /* ── Charts ── */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .chart-card img {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+
+        /* ── Status Badges ── */
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-success { background: rgba(0,217,166,0.15); color: var(--success); }
+        .badge-fail    { background: rgba(255,92,114,0.15); color: var(--danger); }
+        .badge-warn    { background: rgba(255,179,71,0.15); color: var(--warning); }
+
+        /* ── Footer ── */
+        .report-footer {
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            padding: 1.5rem 0 0.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        @media print {
+            body { background: #fff; color: #222; padding: 1rem; }
+            .section, .kpi-card, .quality-section, .report-header {
+                border-color: #ccc;
+                background: #fafafa;
+            }
+        }
+    </style>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+</head>
+<body>
+<div class="container">
+
+    <!-- ── Header ── -->
+    <div class="report-header">
+        <h1>📊 {{ pipeline_name }} — Data Quality Report</h1>
+        <div class="meta">
+            <strong>Request:</strong> {{ user_request }} &nbsp;|&nbsp;
+            <strong>Generated:</strong> {{ generated_at }}
+        </div>
+    </div>
+
+    <!-- ── KPIs ── -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="value">{{ kpis.total_runs }}</div>
+            <div class="label">Total Runs</div>
+        </div>
+        <div class="kpi-card">
+            <div class="value" style="color: {% if kpis.success_rate >= 90 %}var(--success){% elif kpis.success_rate >= 70 %}var(--warning){% else %}var(--danger){% endif %}">
+                {{ kpis.success_rate }}%
+            </div>
+            <div class="label">Success Rate</div>
+        </div>
+        <div class="kpi-card">
+            <div class="value" style="color: var(--accent2);">{{ "{:,}".format(kpis.total_rows_inserted) }}</div>
+            <div class="label">Rows Inserted</div>
+        </div>
+        <div class="kpi-card">
+            <div class="value" style="color: var(--danger);">{{ "{:,}".format(kpis.total_rows_failed) }}</div>
+            <div class="label">Rows Failed</div>
+        </div>
+    </div>
+
+    <!-- ── Quality Score ── -->
+    <div class="quality-section">
+        <div>
+            {% set gc = 'grade-A' if grade == 'A' else ('grade-B' if grade == 'B' else ('grade-C' if grade == 'C' else ('grade-D' if grade == 'D' else 'grade-F'))) %}
+            <div class="quality-score {{ gc }}">{{ quality_score }}/100</div>
+            <div class="quality-label">Quality Score</div>
+        </div>
+        <div>
+            <div class="quality-grade {{ gc }}">Grade: {{ grade }}</div>
+            <div class="quality-label">Overall data quality assessment</div>
+        </div>
+    </div>
+
+    <!-- ── AI Summary ── -->
+    {% if ai_summary %}
+    <div class="ai-summary section">
+        <h2>🤖 AI Summary</h2>
+        <p>{{ ai_summary }}</p>
+    </div>
+    {% endif %}
+
+    <!-- ── Null / Missing Analysis ── -->
+    {% if null_analysis %}
+    <div class="section">
+        <h2>🔍 Null &amp; Missing Value Analysis</h2>
+        {% if null_analysis.columns %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Column</th>
+                    <th>Null Count</th>
+                    <th>Null %</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for col in null_analysis.columns %}
+                <tr>
+                    <td>{{ col.column }}</td>
+                    <td>{{ col.null_count }}</td>
+                    <td>{{ col.null_pct }}%</td>
+                    <td>
+                        {% if col.null_pct == 0 %}
+                            <span class="badge badge-success">Clean</span>
+                        {% elif col.null_pct < 10 %}
+                            <span class="badge badge-warn">Warning</span>
+                        {% else %}
+                            <span class="badge badge-fail">Critical</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-dim);">No column-level null data available.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ── Duplicate Analysis ── -->
+    {% if dup_analysis %}
+    <div class="section">
+        <h2>📋 Duplicate Analysis</h2>
+        <p><strong>Total rows:</strong> {{ dup_analysis.total_rows | default('N/A') }} &nbsp;|&nbsp;
+           <strong>Duplicates:</strong> {{ dup_analysis.duplicate_count | default(0) }} &nbsp;|&nbsp;
+           <strong>Duplicate %:</strong> {{ dup_analysis.duplicate_pct | default(0) }}%</p>
+    </div>
+    {% endif %}
+
+    <!-- ── Descriptive Stats ── -->
+    {% if stats %}
+    <div class="section">
+        <h2>📈 Descriptive Statistics</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Column</th>
+                    <th>Mean</th>
+                    <th>Median</th>
+                    <th>Std Dev</th>
+                    <th>Min</th>
+                    <th>Max</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for col_name, s in stats.items() %}
+                <tr>
+                    <td>{{ col_name }}</td>
+                    <td>{{ s.mean | round(2) if s.mean is not none else 'N/A' }}</td>
+                    <td>{{ s.median | round(2) if s.median is not none else 'N/A' }}</td>
+                    <td>{{ s.std | round(2) if s.std is not none else 'N/A' }}</td>
+                    <td>{{ s.min if s.min is not none else 'N/A' }}</td>
+                    <td>{{ s.max if s.max is not none else 'N/A' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- ── Outlier Detection ── -->
+    {% if outlier_result %}
+    <div class="section">
+        <h2>⚠️ Outlier Detection</h2>
+        {% if outlier_result.outliers %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Column</th>
+                    <th>IQR Outliers</th>
+                    <th>Z-Score Outliers</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in outlier_result.outliers %}
+                <tr>
+                    <td>{{ o.column }}</td>
+                    <td>{{ o.iqr_outlier_count | default(0) }}</td>
+                    <td>{{ o.zscore_outlier_count | default(0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--success);">No outliers detected.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ── Charts ── -->
+    {% if charts %}
+    <div class="section">
+        <h2>📉 Visualizations</h2>
+    </div>
+    <div class="charts-grid">
+        {% if charts.gauge %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Quality Gauge</h3>
+            {{ charts.gauge | safe }}
+        </div>
+        {% endif %}
+        {% if charts.null_bar %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Null Values</h3>
+            {{ charts.null_bar | safe }}
+        </div>
+        {% endif %}
+        {% if charts.dup_pie %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Duplicates</h3>
+            {{ charts.dup_pie | safe }}
+        </div>
+        {% endif %}
+        {% if charts.stats_bar %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Statistics</h3>
+            {{ charts.stats_bar | safe }}
+        </div>
+        {% endif %}
+        {% if charts.boxplot %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Outlier Boxplot</h3>
+            {{ charts.boxplot | safe }}
+        </div>
+        {% endif %}
+        {% if charts.correlation %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Correlation Heatmap</h3>
+            {{ charts.correlation | safe }}
+        </div>
+        {% endif %}
+        {% if charts.run_status %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Run Status</h3>
+            {{ charts.run_status | safe }}
+        </div>
+        {% endif %}
+        {% if charts.metrics_trend %}
+        <div class="chart-card">
+            <h3 style="margin-bottom:0.5rem; color: var(--text-dim); font-size:0.85rem;">Metrics Trend</h3>
+            {{ charts.metrics_trend | safe }}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ── Recent Runs ── -->
+    {% if recent_runs %}
+    <div class="section">
+        <h2>🕒 Recent Pipeline Runs</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Run ID</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in recent_runs[:10] %}
+                <tr>
+                    <td>{{ r.run_id | default(r.id | default('—')) }}</td>
+                    <td>
+                        {% if r.status == 'success' %}
+                            <span class="badge badge-success">Success</span>
+                        {% elif r.status == 'failed' %}
+                            <span class="badge badge-fail">Failed</span>
+                        {% else %}
+                            <span class="badge badge-warn">{{ r.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ r.start_time | default(r.started_at | default('—')) }}</td>
+                    <td>{{ r.duration | default('—') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- ── Footer ── -->
+    <div class="report-footer">
+        Generated by <strong>Spark Data Connector — AI Agent</strong> &nbsp;|&nbsp; {{ generated_at }}
+    </div>
+
+</div>
+</body>
+</html>

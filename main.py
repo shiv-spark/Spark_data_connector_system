@@ -29,6 +29,10 @@ from datetime import datetime
 from connectors.postgres_connector import postgres_connector
 from connectors.s3_connector import s3_connector
 
+from fastapi import FastAPI
+from agent.agent_router import router as agent_router
+
+app = FastAPI()
 
 def _rows_to_dicts(cursor):
     """Convert psycopg2 cursor result to list of dictionaries"""
@@ -73,9 +77,8 @@ Airflow UI: http://localhost:8081
         print(f"Email send failed: {e}")
 
 #################################
-app = FastAPI()
 
-
+app.include_router(agent_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -738,7 +741,7 @@ def get_table_data(
     limit:  int            = Query(50,   ge=1, le=1000),
     offset: int            = Query(0,    ge=0),
     sort_by: Optional[str] = Query(None),
-    order:   str           = Query("asc", regex="^(asc|desc)$"),
+    order:   str           = Query("asc", pattern="^(asc|desc)$"),
     filter_col: Optional[str] = Query(None),
     filter_val: Optional[str] = Query(None),
 ):
@@ -1839,3 +1842,5 @@ def get_chatbot_context(pipeline_name: Optional[str] = None):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+    app.include_router(agent_router)
