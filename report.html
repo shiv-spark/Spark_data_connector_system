@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pipeline Report — {{ pipeline_name }}</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 40px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: #60a5fa;
+    }
+
+    .meta {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 32px;
+    }
+
+    .section {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid #334155;
+    }
+
+    .section h2 {
+      color: #7dd3fc;
+      margin-bottom: 16px;
+    }
+
+    .chart-note {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      padding: 10px;
+      line-height: 1.6;
+      background: #020617;
+      border-left: 3px solid #3b82f6;
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+
+    .chart-box {
+      background: #0f172a;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    .chart-box img {
+      width: 100%;
+    }
+
+    .chart-box.full {
+      grid-column: span 2;
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .kpi {
+      background: #0f172a;
+      padding: 20px;
+      text-align: center;
+      border-radius: 10px;
+    }
+
+    .kpi .value {
+      font-size: 1.8rem;
+      color: #60a5fa;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Pipeline Report</h1>
+
+  <div class="meta">
+    {{ pipeline_name }} · {{ generated_at }}
+  </div>
+
+  <!-- KPIs -->
+  {% if kpis.total_runs > 0 %}
+  <div class="section">
+    <h2>Pipeline KPIs</h2>
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="value">{{ kpis.total_runs }}</div>Total Runs
+      </div>
+      <div class="kpi">
+        <div class="value">{{ kpis.success_rate }}%</div>Success Rate
+      </div>
+      <div class="kpi">
+        <div class="value">{{ kpis.total_rows_inserted }}</div>Inserted
+      </div>
+      <div class="kpi">
+        <div class="value">{{ kpis.total_rows_failed }}</div>Failed
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- NULL CHART -->
+  {% if charts.null_bar %}
+  <div class="section">
+    <h2>Null Analysis</h2>
+    <div class="chart-box">
+      <img src="data:image/png;base64,{{ charts.null_bar }}" />
+
+      <div class="chart-note">
+        {% if null_analysis.critical_cols|length > 0 %}
+        ⚠️ {{ null_analysis.critical_cols|length }} critical columns detected (>20% null). Immediate data cleaning
+        required.
+        {% elif null_analysis.warning_cols|length > 0 %}
+        ⚠️ Moderate missing values found in {{ null_analysis.warning_cols|length }} columns.
+        {% else %}
+        ✅ No significant missing data detected.
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- DUPLICATE PIE -->
+  {% if charts.dup_pie %}
+  <div class="section">
+    <h2>Duplicate Analysis</h2>
+    <div class="chart-box">
+      <img src="data:image/png;base64,{{ charts.dup_pie }}" />
+
+      <div class="chart-note">
+        {% if dup_analysis.duplicate_pct > 10 %}
+        🔴 High duplication ({{ dup_analysis.duplicate_pct }}%). Indicates upstream ingestion or deduplication failure.
+        {% elif dup_analysis.duplicate_pct > 2 %}
+        🟡 Moderate duplicates detected ({{ dup_analysis.duplicate_pct }}%).
+        {% else %}
+        🟢 Dataset is clean with minimal duplication ({{ dup_analysis.duplicate_pct }}%).
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- BOXPLOT -->
+  {% if charts.boxplot %}
+  <div class="section">
+    <h2>Outlier Detection</h2>
+    <div class="chart-box">
+      <img src="data:image/png;base64,{{ charts.boxplot }}" />
+
+      <div class="chart-note">
+        {% if outlier_result.total_outliers > 0 %}
+        ⚠️ {{ outlier_result.total_outliers }} outliers detected across columns. Investigate extreme values.
+        {% else %}
+        ✅ No significant outliers detected.
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- CORRELATION -->
+  {% if charts.correlation %}
+  <div class="section">
+    <h2>Correlation Analysis</h2>
+    <div class="chart-box full">
+      <img src="data:image/png;base64,{{ charts.correlation }}" />
+
+      <div class="chart-note">
+        📊 Strong correlations may indicate redundant features or data leakage.
+        Focus on highly correlated variables for feature selection.
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- METRICS TREND -->
+  {% if charts.metrics_trend %}
+  <div class="section">
+    <h2>Pipeline Trend</h2>
+    <div class="chart-box full">
+      <img src="data:image/png;base64,{{ charts.metrics_trend }}" />
+
+      <div class="chart-note">
+        {% if kpis.total_rows_failed > kpis.total_rows_inserted %}
+        🔴 Failure rate is higher than success — pipeline instability detected.
+        {% elif kpis.success_rate < 80 %} 🟡 Pipeline success rate is below optimal threshold ({{ kpis.success_rate
+          }}%). {% else %} 🟢 Pipeline is performing reliably with {{ kpis.success_rate }}% success rate. {% endif %}
+          </div>
+
+      </div>
+    </div>
+    {% endif %}
+
+    <footer style="margin-top:40px;color:#475569;">
+      Generated by AI Pipeline Analyzer · {{ generated_at }}
+    </footer>
+
+</body>
+
+</html>

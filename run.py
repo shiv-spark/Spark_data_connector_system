@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from agent.logger import get_logger
+logger = get_logger("run")
+
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "postgres"),
     "database": os.getenv("DB_NAME",     "airflow"),
@@ -85,35 +88,37 @@ def create_logs_tables():
         conn = psycopg2.connect(**DB_CONFIG)
         conn.autocommit = True
         cur = conn.cursor()
-        for q in queries:
+        for idx, q in enumerate(queries, 1):
+            logger.debug("Executing table-creation query %d/%d", idx, len(queries))
             cur.execute(q)
         cur.close()
         conn.close()
-        print("✅ All logs tables created/verified successfully.")
+        logger.info("All logs tables created/verified successfully.")
         return True
     except Exception as e:
-        print(f"❌ Table creation failed: {e}")
+        logger.error("Table creation failed: %s", e, exc_info=True)
         return False
 
-def wait_for_db(max_retries=12, delay=5):
-    print(f"⏳ Waiting for database {DB_CONFIG['host']}:{DB_CONFIG['port']}...")
+def wait_for_db(max_retries=3, delay=2):
+    logger.info("Waiting for database %s:%s …", DB_CONFIG['host'], DB_CONFIG['port'])
     for i in range(max_retries):
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             conn.close()
-            print(f"✅ Database ready after {i+1} attempt(s)")
+            logger.info("Database ready after %d attempt(s)", i + 1)
             return True
         except Exception as e:
-            print(f"⏳ Attempt {i+1}/{max_retries} failed: {e}")
-            time.sleep(delay)
-    print("❌ Database not reachable. Continuing without table creation.")
+            logger.warning("Attempt %d/%d failed: %s", i + 1, max_retries, e)
+            if i < max_retries - 1:
+                time.sleep(delay)
+    logger.warning("Database not reachable after %d attempts — starting API without DB.", max_retries)
     return False
 
 if __name__ == "__main__":
-    print("🚀 Starting Data Connector API...")
+    logger.info("Starting Data Connector API …")
     if wait_for_db():
         create_logs_tables()
     else:
-        print("⚠️ Could not create tables (database not ready).")
+        logger.warning("Could not create tables (database not ready). API will start without DB.")
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=False)
