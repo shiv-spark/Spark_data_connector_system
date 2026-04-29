@@ -32,15 +32,17 @@ REPORTS_DIR = os.path.join(os.path.dirname(__file__), "..", "agent", "reports")
 
 # ─── Request Schema ───────────────────────────────────────────────────────────
 
+from typing import Optional
+
 class AnalyzeRequest(BaseModel):
     source_type:   str          # "csv", "excel", "postgres", "google_sheet", 
                                 # "s3", "api", "google_sheets_multi"
-    pipeline_name: str = None   # only needed for postgres
-    file_path:     str = None   # for csv / excel
-    sheet_url:     str = None   # for google_sheet
-    table_name:    str = None   # for postgres
-    s3_path:       str = None   # for s3
-    api_url:       str = None   # for api
+    pipeline_name: Optional[str] = None   # only needed for postgres
+    file_path:     Optional[str] = None   # for csv / excel
+    sheet_url:     Optional[str] = None   # for google_sheet
+    table_name:    Optional[str] = None   # for postgres
+    s3_path:       Optional[str] = None   # for s3
+    api_url:       Optional[str] = None   # for api
     request:       str = "full analysis with report"
 
 

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Data Intelligence Platform</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;}
+.topbar{background:#1e293b;border-bottom:1px solid #334155;padding:16px 40px;display:flex;align-items:center;justify-content:space-between;}
+.topbar .brand{font-size:1.2rem;font-weight:700;color:#60a5fa;display:flex;align-items:center;gap:10px;}
+.topbar .brand span{color:#e2e8f0;}
+.container{max-width:1200px;margin:0 auto;padding:48px 32px;}
+.hero{text-align:center;margin-bottom:56px;}
+.hero h1{font-size:2.4rem;font-weight:700;color:#f1f5f9;margin-bottom:12px;}
+.hero p{color:#64748b;font-size:1.05rem;max-width:520px;margin:0 auto 32px;}
+.connect-btn{background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:14px 32px;font-size:1rem;font-weight:600;cursor:pointer;transition:background .2s;}
+.connect-btn:hover{background:#2563eb;}
+.section-title{font-size:1rem;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:20px;}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;}
+.card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:24px;transition:border-color .2s,transform .2s;cursor:pointer;}
+.card:hover{border-color:#3b82f6;transform:translateY(-2px);}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
+.card-name{font-size:1.05rem;font-weight:700;color:#f1f5f9;}
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.72rem;font-weight:600;}
+.badge-Good{background:#052e16;color:#22c55e;}
+.badge-Fair{background:#422006;color:#f59e0b;}
+.badge-Poor{background:#431407;color:#f97316;}
+.badge-Critical{background:#450a0a;color:#ef4444;}
+.badge-source{background:#0f172a;color:#94a3b8;border:1px solid #334155;}
+.card-meta{font-size:0.78rem;color:#64748b;margin-bottom:20px;display:flex;gap:12px;}
+.score-row{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
+.score-bar-bg{flex:1;height:6px;background:#0f172a;border-radius:3px;}
+.score-bar{height:6px;border-radius:3px;transition:width .5s;}
+.score-val{font-size:0.82rem;font-weight:700;color:#60a5fa;min-width:40px;text-align:right;}
+.card-actions{display:flex;gap:10px;}
+.btn{flex:1;padding:9px 0;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;border:none;text-align:center;text-decoration:none;display:inline-block;transition:background .2s;}
+.btn-primary{background:#3b82f6;color:#fff;}
+.btn-primary:hover{background:#2563eb;}
+.btn-secondary{background:#0f172a;color:#94a3b8;border:1px solid #334155;}
+.btn-secondary:hover{border-color:#3b82f6;color:#60a5fa;}
+.empty{text-align:center;padding:80px 20px;color:#334155;}
+.empty h3{font-size:1.2rem;color:#475569;margin-bottom:8px;}
+.empty p{font-size:0.88rem;color:#334155;}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px;width:100%;max-width:480px;}
+.modal h2{font-size:1.1rem;color:#60a5fa;margin-bottom:24px;}
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;font-size:0.78rem;color:#94a3b8;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.form-group select,.form-group input{width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:0.9rem;outline:none;}
+.form-group select:focus,.form-group input:focus{border-color:#3b82f6;}
+.modal-actions{display:flex;gap:10px;margin-top:24px;}
+.modal-actions .btn{padding:11px 0;}
+.close-btn{background:transparent;border:none;color:#64748b;font-size:1.4rem;cursor:pointer;line-height:1;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+.modal-header h2{margin:0;}
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:center;justify-content:center;flex-direction:column;gap:16px;}
+.loading-overlay.open{display:flex;}
+.spinner-lg{width:48px;height:48px;border:4px solid #334155;border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-text{color:#94a3b8;font-size:0.95rem;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">⚡ <span>Data Intelligence Platform</span></div>
+  <button class="connect-btn" onclick="openModal()">+ Connect Dataset</button>
+</div>
+
+<div class="container">
+  <div class="hero">
+    <h1>Your Data, Analysed Instantly</h1>
+    <p>Connect any dataset — CSV, Excel, Google Sheets, Postgres — and get a live AI-powered dashboard in seconds.</p>
+    <button class="connect-btn" onclick="openModal()">+ Connect Dataset</button>
+  </div>
+
+  <div class="section-title">Active Dashboards</div>
+
+  <div class="cards-grid" id="cards-grid">
+    {% if dashboards %}
+      {% for d in dashboards %}
+      <div class="card" onclick="window.location='/agent/dashboard/{{ d.dashboard_id }}'">
+        <div class="card-top">
+          <div class="card-name">{{ d.name }}</div>
+          <span class="badge badge-{{ d.grade or 'Fair' }}">{{ d.grade or 'N/A' }}</span>
+        </div>
+        <div class="card-meta">
+          <span class="badge badge-source">{{ d.source_type }}</span>
+          <span>Updated: {{ d.last_updated[:16] if d.last_updated else 'N/A' }}</span>
+        </div>
+        <div class="score-row">
+          <div class="score-bar-bg">
+            <div class="score-bar" style="width:{{ d.quality_score or 0 }}%;background:{% if (d.quality_score or 0) >= 80 %}#22c55e{% elif (d.quality_score or 0) >= 60 %}#f59e0b{% else %}#ef4444{% endif %}"></div>
+          </div>
+          <div class="score-val">{{ d.quality_score or 0 }}/100</div>
+        </div>
+        <div class="card-actions" onclick="event.stopPropagation()">
+          <a class="btn btn-primary" href="/agent/dashboard/{{ d.dashboard_id }}">Open Dashboard</a>
+          <a class="btn btn-secondary" href="/agent/dashboard/{{ d.dashboard_id }}/pipeline">Live Pipeline</a>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty" style="grid-column:1/-1">
+        <h3>No dashboards yet</h3>
+        <p>Click "Connect Dataset" to analyse your first dataset.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Connect Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Connect Dataset</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="form-group">
+      <label>Source Type</label>
+      <select id="source-type" onchange="updateFields()">
+        <option value="csv">CSV File</option>
+        <option value="excel">Excel File</option>
+        <option value="google_sheet">Google Sheet</option>
+        <option value="postgres">Postgres Pipeline</option>
+        <option value="api">API Endpoint</option>
+      </select>
+    </div>
+    <div class="form-group" id="field-file" style="display:none">
+      <label>File Path</label>
+      <input type="text" id="file-path" placeholder="C:/Users/you/data.csv"/>
+    </div>
+    <div class="form-group" id="field-sheet" style="display:none">
+      <label>Google Sheet URL (CSV export link)</label>
+      <input type="text" id="sheet-url" placeholder="https://docs.google.com/...export?format=csv"/>
+    </div>
+    <div class="form-group" id="field-pipeline" style="display:none">
+      <label>Pipeline Name</label>
+      <input type="text" id="pipeline-name" placeholder="my_pipeline"/>
+    </div>
+    <div class="form-group" id="field-api" style="display:none">
+      <label>API URL</label>
+      <input type="text" id="api-url" placeholder="https://api.example.com/data"/>
+    </div>
+    <div class="form-group">
+      <label>Analysis Request</label>
+      <input type="text" id="analysis-request" value="full analysis" placeholder="full analysis"/>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAnalysis()">Analyse →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner-lg"></div>
+  <div class="loading-text" id="loading-text">Connecting to dataset…</div>
+</div>
+
+<script>
+function updateFields() {
+  const src = document.getElementById("source-type").value;
+  document.getElementById("field-file").style.display     = ["csv","excel"].includes(src) ? "block" : "none";
+  document.getElementById("field-sheet").style.display    = src === "google_sheet" ? "block" : "none";
+  document.getElementById("field-pipeline").style.display = src === "postgres" ? "block" : "none";
+  document.getElementById("field-api").style.display      = src === "api" ? "block" : "none";
+}
+updateFields();
+
+function openModal()  { document.getElementById("modal").classList.add("open"); }
+function closeModal() { document.getElementById("modal").classList.remove("open"); }
+
+const steps = [
+  "Connecting to dataset…",
+  "Fetching data…",
+  "Running null & duplicate analysis…",
+  "Computing statistics…",
+  "Detecting outliers…",
+  "Building correlation matrix…",
+  "LLM picking best charts…",
+  "Generating visualisations…",
+  "Writing AI summary…",
+  "Building dashboard…"
+];
+let stepIdx = 0, stepTimer = null;
+
+function startLoadingSteps() {
+  stepIdx = 0;
+  document.getElementById("loading-text").textContent = steps[0];
+  stepTimer = setInterval(() => {
+    stepIdx = Math.min(stepIdx + 1, steps.length - 1);
+    document.getElementById("loading-text").textContent = steps[stepIdx];
+  }, 2800);
+}
+
+function stopLoadingSteps() { clearInterval(stepTimer); }
+
+async function submitAnalysis() {
+  const src = document.getElementById("source-type").value;
+  const body = {
+    source_type:   src,
+    file_path:     document.getElementById("file-path").value    || null,
+    sheet_url:     document.getElementById("sheet-url").value    || null,
+    pipeline_name: document.getElementById("pipeline-name").value|| null,
+    api_url:       document.getElementById("api-url").value      || null,
+    request:       document.getElementById("analysis-request").value || "full analysis",
+  };
+
+  closeModal();
+  document.getElementById("loading").classList.add("open");
+  startLoadingSteps();
+
+  try {
+    const res  = await fetch("/agent/analyze", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    stopLoadingSteps();
+    if (data.dashboard_url) {
+      window.location = data.dashboard_url;
+    } else {
+      document.getElementById("loading").classList.remove("open");
+      alert("Error: " + (data.detail || "Unknown error"));
+    }
+  } catch(e) {
+    stopLoadingSteps();
+    document.getElementById("loading").classList.remove("open");
+    alert("Request failed: " + e.message);
+  }
+}
+</script>
+</body>
+</html>

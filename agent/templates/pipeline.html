@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{{ display_name }} — Live Pipeline</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;}
+.topbar{background:#1e293b;border-bottom:1px solid #334155;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.topbar-left{display:flex;align-items:center;gap:16px;}
+.back-btn{color:#64748b;text-decoration:none;font-size:0.82rem;padding:4px 10px;border:1px solid #334155;border-radius:6px;}
+.back-btn:hover{color:#60a5fa;border-color:#3b82f6;}
+.topbar h1{font-size:1.1rem;color:#60a5fa;font-weight:700;}
+.topbar-right{font-size:0.78rem;color:#64748b;display:flex;align-items:center;gap:12px;}
+.live-dot{width:7px;height:7px;background:#22c55e;border-radius:50%;animation:pulse 2s infinite;display:inline-block;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.container{max-width:1200px;margin:0 auto;padding:24px 32px;}
+.section{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;margin-bottom:20px;}
+.section-title{font-size:0.88rem;color:#7dd3fc;font-weight:700;margin-bottom:16px;text-transform:uppercase;letter-spacing:.06em;}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+.kpi{background:#0f172a;border:1px solid #334155;border-radius:10px;padding:16px;text-align:center;}
+.kpi .val{font-size:1.6rem;font-weight:700;color:#60a5fa;}
+.kpi .lbl{font-size:0.7rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;}
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.72rem;font-weight:600;}
+.badge-success{background:#052e16;color:#22c55e;}
+.badge-failed{background:#450a0a;color:#ef4444;}
+.badge-running{background:#0c1a3d;color:#60a5fa;}
+.badge-skipped{background:#1c1008;color:#f59e0b;}
+table{width:100%;border-collapse:collapse;font-size:0.8rem;}
+th{background:#0f172a;color:#64748b;padding:10px 12px;text-align:left;border-bottom:2px solid #334155;font-weight:600;text-transform:uppercase;font-size:0.72rem;letter-spacing:.04em;}
+td{padding:10px 12px;border-bottom:1px solid #1e293b;color:#cbd5e1;}
+tr:hover td{background:#263348;}
+.log-row td{font-family:monospace;font-size:0.75rem;}
+.log-ERROR td{background:#2d0a0a;}
+.log-WARNING td{background:#1c1008;}
+.log-INFO td{}
+.empty{color:#334155;text-align:center;padding:32px;font-size:0.85rem;}
+.skeleton{background:linear-gradient(90deg,#1e293b 25%,#263348 50%,#1e293b 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;}
+@keyframes shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+.refresh-btn{background:transparent;border:1px solid #334155;color:#64748b;border-radius:6px;padding:4px 12px;font-size:0.75rem;cursor:pointer;}
+.refresh-btn:hover{border-color:#3b82f6;color:#60a5fa;}
+.error-text{color:#f87171;font-size:0.75rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-left">
+    <a class="back-btn" href="/agent/dashboard/{{ dashboard_id }}">← Dashboard</a>
+    <h1>⚡ Live Pipeline — {{ display_name }}</h1>
+  </div>
+  <div class="topbar-right">
+    <span><span class="live-dot"></span> Auto-refresh 30s</span>
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh Now</button>
+    <span id="updated-time" style="color:#334155;">loading…</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- KPIs -->
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="kpi"><div class="skeleton" style="height:60px;"></div></div>
+    <div class="kpi"><div class="skeleton" style="height:60px;"></div></div>
+    <div class="kpi"><div class="skeleton" style="height:60px;"></div></div>
+    <div class="kpi"><div class="skeleton" style="height:60px;"></div></div>
+  </div>
+
+  <!-- Pipeline Runs -->
+  <div class="section">
+    <div class="section-title">🔄 Pipeline Runs</div>
+    <div id="runs-table"><div class="skeleton" style="height:200px;"></div></div>
+  </div>
+
+  <!-- Airflow DAG Runs -->
+  <div class="section">
+    <div class="section-title">🌀 Airflow DAG Runs</div>
+    <div id="dag-table"><div class="skeleton" style="height:200px;"></div></div>
+  </div>
+
+  <!-- Pipeline Metrics -->
+  <div class="section">
+    <div class="section-title">📊 Pipeline Metrics</div>
+    <div id="metrics-table"><div class="skeleton" style="height:200px;"></div></div>
+  </div>
+
+  <!-- Recent Logs -->
+  <div class="section">
+    <div class="section-title">📋 Recent Logs</div>
+    <div id="logs-table"><div class="skeleton" style="height:200px;"></div></div>
+  </div>
+
+</div>
+
+<script>
+const DASHBOARD_ID = "{{ dashboard_id }}";
+
+function statusBadge(s){
+  const map={success:"success",failed:"failed",running:"running",skipped:"skipped"};
+  const cls=map[s?.toLowerCase()]||"skipped";
+  return `<span class="badge badge-${cls}">${s||"unknown"}</span>`;
+}
+
+function renderRuns(runs){
+  const el=document.getElementById("runs-table");
+  if(!runs?.length){el.innerHTML="<div class='empty'>No pipeline runs found</div>";return;}
+  el.innerHTML=`<table><thead><tr><th>Run ID</th><th>Connector</th><th>Source</th><th>Status</th><th>Records</th><th>Start</th><th>End</th><th>Error</th></tr></thead><tbody>${
+    runs.map(r=>`<tr><td style="font-family:monospace;font-size:.72rem">${r.run_id}</td><td>${r.connector_name||"—"}</td><td>${r.source||"—"}</td><td>${statusBadge(r.status)}</td><td>${r.records_count??0}</td><td style="font-size:.75rem">${r.start_time||"—"}</td><td style="font-size:.75rem">${r.end_time||"—"}</td><td class="error-text" title="${r.error||""}">${r.error||"—"}</td></tr>`).join("")
+  }</tbody></table>`;}
+
+function renderDagRuns(runs){
+  const el=document.getElementById("dag-table");
+  if(!runs?.length){el.innerHTML="<div class='empty'>No Airflow DAG runs found</div>";return;}
+  el.innerHTML=`<table><thead><tr><th>DAG</th><th>Pipeline</th><th>Connector</th><th>Operation</th><th>Status</th><th>Table</th><th>Triggered By</th><th>Created</th></tr></thead><tbody>${
+    runs.map(r=>`<tr><td style="font-family:monospace;font-size:.72rem">${r.dag_id||"—"}</td><td>${r.pipeline_name||"—"}</td><td>${r.connector_type||"—"}</td><td>${r.operation||"—"}</td><td>${statusBadge(r.status)}</td><td>${r.table_name||"—"}</td><td>${r.triggered_by||"—"}</td><td style="font-size:.75rem">${r.created_at||"—"}</td></tr>`).join("")
+  }</tbody></table>`;}
+
+function renderMetrics(metrics){
+  const el=document.getElementById("metrics-table");
+  if(!metrics?.length){el.innerHTML="<div class='empty'>No metrics found</div>";return;}
+  el.innerHTML=`<table><thead><tr><th>Pipeline</th><th>Table</th><th>Inserted</th><th>Skipped</th><th>Failed</th><th>Duration(s)</th><th>Match%</th><th>Status</th><th>Logged</th></tr></thead><tbody>${
+    metrics.map(m=>`<tr><td style="font-size:.72rem">${m.pipeline_id||"—"}</td><td>${m.table_name||"—"}</td><td style="color:#22c55e">${m.rows_inserted??0}</td><td style="color:#f59e0b">${m.rows_skipped??0}</td><td style="color:#ef4444">${m.rows_failed??0}</td><td>${m.duration_sec??0}</td><td>${m.match_pct??0}%</td><td>${statusBadge(m.status)}</td><td style="font-size:.72rem">${m.logged_at||"—"}</td></tr>`).join("")
+  }</tbody></table>`;}
+
+function renderLogs(logs){
+  const el=document.getElementById("logs-table");
+  if(!logs?.length){el.innerHTML="<div class='empty'>No logs found</div>";return;}
+  el.innerHTML=`<table><thead><tr><th>Time</th><th>Level</th><th>Run ID</th><th>Message</th></tr></thead><tbody>${
+    logs.map(l=>`<tr class="log-row log-${l.level||'INFO'}"><td style="font-size:.72rem;white-space:nowrap">${l.log_time||"—"}</td><td><span class="badge badge-${l.level==='ERROR'?'failed':l.level==='WARNING'?'skipped':'running'}">${l.level||"INFO"}</span></td><td style="font-family:monospace;font-size:.7rem">${l.run_id||"—"}</td><td style="max-width:500px">${l.message||""}</td></tr>`).join("")
+  }</tbody></table>`;}
+
+async function loadAll(){
+  try{
+    const res  = await fetch(`/agent/dashboard/${DASHBOARD_ID}/pipeline-data`);
+    const data = await res.json();
+    const runs    = data.runs    || [];
+    const dag     = data.airflow || [];
+    const metrics = data.metrics || [];
+    const logs    = data.logs    || [];
+
+    // KPIs
+    const total   = runs.length;
+    const success = runs.filter(r=>r.status==="success").length;
+    const failed  = runs.filter(r=>r.status==="failed").length;
+    const totalIns= metrics.reduce((a,m)=>a+(m.rows_inserted||0),0);
+    document.getElementById("kpi-grid").innerHTML=[
+      {label:"Total Runs",   val:total},
+      {label:"Success",      val:`<span style="color:#22c55e">${success}</span>`},
+      {label:"Failed",       val:`<span style="color:#ef4444">${failed}</span>`},
+      {label:"Rows Inserted",val:totalIns.toLocaleString()},
+    ].map(k=>`<div class="kpi"><div class="val">${k.val}</div><div class="lbl">${k.label}</div></div>`).join("");
+
+    renderRuns(runs);
+    renderDagRuns(dag);
+    renderMetrics(metrics);
+    renderLogs(logs);
+    document.getElementById("updated-time").textContent=new Date().toLocaleTimeString();
+  }catch(e){console.error(e);}
+}
+
+loadAll();
+setInterval(loadAll,30000);
+</script>
+</body>
+</html>
