@@ -99,7 +99,7 @@ def create_logs_tables():
         logger.error("Table creation failed: %s", e, exc_info=True)
         return False
 
-def wait_for_db(max_retries=12, delay=5):
+def wait_for_db(max_retries=3, delay=2):
     logger.info("Waiting for database %s:%s …", DB_CONFIG['host'], DB_CONFIG['port'])
     for i in range(max_retries):
         try:
@@ -109,8 +109,9 @@ def wait_for_db(max_retries=12, delay=5):
             return True
         except Exception as e:
             logger.warning("Attempt %d/%d failed: %s", i + 1, max_retries, e)
-            time.sleep(delay)
-    logger.error("Database not reachable after %d attempts.", max_retries)
+            if i < max_retries - 1:
+                time.sleep(delay)
+    logger.warning("Database not reachable after %d attempts — starting API without DB.", max_retries)
     return False
 
 if __name__ == "__main__":
@@ -118,6 +119,6 @@ if __name__ == "__main__":
     if wait_for_db():
         create_logs_tables()
     else:
-        logger.warning("Could not create tables (database not ready).")
+        logger.warning("Could not create tables (database not ready). API will start without DB.")
 
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=False)

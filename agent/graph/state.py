@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, List
 
 class PipelineState(TypedDict):
     # inputs
@@ -20,6 +20,7 @@ class PipelineState(TypedDict):
     health_result:  dict
     quality_result: dict
     charts:         dict
+    chart_meta:     list   # [{slot, title, description, config}] — LLM-decided chart info
     report:         dict
     ai_summary:     str
     error:          Optional[str]

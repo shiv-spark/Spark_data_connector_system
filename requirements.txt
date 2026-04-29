@@ -39,9 +39,9 @@ python-dotenv>=1.0.1
 
 # AI Agent
 openai
+langgraph
 scipy
 plotly
-kaleido
 jinja2
 weasyprint
 
