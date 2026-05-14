@@ -1,0 +1,993 @@
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import GridLayout, { type Layout, type LayoutItem } from "react-grid-layout";
+
+const TypedGrid = GridLayout as unknown as React.ComponentType<any>;
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  AreaChart as AreaChartIcon,
+  BarChart3,
+  Bot,
+  ChevronDown,
+  Code2,
+  Copy,
+  Eraser,
+  ExternalLink,
+  Gauge,
+  GripVertical,
+  LineChart as LineChartIcon,
+  Loader2,
+  Maximize2,
+  MessageSquarePlus,
+  Minimize2,
+  Palette,
+  PieChart as PieChartIcon,
+  Plus,
+  RefreshCw,
+  Send,
+  Sparkles,
+  Table2,
+  Trash2,
+  User,
+  Wand2,
+  X,
+} from "lucide-react";
+import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { fdt } from "@/lib/format";
+
+const mono = { fontFamily: "var(--font-mono)" } as const;
+
+type ChartMeta = {
+  slot: number;
+  title: string;
+  description?: string;
+  source?: string;
+  layout?: { x: number; y: number; w: number; h: number };
+};
+
+type DashboardData = {
+  display_name?: string;
+  source_type?: string;
+  source_config?: { table_name?: string; pipeline_name?: string };
+  kpis?: Array<{ label: string; value: string | number; hint?: string }>;
+  charts?: Record<string, string>;
+  chart_meta?: ChartMeta[];
+  ai_summary?: string;
+  quality_result?: { quality_score?: number; grade?: string };
+  last_updated?: string;
+};
+
+const COLS = 12;
+const ROW_HEIGHT = 36;
+const DEFAULT_W = 6;
+const DEFAULT_H = 8;
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+const STARTERS = [
+  "Add a chart of revenue by month",
+  "Show top 5 categories by total",
+  "Find columns with the most outliers",
+  "Replace chart 1 with a line trend",
+];
+
+export const DashboardEditor = () => {
+  const { dashboardId = "" } = useParams<{ dashboardId: string }>();
+  const queryClient = useQueryClient();
+  const [input, setInput] = useState("");
+  const [history, setHistory] = useState<ChatMessage[]>([]);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  const dashboardKey = ["agent-dashboard", dashboardId];
+
+  const dashboard = useQuery({
+    queryKey: dashboardKey,
+    queryFn: async () => (await api.get(`/agent/dashboard/${dashboardId}/data`)).data as DashboardData,
+    enabled: !!dashboardId,
+  });
+
+  const meta = useQuery({
+    queryKey: ["agent-dashboards"],
+    queryFn: async () => (await api.get("/agent/dashboards")).data.dashboards ?? [],
+  });
+  const summary = useMemo(
+    () => (meta.data ?? []).find((d: any) => d.dashboard_id === dashboardId),
+    [meta.data, dashboardId],
+  );
+
+  const command = useMutation({
+    mutationFn: async (message: string) => {
+      const r = await api.post(`/agent/dashboard/${dashboardId}/command`, { message });
+      return r.data as {
+        status: string;
+        reply?: string;
+        action?: "chart_update" | string;
+        slot?: number;
+        chart_meta?: ChartMeta[];
+      };
+    },
+    onSuccess: (data, message) => {
+      setHistory((h) => [
+        ...h,
+        { role: "user", content: message },
+        { role: "assistant", content: data.reply || (data.status === "SUCCESS" ? "Done." : "No reply") },
+      ]);
+      if (data.action === "chart_update") {
+        queryClient.invalidateQueries({ queryKey: dashboardKey });
+      }
+    },
+    onError: (err: any, message) => {
+      setHistory((h) => [
+        ...h,
+        { role: "user", content: message },
+        {
+          role: "assistant",
+          content: err?.response?.data?.detail || err?.message || "Something went wrong.",
+        },
+      ]);
+    },
+  });
+
+  const clearChat = useMutation({
+    mutationFn: async () => api.delete(`/agent/dashboard/${dashboardId}/chat`),
+    onSuccess: () => setHistory([]),
+  });
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [history.length, command.isPending]);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const text = input.trim();
+    if (!text || command.isPending) return;
+    setInput("");
+    command.mutate(text);
+  };
+
+  const data = dashboard.data;
+  const charts = data?.charts ?? {};
+  const chartMeta = data?.chart_meta ?? [];
+  const orderedSlots = chartMeta
+    .map((m) => m.slot)
+    .concat(
+      Object.keys(charts)
+        .map((k) => Number(k.replace("chart_", "")))
+        .filter((n) => !chartMeta.some((m) => m.slot === n)),
+    );
+  const score = Number(data?.quality_result?.quality_score ?? summary?.quality_score ?? 0);
+  const grade = data?.quality_result?.grade || summary?.grade || gradeFromScore(score);
+  const tone = score >= 80 ? "good" : score >= 60 ? "warn" : "bad";
+
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState(1024);
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) setCanvasWidth(Math.floor(entry.contentRect.width));
+    });
+    ro.observe(el);
+    setCanvasWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+
+  const layout: LayoutItem[] = useMemo(() => {
+    return orderedSlots.map((slot, i) => {
+      const m = chartMeta.find((cm) => cm.slot === slot);
+      const saved = m?.layout;
+      if (saved) {
+        return { i: String(slot), x: saved.x, y: saved.y, w: saved.w, h: saved.h };
+      }
+      const x = (i % 2) * DEFAULT_W;
+      const y = Math.floor(i / 2) * DEFAULT_H;
+      return { i: String(slot), x, y, w: DEFAULT_W, h: DEFAULT_H };
+    });
+  }, [orderedSlots.join(","), chartMeta]);
+
+  const persistLayout = useMutation({
+    mutationFn: async (next: Layout) => {
+      const payload = {
+        layout: next.map((l) => ({
+          slot: Number(l.i),
+          x: l.x,
+          y: l.y,
+          w: l.w,
+          h: l.h,
+        })),
+      };
+      await api.post(`/agent/dashboard/${dashboardId}/layout`, payload);
+    },
+  });
+
+  const deleteChart = useMutation({
+    mutationFn: async (slot: number) => {
+      await api.delete(`/agent/dashboard/${dashboardId}/chart/${slot}`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKey }),
+  });
+
+  const sourceTable = data?.source_config?.table_name || data?.source_config?.pipeline_name;
+  const isPostgres = (data?.source_type || summary?.source_type) === "postgres";
+  const sql = isPostgres && sourceTable ? `SELECT *\nFROM ${sourceTable}\nLIMIT 50;` : null;
+  const [sqlOpen, setSqlOpen] = useState(false);
+
+  return (
+    <div className="-mx-6 -my-6 grid h-[calc(100vh-56px)] grid-cols-[360px_1fr]">
+      {/* Chat rail */}
+      <aside className="flex h-full flex-col border-r border-slate-200/80 bg-white/80 backdrop-blur">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-700 text-white shadow-[inset_0_0_0_1px_rgba(15,23,42,0.12)]">
+              <Bot className="h-3.5 w-3.5" />
+            </span>
+            <div className="leading-tight">
+              <p className="text-[12.5px] font-semibold tracking-tight text-slate-900">Dashboard agent</p>
+              <p className="text-[10.5px] text-slate-500" style={mono}>
+                opus-4.7
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => clearChat.mutate()}
+            className="icon-btn !h-7 !w-7"
+            title="Clear conversation"
+          >
+            <Eraser className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div ref={chatScrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          {history.length === 0 ? (
+            <EmptyChat onPick={(s) => setInput(s)} />
+          ) : (
+            history.map((m, i) => <ChatBubble key={i} message={m} />)
+          )}
+          {command.isPending && (
+            <div className="flex items-center gap-2 text-[11.5px] text-slate-500">
+              <Loader2 className="h-3 w-3 animate-spin" /> agent thinking…
+            </div>
+          )}
+        </div>
+
+        <form
+          onSubmit={submit}
+          className="border-t border-slate-200/80 bg-white px-3 py-3"
+        >
+          <div className="rounded-[10px] border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_1px_2px_rgba(15,23,42,0.04)] focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-500/15">
+            <textarea
+              rows={2}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  submit(e as unknown as FormEvent);
+                }
+              }}
+              className="w-full resize-none rounded-[10px] bg-transparent px-3 py-2 text-[13px] leading-5 text-slate-900 outline-none placeholder:text-slate-400"
+              placeholder="Ask, add a chart, refine a metric…"
+            />
+            <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-2 py-1.5">
+              <span className="text-[10.5px] text-slate-400" style={mono}>
+                ⌘ ↵ to send
+              </span>
+              <button
+                type="submit"
+                disabled={!input.trim() || command.isPending}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md bg-gradient-to-b from-emerald-500 to-emerald-600 px-2.5 text-[12px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),inset_0_0_0_1px_rgba(4,120,87,0.55),0_1px_2px_rgba(4,120,87,0.3)] transition hover:brightness-[1.06] disabled:opacity-50"
+              >
+                {command.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Send className="h-3 w-3" />
+                )}
+                Send
+              </button>
+            </div>
+          </div>
+        </form>
+      </aside>
+
+      {/* Canvas */}
+      <main className="flex h-full flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/80 px-6 py-3 backdrop-blur">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link
+              to="/"
+              className="icon-btn !h-7 !w-7"
+              title="Back to studio"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+            </Link>
+            <div className="min-w-0">
+              <p className="truncate text-[14px] font-semibold tracking-tight text-slate-900">
+                {data?.display_name || summary?.name || dashboardId}
+              </p>
+              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">
+                  {data?.source_type || summary?.source_type || "—"}
+                </span>
+                <span className="text-slate-300">·</span>
+                <span style={mono}>{fdt(data?.last_updated || summary?.last_updated)}</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={command.isPending}
+              onClick={() =>
+                command.mutate(
+                  "Add one new chart that reveals the most insightful pattern in this data — pick the best chart type yourself and pick a metric we don't already visualize.",
+                )
+              }
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-[12px] font-semibold text-emerald-800 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:bg-emerald-100 disabled:opacity-50"
+              title="Ask the agent to add a new chart"
+            >
+              {command.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Add chart
+            </button>
+            <button
+              type="button"
+              onClick={() => dashboard.refetch()}
+              className="icon-btn !h-8 !w-8"
+              title="Refresh"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", dashboard.isFetching && "animate-spin")} />
+            </button>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset",
+                tone === "good" && "bg-emerald-50 text-emerald-700 ring-emerald-200",
+                tone === "warn" && "bg-amber-50 text-amber-800 ring-amber-200",
+                tone === "bad" && "bg-rose-50 text-rose-700 ring-rose-200",
+              )}
+            >
+              <Gauge className="h-3 w-3" />
+              <span style={mono}>{score}</span>/100
+              <span className="text-slate-400">·</span>
+              <span style={mono}>{grade}</span>
+            </span>
+            {sql ? (
+              <button
+                type="button"
+                onClick={() => setSqlOpen((v) => !v)}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-[12px] font-semibold transition",
+                  sqlOpen
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900",
+                )}
+              >
+                <Code2 className="h-3 w-3" /> SQL
+              </button>
+            ) : null}
+            <a
+              href={`/agent/dashboard/${dashboardId}`}
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:text-slate-900"
+            >
+              Published view <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+
+        <div ref={canvasRef} className="flex-1 overflow-y-auto px-6 py-5">
+          {sql && sqlOpen ? <SqlPreview sql={sql} /> : null}
+          {dashboard.isLoading ? (
+            <CanvasSkeleton />
+          ) : dashboard.isError ? (
+            <CanvasError onRetry={() => dashboard.refetch()} />
+          ) : (
+            <>
+              {/* KPIs */}
+              {(data?.kpis ?? []).length > 0 && (
+                <section className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  {(data?.kpis ?? []).slice(0, 4).map((kpi, i) => (
+                    <div key={i} className="surface-tinted px-4 py-3">
+                      <div className="section-eyebrow">{kpi.label}</div>
+                      <div
+                        className="mt-1 text-[20px] font-semibold leading-none tracking-tight text-slate-900"
+                        style={mono}
+                      >
+                        {String(kpi.value)}
+                      </div>
+                      {kpi.hint ? (
+                        <p className="mt-1 text-[11px] text-slate-500">{kpi.hint}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {/* Summary */}
+              {data?.ai_summary ? (
+                <section className="mb-5 rounded-[10px] border border-slate-200/80 bg-gradient-to-b from-emerald-50/30 to-white px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="section-eyebrow">Agent summary</span>
+                  </div>
+                  <p className="text-[13px] leading-6 text-slate-700">{data.ai_summary}</p>
+                </section>
+              ) : null}
+
+              {/* Charts canvas — drag/resize grid */}
+              {orderedSlots.length === 0 ? (
+                <CanvasEmpty />
+              ) : (
+                <section className="-mx-1">
+                  <TypedGrid
+                    className="layout"
+                    layout={layout}
+                    cols={COLS}
+                    rowHeight={ROW_HEIGHT}
+                    width={canvasWidth - 16}
+                    margin={[12, 12]}
+                    containerPadding={[4, 4]}
+                    draggableHandle=".chart-drag-handle"
+                    compactType="vertical"
+                    onDragStop={(next: Layout) => persistLayout.mutate(next)}
+                    onResizeStop={(next: Layout) => persistLayout.mutate(next)}
+                  >
+                    {orderedSlots.map((slot) => {
+                      const html = charts[`chart_${slot}`];
+                      const m = chartMeta.find((cm) => cm.slot === slot);
+                      if (!html) return null;
+                      return (
+                        <div key={String(slot)}>
+                          <ChartCard
+                            slot={slot}
+                            html={html}
+                            meta={m}
+                            onDelete={() => deleteChart.mutate(slot)}
+                            deleting={deleteChart.isPending && deleteChart.variables === slot}
+                            onCommand={(text) => command.mutate(text)}
+                            busy={command.isPending}
+                          />
+                        </div>
+                      );
+                    })}
+                  </TypedGrid>
+                </section>
+              )}
+            </>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+};
+
+const CHART_TYPES: { id: string; label: string; icon: typeof BarChart3 }[] = [
+  { id: "bar", label: "Bar", icon: BarChart3 },
+  { id: "line", label: "Line", icon: LineChartIcon },
+  { id: "area", label: "Area", icon: AreaChartIcon },
+  { id: "pie", label: "Pie", icon: PieChartIcon },
+  { id: "donut", label: "Donut", icon: PieChartIcon },
+  { id: "table", label: "Table", icon: Table2 },
+];
+
+const PALETTES: { id: string; label: string; swatch: string[] }[] = [
+  { id: "emerald", label: "Emerald", swatch: ["#10b981", "#0d9488", "#047857"] },
+  { id: "ocean", label: "Ocean", swatch: ["#0ea5e9", "#2563eb", "#1d4ed8"] },
+  { id: "violet", label: "Violet", swatch: ["#8b5cf6", "#7c3aed", "#5b21b6"] },
+  { id: "sunset", label: "Sunset", swatch: ["#f59e0b", "#f97316", "#dc2626"] },
+  { id: "mono", label: "Mono", swatch: ["#475569", "#334155", "#0f172a"] },
+];
+
+const ChartCanvasMount = ({ html, className }: { html: string; className?: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.innerHTML = html;
+    const scripts = Array.from(el.querySelectorAll("script"));
+    scripts.forEach((old) => {
+      const next = document.createElement("script");
+      Array.from(old.attributes).forEach((a) => next.setAttribute(a.name, a.value));
+      next.text = old.text;
+      old.parentNode?.replaceChild(next, old);
+    });
+  }, [html]);
+  return <div ref={ref} className={className} />;
+};
+
+const ChartCard = ({
+  slot,
+  html,
+  meta,
+  onDelete,
+  deleting,
+  onCommand,
+  busy,
+}: {
+  slot: number;
+  html: string;
+  meta?: ChartMeta;
+  onDelete?: () => void;
+  deleting?: boolean;
+  onCommand: (text: string) => void;
+  busy?: boolean;
+}) => {
+  const [open, setOpen] = useState<null | "type" | "theme" | "refine">(null);
+  const [refineText, setRefineText] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Click-outside closes any popover
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  // Esc closes fullscreen
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExpanded(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
+  const fire = (text: string) => {
+    setOpen(null);
+    onCommand(text);
+  };
+
+  const titleLabel = meta?.title || `Chart ${slot}`;
+
+  return (
+    <>
+      <div
+        ref={wrapRef}
+        className="group/card relative flex h-full flex-col overflow-hidden rounded-[14px] border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_-6px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-slate-300 hover:shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.16)]"
+      >
+        {/* Top accent strip */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, rgba(16,185,129,0.55) 50%, transparent 100%)",
+          }}
+        />
+
+        {/* Header */}
+        <div className="chart-drag-handle flex cursor-move items-center justify-between gap-2 border-b border-slate-100 bg-gradient-to-b from-white to-slate-50/60 px-3 py-2 select-none">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 transition group-hover/card:text-slate-500" />
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold tracking-tight text-slate-900">
+                {titleLabel}
+              </p>
+              {meta?.description ? (
+                <p className="mt-0.5 truncate text-[11px] text-slate-500">{meta.description}</p>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <span
+              className="rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-600"
+              style={mono}
+            >
+              #{slot}
+            </span>
+          </div>
+        </div>
+
+        {/* Hover toolbar */}
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute right-2.5 top-11 z-20 flex items-center gap-1 rounded-md border border-slate-200/80 bg-white/95 p-1 opacity-0 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_24px_-12px_rgba(15,23,42,0.18)] backdrop-blur transition-opacity duration-150 group-hover/card:opacity-100 focus-within:opacity-100"
+        >
+          {/* Type popover */}
+          <ToolbarButton
+            label="Chart type"
+            active={open === "type"}
+            onClick={() => setOpen(open === "type" ? null : "type")}
+            icon={BarChart3}
+            chevron
+          />
+          {/* Theme popover */}
+          <ToolbarButton
+            label="Color palette"
+            active={open === "theme"}
+            onClick={() => setOpen(open === "theme" ? null : "theme")}
+            icon={Palette}
+            chevron
+          />
+          {/* Refine popover */}
+          <ToolbarButton
+            label="Refine with AI"
+            active={open === "refine"}
+            onClick={() => setOpen(open === "refine" ? null : "refine")}
+            icon={MessageSquarePlus}
+          />
+          <span className="mx-0.5 h-4 w-px bg-slate-200" />
+          {/* Regenerate */}
+          <ToolbarButton
+            label="Regenerate"
+            disabled={busy}
+            onClick={() =>
+              fire(
+                `Regenerate chart ${slot} from scratch — pick the best chart type and metric for the underlying data, keep the same intent as "${titleLabel}".`,
+              )
+            }
+            icon={Wand2}
+          />
+          {/* Expand */}
+          <ToolbarButton
+            label="Expand"
+            onClick={() => setExpanded(true)}
+            icon={Maximize2}
+          />
+          {/* Delete */}
+          {onDelete ? (
+            <ToolbarButton
+              label="Delete"
+              tone="danger"
+              disabled={deleting}
+              onClick={onDelete}
+              icon={deleting ? Loader2 : Trash2}
+              spinning={deleting}
+            />
+          ) : null}
+        </div>
+
+        {/* Popover panels */}
+        {open === "type" && (
+          <PopoverPanel>
+            <div className="grid grid-cols-3 gap-1.5">
+              {CHART_TYPES.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    fire(`Change chart ${slot} to a ${id} chart. Keep the same metric and grouping.`)
+                  }
+                  className="group/pill flex flex-col items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-2 text-[11px] font-medium text-slate-700 transition hover:-translate-y-px hover:border-emerald-300 hover:text-emerald-800 hover:shadow-sm disabled:opacity-50"
+                >
+                  <Icon className="h-3.5 w-3.5 text-slate-500 group-hover/pill:text-emerald-600" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[10.5px] text-slate-400" style={mono}>
+              the agent re-renders the chart
+            </p>
+          </PopoverPanel>
+        )}
+
+        {open === "theme" && (
+          <PopoverPanel>
+            <div className="space-y-1">
+              {PALETTES.map(({ id, label, swatch }) => (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    fire(`Recolor chart ${slot} using a ${label} palette (${swatch.join(", ")}).`)
+                  }
+                  className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1.5 text-[12px] font-medium text-slate-700 transition hover:border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="flex">
+                      {swatch.map((c) => (
+                        <span
+                          key={c}
+                          className="-ml-1 h-3.5 w-3.5 rounded-full ring-2 ring-white first:ml-0"
+                          style={{ background: c }}
+                        />
+                      ))}
+                    </span>
+                    {label}
+                  </span>
+                  <ArrowUpRight className="h-3 w-3 text-slate-400" />
+                </button>
+              ))}
+            </div>
+          </PopoverPanel>
+        )}
+
+        {open === "refine" && (
+          <PopoverPanel wide>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const t = refineText.trim();
+                if (!t) return;
+                fire(`For chart ${slot} ("${titleLabel}"): ${t}`);
+                setRefineText("");
+              }}
+              className="space-y-2"
+            >
+              <textarea
+                autoFocus
+                rows={3}
+                value={refineText}
+                onChange={(e) => setRefineText(e.target.value)}
+                placeholder="e.g. group by quarter, sort descending, add a moving average…"
+                className="w-full resize-none rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[12.5px] leading-5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10.5px] text-slate-400" style={mono}>
+                  refines this chart only
+                </span>
+                <button
+                  type="submit"
+                  disabled={busy || !refineText.trim()}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-gradient-to-b from-emerald-500 to-emerald-600 px-2.5 text-[12px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),inset_0_0_0_1px_rgba(4,120,87,0.55),0_1px_2px_rgba(4,120,87,0.3)] transition hover:brightness-[1.06] disabled:opacity-50"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Apply
+                </button>
+              </div>
+            </form>
+          </PopoverPanel>
+        )}
+
+        {/* Chart body */}
+        <ChartCanvasMount
+          html={html}
+          className="flex-1 w-full overflow-hidden p-2 [&_*]:max-w-full"
+        />
+      </div>
+
+      {/* Fullscreen overlay */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-sm"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="relative flex h-full max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 bg-white px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-semibold tracking-tight text-slate-900">
+                  {titleLabel}
+                </p>
+                {meta?.description ? (
+                  <p className="mt-0.5 truncate text-[11.5px] text-slate-500">
+                    {meta.description}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="icon-btn !h-8 !w-8"
+                title="Close (Esc)"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <ChartCanvasMount
+              html={html}
+              className="flex-1 w-full overflow-auto p-4 [&_*]:max-w-full"
+            />
+            <div className="flex items-center justify-end gap-1.5 border-t border-slate-100 bg-slate-50/60 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:border-slate-300"
+              >
+                <Minimize2 className="h-3 w-3" /> Collapse
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+const ToolbarButton = ({
+  label,
+  icon: Icon,
+  onClick,
+  disabled,
+  active,
+  tone,
+  chevron,
+  spinning,
+}: {
+  label: string;
+  icon: typeof BarChart3;
+  onClick?: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  tone?: "danger";
+  chevron?: boolean;
+  spinning?: boolean;
+}) => (
+  <button
+    type="button"
+    title={label}
+    aria-label={label}
+    disabled={disabled}
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick?.();
+    }}
+    className={cn(
+      "inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-[11px] font-medium transition",
+      "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+      active && "bg-slate-900 text-white hover:bg-slate-900 hover:text-white",
+      tone === "danger" && "hover:bg-rose-50 hover:text-rose-600",
+      disabled && "opacity-50",
+    )}
+  >
+    <Icon className={cn("h-3 w-3", spinning && "animate-spin")} />
+    {chevron ? <ChevronDown className="h-2.5 w-2.5 opacity-70" /> : null}
+  </button>
+);
+
+const PopoverPanel = ({
+  children,
+  wide = false,
+}: {
+  children: React.ReactNode;
+  wide?: boolean;
+}) => (
+  <div
+    onMouseDown={(e) => e.stopPropagation()}
+    className={cn(
+      "absolute right-2.5 top-[78px] z-30 rounded-[10px] border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.22)]",
+      wide ? "w-[320px]" : "w-[220px]",
+    )}
+  >
+    {children}
+  </div>
+);
+
+const SqlPreview = ({ sql }: { sql: string }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(sql);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* noop */
+    }
+  };
+  return (
+    <section className="mb-5 overflow-hidden rounded-[10px] border border-slate-200/80 bg-slate-950 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_4px_12px_-6px_rgba(15,23,42,0.18)]">
+      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <Code2 className="h-3.5 w-3.5 text-emerald-400" />
+          <span
+            className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-emerald-300"
+            style={mono}
+          >
+            Source SQL · readonly
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={copy}
+          className="inline-flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-slate-200 transition hover:bg-white/10"
+        >
+          <Copy className="h-3 w-3" /> {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre
+        className="overflow-x-auto px-3 py-3 text-[12px] leading-5 text-emerald-100"
+        style={mono}
+      >
+        {sql}
+      </pre>
+    </section>
+  );
+};
+
+const ChatBubble = ({ message }: { message: ChatMessage }) => {
+  const isUser = message.role === "user";
+  return (
+    <div className={cn("flex gap-2", isUser ? "flex-row-reverse" : "flex-row")}>
+      <span
+        className={cn(
+          "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 ring-inset",
+          isUser
+            ? "bg-slate-100 text-slate-600 ring-slate-200"
+            : "bg-emerald-50 text-emerald-700 ring-emerald-200",
+        )}
+      >
+        {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
+      </span>
+      <div
+        className={cn(
+          "max-w-[78%] rounded-[10px] px-3 py-2 text-[12.5px] leading-5 ring-1 ring-inset",
+          isUser
+            ? "bg-slate-50 text-slate-800 ring-slate-200"
+            : "bg-white text-slate-700 ring-slate-200/80 shadow-[0_1px_0_rgba(15,23,42,0.03)]",
+        )}
+      >
+        {message.content}
+      </div>
+    </div>
+  );
+};
+
+const EmptyChat = ({ onPick }: { onPick: (s: string) => void }) => (
+  <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+    <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-200">
+      <Sparkles className="h-4 w-4 text-emerald-600" />
+    </div>
+    <p className="text-[13px] font-semibold text-slate-900">Refine your dashboard</p>
+    <p className="max-w-[260px] text-[11.5px] text-slate-500">
+      Ask the agent to add charts, replace metrics, explain anomalies — all in plain English.
+    </p>
+    <div className="mt-1 flex w-full flex-col gap-1.5">
+      {STARTERS.map((s) => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onPick(s)}
+          className="inline-flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left text-[12px] text-slate-700 transition hover:border-slate-300"
+        >
+          <span className="truncate">{s}</span>
+          <ArrowUpRight className="h-3 w-3 text-slate-400" />
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+const CanvasSkeleton = () => (
+  <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-[68px] animate-pulse rounded-[10px] bg-slate-100" />
+      ))}
+    </div>
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-[280px] animate-pulse rounded-[12px] bg-slate-100" />
+      ))}
+    </div>
+  </div>
+);
+
+const CanvasError = ({ onRetry }: { onRetry: () => void }) => (
+  <div className="flex flex-col items-center justify-center gap-3 rounded-[12px] border border-rose-200 bg-rose-50/40 px-6 py-12 text-center">
+    <p className="text-[13px] font-semibold text-rose-800">Couldn't load this dashboard</p>
+    <button
+      type="button"
+      onClick={onRetry}
+      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white px-3 text-[12px] font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 hover:ring-slate-300"
+    >
+      Try again
+    </button>
+  </div>
+);
+
+const CanvasEmpty = () => (
+  <div className="flex flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-slate-200 bg-slate-50/40 px-6 py-16 text-center">
+    <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-200">
+      <Sparkles className="h-4 w-4 text-emerald-600" />
+    </div>
+    <p className="text-[13px] font-semibold text-slate-900">No charts yet</p>
+    <p className="max-w-xs text-[11.5px] text-slate-500">
+      Ask the agent on the left to add the first chart.
+    </p>
+  </div>
+);
+
+const gradeFromScore = (score: number) => {
+  if (score >= 90) return "A";
+  if (score >= 80) return "B";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
+};

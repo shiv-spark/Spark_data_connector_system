@@ -1,0 +1,50 @@
+
+# Web Framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.7.1
+python-multipart>=0.0.9
+pyarrow
+xlsx2csv
+
+# HTTP
+requests>=2.32.2
+
+# Database
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.30
+
+# Auth
+bcrypt
+PyJWT
+
+# Excel
+openpyxl
+
+# Google
+google-auth>=2.29.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.129.0
+
+# Data Processing
+polars
+pandas
+numpy
+
+# AWS S3
+boto3>=1.34.69
+
+# Utils
+python-dotenv>=1.0.1
+
+# AI Agent
+openai
+claude-agent-sdk
+langgraph
+scipy
+plotly
+jinja2
+weasyprint
+
+# UI
+streamlit

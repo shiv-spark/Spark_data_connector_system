@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{{ display_name }} — AI Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+:root{
+  --bg:#fafbfc;
+  --surface:#ffffff;
+  --surface-2:#f8fafc;
+  --surface-3:#f1f5f9;
+  --border:rgb(226 232 240);
+  --border-strong:rgba(15,23,42,0.10);
+  --ink:rgb(15 23 42);
+  --ink-2:rgb(30 41 59);
+  --muted:rgb(71 85 105);
+  --muted-2:rgb(100 116 139);
+  --muted-3:rgb(148 163 184);
+
+  --brand-50:#ecfdf5;
+  --brand-100:#d1fae5;
+  --brand-300:#6ee7b7;
+  --brand-400:#34d399;
+  --brand-500:#10b981;
+  --brand-600:#059669;
+  --brand-700:#047857;
+  --teal-500:#14b8a6;
+  --cyan-600:#0891b2;
+
+  --shadow-xs:0 1px 0 rgba(15,23,42,0.04);
+  --shadow-sm:0 1px 2px rgba(15,23,42,0.06),0 1px 0 rgba(15,23,42,0.04);
+  --shadow-md:0 1px 2px rgba(15,23,42,0.05),0 4px 12px -4px rgba(15,23,42,0.08);
+  --shadow-lg:0 1px 2px rgba(15,23,42,0.06),0 12px 32px -8px rgba(15,23,42,0.14);
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
+  font-feature-settings:"rlig" 1,"calt" 1,"ss01" 1,"cv11" 1;
+  color:var(--ink);background:var(--bg);
+  background-image:radial-gradient(rgba(15,23,42,0.035) 1px,transparent 1px);
+  background-size:24px 24px;background-position:-1px -1px;
+  -webkit-font-smoothing:antialiased;letter-spacing:-0.005em;
+  min-height:100vh;
+}
+
+/* topbar */
+.topbar{
+  position:sticky;top:0;z-index:20;height:56px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;
+  background:linear-gradient(180deg,rgba(255,255,255,0.98) 0%,rgba(255,255,255,0.94) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 1px 0 rgba(15,23,42,0.06),0 8px 24px -16px rgba(15,23,42,0.12);
+  backdrop-filter:saturate(140%);
+}
+.brand{display:flex;align-items:center;gap:11px}
+.ws-mark{
+  width:30px;height:30px;border-radius:8px;
+  background:conic-gradient(from 210deg at 50% 50%,#34d399,#14b8a6,#059669,#34d399);
+  box-shadow:inset 0 0 0 1px rgba(4,120,87,0.35),0 6px 16px -8px rgba(16,185,129,0.55);
+}
+.brand .name{display:flex;flex-direction:column;line-height:1.1}
+.brand .name b{font-size:13.5px;font-weight:700;color:var(--ink)}
+.brand .name small{font-family:var(--font-mono);font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2);margin-top:3px}
+
+.top-actions{display:flex;gap:10px;align-items:center}
+.env-pill{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--brand-700);
+  background:linear-gradient(180deg,rgba(16,185,129,0.08) 0%,rgba(16,185,129,0.04) 100%);
+  box-shadow:inset 0 0 0 1px rgba(16,185,129,0.25);
+}
+.live-ring{position:relative;width:8px;height:8px;border-radius:999px;background:var(--brand-400)}
+.live-ring::after{content:"";position:absolute;inset:-5px;border-radius:inherit;border:1px solid rgba(52,211,153,.55);animation:live-pulse 1.8s ease-out infinite}
+@keyframes live-pulse{from{opacity:.9;transform:scale(.6)}to{opacity:0;transform:scale(1.6)}}
+.src-pill{
+  display:inline-flex;align-items:center;
+  font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);padding:5px 9px;border-radius:6px;background:#fff;
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,0.08);
+}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:inherit;font-size:12.5px;font-weight:600;color:var(--ink-2);
+  padding:7px 13px;border-radius:7px;cursor:pointer;text-decoration:none;border:0;
+  background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,0.08),0 1px 0 rgba(15,23,42,0.02);
+  transition:box-shadow 160ms ease,background 160ms ease,transform 120ms ease;
+}
+.btn:hover{background:#fff;box-shadow:inset 0 0 0 1px rgba(15,23,42,0.16),0 1px 2px rgba(15,23,42,0.06)}
+.btn.primary{
+  color:#fff;
+  background:linear-gradient(180deg,#10b981 0%,#059669 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.22),inset 0 0 0 1px rgba(4,120,87,0.6),0 1px 2px rgba(4,120,87,0.3),0 8px 20px -10px rgba(16,185,129,0.55);
+}
+.btn.primary:hover{filter:brightness(1.06);box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 0 0 1px rgba(4,120,87,0.7),0 1px 2px rgba(4,120,87,0.4),0 12px 28px -10px rgba(16,185,129,0.7)}
+.btn.primary:active{transform:translateY(0.5px)}
+
+/* layout */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 400px;min-height:calc(100vh - 56px)}
+.main{padding:24px 28px 40px;overflow:auto}
+.side{
+  border-left:1px solid var(--border);
+  background:#fff;
+  display:flex;flex-direction:column;
+  position:sticky;top:56px;height:calc(100vh - 56px);
+}
+
+/* hero */
+.hero{
+  position:relative;overflow:hidden;border-radius:14px;padding:24px 26px;margin-bottom:18px;
+  background:
+    radial-gradient(circle at 12% 20%,rgba(8,145,178,0.08),transparent 26%),
+    radial-gradient(circle at 78% 18%,rgba(5,150,105,0.08),transparent 24%),
+    #ffffff;
+  border:1px solid var(--border);
+  box-shadow:var(--shadow-md);
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center;
+}
+.eyebrow{
+  font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted-2);
+  display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;
+}
+.eyebrow::before{content:"";width:14px;height:1.5px;background:linear-gradient(90deg,var(--brand-500),var(--cyan-600));border-radius:2px}
+.hero h1{
+  font-size:26px;font-weight:700;letter-spacing:-0.02em;line-height:1.15;
+  background:linear-gradient(180deg,rgb(15,23,42) 0%,rgb(30,41,59) 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.hero p{margin-top:8px;color:var(--muted);font-size:13.5px;line-height:1.6;max-width:760px}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.kpi{
+  position:relative;overflow:hidden;
+  background:linear-gradient(180deg,#ffffff 0%,#fafbfd 100%);
+  border:1px solid var(--border);border-radius:10px;
+  padding:16px 16px 14px;
+  box-shadow:var(--shadow-xs);
+  transition:box-shadow 160ms ease,transform 160ms ease;
+}
+.kpi:hover{box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.kpi::after{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:linear-gradient(180deg,var(--brand-400),var(--brand-600));box-shadow:0 0 12px rgba(16,185,129,0.45)}
+.kpi .l{font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-2)}
+.kpi .v{font-size:26px;font-weight:700;letter-spacing:-0.02em;color:var(--ink);margin-top:7px;font-variant-numeric:tabular-nums}
+.kpi.q::after{background:linear-gradient(180deg,#34d399,#0891b2)}
+.kpi.q .v{background:linear-gradient(135deg,#059669,#0891b2);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
+/* sections */
+.section{
+  background:#ffffff;border:1px solid var(--border);
+  border-radius:12px;padding:18px 18px 20px;margin-bottom:18px;
+  box-shadow:var(--shadow-sm);
+}
+.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.section-title h3{
+  font-size:14px;font-weight:700;color:var(--ink);letter-spacing:-0.005em;
+  display:flex;align-items:center;gap:9px;
+}
+.section-title h3::before{
+  content:"";width:8px;height:8px;border-radius:2px;
+  background:linear-gradient(135deg,var(--brand-500),var(--cyan-600));
+  box-shadow:0 0 10px rgba(16,185,129,.4);
+}
+.section-title .meta{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-2);letter-spacing:.04em}
+
+/* charts */
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.chart{
+  position:relative;overflow:hidden;
+  background:linear-gradient(180deg,#ffffff 0%,#fafbfd 100%);
+  border:1px solid var(--border);border-radius:10px;
+  box-shadow:var(--shadow-xs);
+  transition:box-shadow 160ms ease,transform 160ms ease,border-color 160ms ease;
+}
+.chart:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);border-color:rgba(16,185,129,0.30)}
+.chart-wrap{position:relative;min-height:340px;padding:8px 6px 4px}
+.chart-wrap img{width:100%;display:block}
+.chart-wrap > div{width:100% !important}
+.chart-wrap .js-plotly-plot,.chart-wrap .plot-container,.chart-wrap .plotly-graph-div{
+  width:100% !important;height:320px !important;
+}
+.slot{
+  position:absolute;top:10px;left:10px;z-index:2;
+  font-family:var(--font-mono);font-size:10px;font-weight:500;letter-spacing:.06em;
+  color:var(--brand-700);background:rgba(255,255,255,0.92);
+  padding:3px 7px;border-radius:5px;
+  box-shadow:inset 0 0 0 1px rgba(16,185,129,0.30);
+  backdrop-filter:blur(4px);
+}
+.chart-meta{padding:12px 14px 14px;border-top:1px solid var(--border)}
+.chart-title{font-size:13px;font-weight:600;color:var(--ink);letter-spacing:-0.005em}
+.chart-desc{font-size:12px;color:var(--muted);line-height:1.55;margin-top:4px}
+
+.empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:42px 20px;color:var(--muted-2);font-size:13px;text-align:center;
+  border:1px dashed var(--border-strong);border-radius:10px;background:var(--surface-2);
+}
+.empty svg{margin-bottom:10px;opacity:.55;color:var(--brand-500)}
+
+/* table */
+.table-wrap{overflow:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead{background:var(--surface-3)}
+th{
+  text-align:left;font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted-2);padding:10px 12px;border-bottom:1px solid var(--border);
+  position:sticky;top:0;background:rgba(241,245,249,0.96);backdrop-filter:blur(6px);
+}
+td{
+  border-bottom:1px solid var(--border);padding:9px 12px;
+  white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;
+  color:var(--ink-2);font-variant-numeric:tabular-nums;
+}
+tbody tr:hover{background:rgba(16,185,129,0.04)}
+tbody tr:last-child td{border-bottom:none}
+
+/* side panel */
+.side-head{padding:18px 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#fff 0%,#fafbfc 100%)}
+.side-head .row{display:flex;align-items:center;gap:11px}
+.side-head .av{
+  width:34px;height:34px;border-radius:9px;
+  background:conic-gradient(from 210deg at 50% 50%,#34d399,#14b8a6,#059669,#34d399);
+  box-shadow:inset 0 0 0 1px rgba(4,120,87,0.35),0 4px 12px -4px rgba(16,185,129,0.5);
+}
+.side-head h2{font-size:14px;font-weight:700;color:var(--ink)}
+.side-head .sub{font-family:var(--font-mono);font-size:10px;font-weight:500;color:var(--brand-600);text-transform:uppercase;letter-spacing:.12em;margin-top:2px;display:flex;align-items:center;gap:6px}
+.side-head .sub .dot{width:6px;height:6px;border-radius:50%;background:var(--brand-400)}
+.side-head p{font-size:12.5px;color:var(--muted);line-height:1.55;margin-top:10px}
+.suggestions{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.sg{
+  font-size:11.5px;font-weight:500;color:var(--muted);
+  background:#fff;padding:5px 10px;border-radius:999px;cursor:pointer;
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,0.08);
+  transition:all .15s ease;
+}
+.sg:hover{color:var(--brand-700);box-shadow:inset 0 0 0 1px rgba(16,185,129,0.4);background:var(--brand-50)}
+
+.messages{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2);scroll-behavior:smooth}
+.messages::-webkit-scrollbar{width:6px}
+.messages::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:6px}
+.msg{
+  max-width:92%;padding:11px 13px;border-radius:12px;
+  font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;
+  animation:fadeIn .25s ease;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.user{
+  align-self:flex-end;color:#fff;font-weight:500;
+  background:linear-gradient(180deg,#10b981 0%,#059669 100%);
+  border-bottom-right-radius:4px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.22),0 6px 16px -8px rgba(16,185,129,0.5);
+}
+.bot{
+  align-self:flex-start;color:var(--ink-2);
+  background:#fff;border-bottom-left-radius:4px;
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,0.08),var(--shadow-xs);
+}
+.bot.thinking{color:var(--muted-2);font-style:italic}
+.bot.thinking::after{content:"";display:inline-block;width:18px;animation:dots 1.2s steps(4,end) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+
+.composer{padding:12px;border-top:1px solid var(--border);background:#fff}
+.composer .ta-wrap{
+  position:relative;border-radius:10px;background:#fff;
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,0.10);
+  transition:box-shadow .15s ease;
+}
+.composer .ta-wrap:focus-within{box-shadow:inset 0 0 0 1px rgba(16,185,129,0.55),0 0 0 3px rgba(16,185,129,0.10)}
+.composer textarea{
+  width:100%;min-height:80px;resize:none;border:0;outline:0;background:transparent;
+  padding:11px 13px;font:inherit;font-size:13px;color:var(--ink);line-height:1.5;
+}
+.composer textarea::placeholder{color:var(--muted-3)}
+.composer .row2{display:flex;gap:8px;align-items:center;margin-top:10px}
+.composer .slot-in{
+  width:78px;border:0;outline:0;background:#fff;
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,0.10);
+  border-radius:7px;padding:7px 10px;color:var(--ink);font-size:12px;
+  font-family:var(--font-mono);
+}
+.composer .slot-in:focus{box-shadow:inset 0 0 0 1px rgba(16,185,129,0.55),0 0 0 3px rgba(16,185,129,0.08)}
+.composer .send{flex:1;justify-content:center}
+
+@media(max-width:1100px){.layout{grid-template-columns:minmax(0,1fr) 360px}}
+@media(max-width:980px){
+  .layout{grid-template-columns:1fr}
+  .side{position:relative;top:0;height:auto;border-left:0;border-top:1px solid var(--border)}
+  .charts{grid-template-columns:1fr}
+  .hero{grid-template-columns:1fr}
+  .hero h1{font-size:22px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="ws-mark"></div>
+    <div class="name">
+      <b>{{ display_name }}</b>
+      <small>Adaptive Dashboard</small>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span class="env-pill"><span class="live-ring"></span>Live</span>
+    <span class="src-pill">{{ source_type }}</span>
+    <a class="btn" href="/agent/home">All dashboards</a>
+    <a class="btn primary" href="/agent/dashboard/{{ dashboard_id }}/pipeline">Pipeline data</a>
+  </div>
+</div>
+
+<div class="layout">
+  <main class="main">
+    <div class="hero">
+      <div>
+        <div class="eyebrow">AI Generated</div>
+        <h1>Insights, shaped by your data</h1>
+        <p id="summary">Loading analysis summary…</p>
+      </div>
+      <div id="quality"></div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="section" id="quality-section" style="display:none">
+      <div class="section-title">
+        <h3>Quality Insights</h3>
+        <span class="meta">auto-generated</span>
+      </div>
+      <div class="charts" id="quality-charts"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <h3>Customizable Board</h3>
+        <span class="meta" id="updated">loading…</span>
+      </div>
+      <div class="charts" id="charts"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <h3>Data Preview</h3>
+        <span class="meta">first 50 rows</span>
+      </div>
+      <div class="table-wrap" id="table"></div>
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="side-head">
+      <div class="row">
+        <div class="av"></div>
+        <div>
+          <h2>Dashboard Agent</h2>
+          <div class="sub"><span class="dot"></span>Online · ready</div>
+        </div>
+      </div>
+      <p>Ask anything. Add charts, replace graphs, explain data, or reshape this board from chat.</p>
+      <div class="suggestions" id="suggestions">
+        <span class="sg" onclick="useSuggestion(this)">Add a trend of sales by date</span>
+        <span class="sg" onclick="useSuggestion(this)">Top 10 categories</span>
+        <span class="sg" onclick="useSuggestion(this)">Explain this dataset</span>
+      </div>
+    </div>
+    <div class="messages" id="messages">
+      <div class="msg bot">Tell me what you want changed. Try: <i>"replace chart 2 with a line trend of sales by date"</i> or <i>"add a chart showing top categories"</i>.</div>
+    </div>
+    <div class="composer">
+      <div class="ta-wrap">
+        <textarea id="prompt" placeholder="Prompt the dashboard agent…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCommand();}"></textarea>
+      </div>
+      <div class="row2">
+        <input id="slot" class="slot-in" placeholder="slot #"/>
+        <button class="btn" onclick="clearChat()">Clear</button>
+        <button class="btn primary send" onclick="sendCommand()">Send →</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+const DASHBOARD_ID="{{ dashboard_id }}";
+
+function esc(v){return String(v ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+function renderKPIs(kpis){
+  const el=document.getElementById("kpis");
+  if(!kpis||!kpis.length){el.innerHTML=`<div class="kpi"><div class="l">No KPIs</div><div class="v">—</div></div>`;return;}
+  el.innerHTML=kpis.map(k=>`<div class="kpi"><div class="l">${esc(k.label)}</div><div class="v">${esc(k.value)}</div></div>`).join("");
+}
+
+// Re-create <script> nodes inside `root` so the browser actually executes them.
+// (Scripts injected via innerHTML are inert per the HTML5 spec.)
+function executeScripts(root){
+  root.querySelectorAll("script").forEach(old=>{
+    const s=document.createElement("script");
+    for(const a of old.attributes) s.setAttribute(a.name,a.value);
+    s.text=old.textContent;
+    old.parentNode.replaceChild(s,old);
+  });
+}
+
+const QUALITY_CHARTS = [
+  ["gauge",         "Data Quality Score",       "Overall quality grade for this dataset."],
+  ["null_bar",      "Missing Values per Column","Null / missing share by column."],
+  ["dup_pie",       "Duplicate Rows",           "Unique vs duplicate row distribution."],
+  ["stats_chart",   "Descriptive Statistics",   "Mean, median, std per numeric column."],
+  ["outlier_box",   "Outlier Distribution",     "Box plots highlighting numeric outliers."],
+  ["corr_heatmap",  "Correlation Matrix",       "Pairwise correlations across numeric columns."],
+];
+
+function renderQualityCharts(charts){
+  const grid=document.getElementById("quality-charts");
+  const sec =document.getElementById("quality-section");
+  const html=QUALITY_CHARTS.map(([key,title,desc])=>{
+    const v=(charts||{})[key];
+    if(!v)return "";
+    const visual=String(v).trim().startsWith("<")?v:`<img src="data:image/png;base64,${v}" loading="lazy"/>`;
+    return `<div class="chart">
+      <div class="chart-wrap">${visual}</div>
+      <div class="chart-meta">
+        <div class="chart-title">${esc(title)}</div>
+        <div class="chart-desc">${esc(desc)}</div>
+      </div>
+    </div>`;
+  }).join("");
+  if(!html){sec.style.display="none";return;}
+  sec.style.display="";
+  grid.innerHTML=html;
+  executeScripts(grid);
+  if(window.Plotly){
+    grid.querySelectorAll(".js-plotly-plot").forEach(el=>{try{Plotly.Plots.resize(el);}catch(e){}});
+  }
+}
+
+function renderCharts(charts, meta){
+  const grid=document.getElementById("charts");
+  const slots=[...new Set([
+    ...(meta||[]).map(m=>m.slot),
+    ...Object.keys(charts||{}).filter(k=>k.startsWith("chart_")).map(k=>Number(k.split("_")[1]))
+  ])].filter(Boolean).sort((a,b)=>a-b);
+
+  if(!slots.length){
+    grid.innerHTML=`<div class="empty" style="grid-column:1/-1">
+      <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+      No charts yet. Ask the agent to create one.
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML=slots.map(slot=>{
+    const img=(charts||{})[`chart_${slot}`];
+    const info=(meta||[]).find(m=>m.slot===slot)||{};
+    if(!img)return "";
+    const visual=String(img).trim().startsWith("<")?img:`<img src="data:image/png;base64,${img}" loading="lazy"/>`;
+    return `<div class="chart">
+      <div class="chart-wrap"><div class="slot">#${slot}</div>${visual}</div>
+      <div class="chart-meta">
+        <div class="chart-title">${esc(info.title||`Chart ${slot}`)}</div>
+        <div class="chart-desc">${esc(info.description||"Generated by the dashboard agent")}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  executeScripts(grid);
+
+  if(window.Plotly){
+    grid.querySelectorAll(".js-plotly-plot").forEach(el=>{try{Plotly.Plots.resize(el);}catch(e){}});
+  }
+}
+
+function renderTable(rows){
+  const el=document.getElementById("table");
+  if(!rows?.length){el.innerHTML=`<div class="empty">No data preview available.</div>`;return;}
+  const cols=Object.keys(rows[0]);
+  el.innerHTML=`<table><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function renderQuality(q){
+  const el=document.getElementById("quality");
+  if(q && q.quality_score!=null){
+    el.innerHTML=`<div class="kpi q" style="min-width:180px"><div class="l">${esc(q.grade||"Quality")}</div><div class="v">${q.quality_score}<span style="font-size:14px;font-weight:600;color:var(--muted-2);margin-left:2px">/100</span></div></div>`;
+  } else { el.innerHTML=""; }
+}
+
+async function fetchData(){
+  try{
+    const res=await fetch(`/agent/dashboard/${DASHBOARD_ID}/data`);
+    const data=await res.json();
+    document.getElementById("summary").textContent=data.ai_summary||"No summary available yet.";
+    renderQuality(data.quality_result||{});
+    document.getElementById("updated").textContent="updated · "+new Date().toLocaleTimeString();
+    renderKPIs(data.kpis);
+    renderQualityCharts(data.charts||{});
+    renderCharts(data.charts||{},data.chart_meta||[]);
+    renderTable(data.raw_data||[]);
+  }catch(e){
+    document.getElementById("summary").textContent="Failed to load dashboard data.";
+  }
+}
+
+function useSuggestion(el){
+  const t=document.getElementById("prompt");t.value=el.textContent.trim();t.focus();
+}
+
+async function sendCommand(){
+  const input=document.getElementById("prompt");
+  const slotInput=document.getElementById("slot");
+  const text=input.value.trim();
+  if(!text)return;
+  const messages=document.getElementById("messages");
+  messages.insertAdjacentHTML("beforeend",`<div class="msg user">${esc(text)}</div>`);
+  input.value="";
+  const thinking=document.createElement("div");
+  thinking.className="msg bot thinking";thinking.textContent="Thinking";
+  messages.appendChild(thinking);
+  messages.scrollTop=messages.scrollHeight;
+  try{
+    const slot=slotInput.value?Number(slotInput.value):null;
+    const res=await fetch(`/agent/dashboard/${DASHBOARD_ID}/command`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message:text,slot})
+    });
+    const data=await res.json();
+    thinking.classList.remove("thinking");
+    thinking.textContent=data.reply||data.answer||"Done.";
+    if(data.action==="chart_update")await fetchData();
+  }catch(e){
+    thinking.classList.remove("thinking");
+    thinking.textContent="Command failed. Check backend logs.";
+  }
+  messages.scrollTop=messages.scrollHeight;
+}
+
+async function clearChat(){
+  await fetch(`/agent/dashboard/${DASHBOARD_ID}/chat`,{method:"DELETE"});
+  document.getElementById("messages").innerHTML=`<div class="msg bot">Chat cleared. What should I change next?</div>`;
+}
+
+fetchData();
+setInterval(fetchData,30000);
+</script>
+</body>
+</html>
