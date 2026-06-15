@@ -13,6 +13,7 @@ import { Logs } from "@/pages/Logs";
 import { MultiSource } from "@/pages/MultiSource";
 import { Assistant } from "@/pages/Assistant";
 import Text2SQL from "@/pages/Text2SQL";
+import DataGenerator from "@/pages/DataGenerator";
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/multi-source" element={<MultiSource />} />
         <Route path="/assistant"    element={<Assistant />} />
         <Route path="/text2sql"     element={<Text2SQL />} />
+        <Route path="/datagenerator" element={<DataGenerator />} />
       </Route>
     </Routes>
   );

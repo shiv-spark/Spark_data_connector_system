@@ -1,0 +1,11 @@
+COUPON_ID,CODE,DISCOUNT_PERCENT,DISCOUNT_AMOUNT,EXPIRATION_DATE,MAX_USES,USES_COUNT
+1,Sample description 1,Value_1,2345.43,2024-06-23,Value_1,Value_1
+2,Sample description 2,Value_2,3163.0,2024-05-11,Value_2,Value_2
+3,Sample description 3,Value_3,4212.27,2024-09-08,Value_3,Value_3
+4,Sample description 4,Value_4,3085.02,2024-02-19,Value_4,Value_4
+5,Sample description 5,Value_5,8354.57,2024-06-05,Value_5,Value_5
+6,Sample description 6,Value_6,4820.13,2024-07-02,Value_6,Value_6
+7,Sample description 7,Value_7,7159.74,2024-09-10,Value_7,Value_7
+8,Sample description 8,Value_8,1368.51,2024-12-04,Value_8,Value_8
+9,Sample description 9,Value_9,1408.33,2024-12-15,Value_9,Value_9
+10,Sample description 10,Value_10,7423.02,2024-02-24,Value_10,Value_10

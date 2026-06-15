@@ -64,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/assistant", label: "AI Assistant", icon: Bot, badge: "Beta" },
       { to: "/text2sql", label: "Text-to-SQL", icon: MessageSquare, badge: "New" },
+      { to: "/datagenerator", label: "Data Generator", icon: Sparkles, badge: "New" },
     ],
   },
 ];

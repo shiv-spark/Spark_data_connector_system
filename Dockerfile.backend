@@ -13,12 +13,17 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Project files
-COPY backend/connectors/  ./connectors/
-COPY backend/utils/       ./utils/
-COPY backend/loaders/     ./loaders/
-COPY backend/agent/       ./agent/
-COPY backend/main.py      .
-COPY backend/run.py       .
+COPY backend/connectors/     ./connectors/
+COPY backend/utils/          ./utils/
+COPY backend/loaders/        ./loaders/
+COPY backend/agent/          ./agent/
+COPY backend/text_sql/       ./text_sql/
+COPY backend/data_generator/ ./data_generator/
+COPY backend/main.py         .
+COPY backend/run.py          .
+
+# AGENT folder for data generator
+COPY AGENT/ ./AGENT/
 
 # Required folders
 RUN mkdir -p dags data backups

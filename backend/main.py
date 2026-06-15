@@ -35,6 +35,18 @@ from connectors.snowflake_connector import snowflake_connector
 from fastapi import FastAPI
 from agent.agent_router import router as agent_router
 
+# Import Data Generator router
+try:
+    from data_generator.router import router as data_gen_router
+    DATA_GEN_AVAILABLE = True
+    print("✓ Data Generator router imported successfully")
+except ImportError as e:
+    import traceback
+    print(f"Warning: Data Generator module not available: {e}")
+    print(f"Traceback: {traceback.format_exc()}")
+    DATA_GEN_AVAILABLE = False
+    data_gen_router = None
+
 # Load environment variables from project root .env file
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -112,9 +124,39 @@ if TEXT2SQL_AVAILABLE:
 else:
     print("⚠ Text-to-SQL router not available - check import errors above")
 
+# Include Data Generator router if available
+if DATA_GEN_AVAILABLE:
+    app.include_router(data_gen_router)
+    print("✓ Data Generator router loaded")
+    print("✓ Data Generator routes registered:")
+    for route in data_gen_router.routes:
+        if hasattr(route, 'methods'):
+            print(f"    {list(route.methods)} {route.path}")
+else:
+    print("⚠ Data Generator router not available - check import errors above")
+
 # Startup event to log all registered routes
 @app.on_event("startup")
 async def log_routes():
+    # Check and regenerate business context if schema changed
+    try:
+        # Add path to text-sql module
+        text_sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "text-sql")
+        sys.path.insert(0, text_sql_path)
+        from schema_manager import check_schema_changes
+        print("\n" + "="*60)
+        print("CHECKING FOR SCHEMA CHANGES...")
+        print("="*60)
+        regenerated = check_schema_changes()
+        if regenerated:
+            print("✓ Business context regenerated with updated schema")
+        else:
+            print("✓ No schema changes detected")
+    except ImportError as e:
+        print(f"⚠ Schema manager not available: {e}")
+    except Exception as e:
+        print(f"⚠ Schema check failed: {e}")
+    
     print("\n" + "="*60)
     print("REGISTERED ROUTES:")
     print("="*60)

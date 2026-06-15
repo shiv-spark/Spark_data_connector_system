@@ -41,6 +41,8 @@ python-dotenv>=1.0.1
 openai
 claude-agent-sdk
 langgraph
+groq
+Faker
 scipy
 plotly
 jinja2

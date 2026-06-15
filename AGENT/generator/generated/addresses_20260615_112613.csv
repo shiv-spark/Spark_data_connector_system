@@ -1,0 +1,11 @@
+ADDRESS_ID,CUSTOMER_ID,STREET,CITY,STATE,ZIP,COUNTRY,ADDRESS_TYPE
+1,1,Sample description 1,Chicago,California,10000,Japan,"1 Main Street, City"
+2,2,Sample description 2,Phoenix,Texas,10001,UK,"2 Main Street, City"
+3,3,Sample description 3,San Diego,New York,10002,UK,"3 Main Street, City"
+4,4,Sample description 4,Philadelphia,Florida,10003,Germany,"4 Main Street, City"
+5,5,Sample description 5,San Diego,Illinois,10004,Canada,"5 Main Street, City"
+6,6,Sample description 6,San Antonio,New York,10005,Japan,"6 Main Street, City"
+7,7,Sample description 7,Chicago,New York,10006,Canada,"7 Main Street, City"
+8,8,Sample description 8,San Antonio,California,10007,India,"8 Main Street, City"
+9,9,Sample description 9,Houston,California,10008,UK,"9 Main Street, City"
+10,10,Sample description 10,Houston,California,10009,USA,"10 Main Street, City"

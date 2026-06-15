@@ -113,3 +113,26 @@ export const testText2SQLConnection = async (connectionId: string) => {
   const r = await api.post(`/text2sql/connections/${connectionId}/test`);
   return r.data;
 };
+
+// Data Generator Connections (from data connector's saved_connections)
+export interface DataGenConnection {
+  id: string;
+  name: string;
+  type: string;
+  config: Record<string, any>;
+}
+
+export const fetchDataGenConnections = async (): Promise<DataGenConnection[]> => {
+  const r = await api.get("/datagen/connections");
+  return r.data?.connections || [];
+};
+
+export const fetchDataGenTables = async (connectionId: string): Promise<string[]> => {
+  const r = await api.get(`/datagen/connections/${connectionId}/tables`);
+  return r.data?.tables || [];
+};
+
+export const fetchDataGenSchema = async (connectionId: string, tableName: string) => {
+  const r = await api.get(`/datagen/connections/${connectionId}/schema/${tableName}`);
+  return r.data;
+};

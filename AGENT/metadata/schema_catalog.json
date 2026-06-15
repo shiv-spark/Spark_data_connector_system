@@ -1,0 +1,1054 @@
+{
+    "ADDRESSES": {
+        "description": "Stores customer addresses",
+        "use_case": "Used for shipping and billing purposes",
+        "columns": {
+            "ADDRESS_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CUSTOMER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "STREET": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "CITY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "STATE": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ZIP": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "COUNTRY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ADDRESS_TYPE": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "ADDRESS_ID": "Unique identifier for the address",
+            "CUSTOMER_ID": "Foreign key referencing the customer who owns this address",
+            "STREET": "Street address",
+            "CITY": "City of the address",
+            "STATE": "State or province of the address",
+            "ZIP": "Zip or postal code of the address",
+            "COUNTRY": "Country of the address",
+            "ADDRESS_TYPE": "Type of address (e.g. billing, shipping)"
+        },
+        "foreign_keys": {
+            "CUSTOMER_ID": "CUSTOMERS.CUSTOMER_ID"
+        },
+        "primary_keys": []
+    },
+    "CATEGORIES": {
+        "description": "Stores product categories",
+        "use_case": "Used for organizing and filtering products",
+        "columns": {
+            "CATEGORY_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "DESCRIPTION": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "PARENT_CATEGORY_ID": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "CATEGORY_ID": "Unique identifier for the category",
+            "NAME": "Name of the category",
+            "DESCRIPTION": "Description of the category",
+            "PARENT_CATEGORY_ID": "Foreign key referencing the parent category (if applicable)"
+        },
+        "foreign_keys": {
+            "PARENT_CATEGORY_ID": "CATEGORIES.CATEGORY_ID"
+        },
+        "primary_keys": []
+    },
+    "COUPONS": {
+        "description": "Stores coupons and discounts",
+        "use_case": "Used for applying discounts to orders",
+        "columns": {
+            "COUPON_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CODE": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "DISCOUNT_PERCENT": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "DISCOUNT_AMOUNT": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "EXPIRATION_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            },
+            "MAX_USES": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "USES_COUNT": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "COUPON_ID": "Unique identifier for the coupon",
+            "CODE": "Code for the coupon",
+            "DISCOUNT_PERCENT": "Percentage discount for the coupon",
+            "DISCOUNT_AMOUNT": "Fixed amount discount for the coupon",
+            "EXPIRATION_DATE": "Date when the coupon expires",
+            "MAX_USES": "Maximum number of times the coupon can be used",
+            "USES_COUNT": "Number of times the coupon has been used"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "COUPON_USAGE": {
+        "description": "Stores usage history of coupons",
+        "use_case": "Used for tracking coupon usage and redemption",
+        "columns": {
+            "USAGE_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "COUPON_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "ORDER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CUSTOMER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "USED_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "USAGE_ID": "Unique identifier for the coupon usage",
+            "COUPON_ID": "Foreign key referencing the coupon used",
+            "ORDER_ID": "Foreign key referencing the order where the coupon was used",
+            "CUSTOMER_ID": "Foreign key referencing the customer who used the coupon",
+            "USED_DATE": "Date when the coupon was used"
+        },
+        "foreign_keys": {
+            "COUPON_ID": "COUPONS.COUPON_ID",
+            "ORDER_ID": "ORDERS.ORDER_ID",
+            "CUSTOMER_ID": "CUSTOMERS.CUSTOMER_ID"
+        },
+        "primary_keys": []
+    },
+    "CUSTOMERS": {
+        "description": "Stores customer information",
+        "use_case": "Used for managing customer accounts and orders",
+        "columns": {
+            "CUSTOMER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "FIRST_NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "LAST_NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "EMAIL": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "PHONE": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "REGISTRATION_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "CUSTOMER_ID": "Unique identifier for the customer",
+            "FIRST_NAME": "First name of the customer",
+            "LAST_NAME": "Last name of the customer",
+            "EMAIL": "Email address of the customer",
+            "PHONE": "Phone number of the customer",
+            "REGISTRATION_DATE": "Date when the customer registered"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "DEMO": {
+        "description": "Stores demo data",
+        "use_case": "Used for demonstration purposes",
+        "columns": {
+            "ID": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "NAME": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "ID": "Unique identifier for the demo data",
+            "NAME": "Name of the demo data"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "DEMO_TABLE_2": {
+        "description": "Stores additional demo data",
+        "use_case": "Used for demonstration purposes",
+        "columns": {
+            "ID": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "NAME": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "CITY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "ID": "Unique identifier for the demo data",
+            "NAME": "Name of the demo data",
+            "CITY": "City of the demo data"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "DEPARTMENTS": {
+        "description": "Stores department information",
+        "use_case": "Used for managing employee departments",
+        "columns": {
+            "DEPT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "DEPT_NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "LOCATION": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "DEPT_ID": "Unique identifier for the department",
+            "DEPT_NAME": "Name of the department",
+            "LOCATION": "Location of the department"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "EMPLOYEES": {
+        "description": "Stores employee information",
+        "use_case": "Used for managing employee accounts and roles",
+        "columns": {
+            "EMPLOYEE_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "FIRST_NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "LAST_NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "EMAIL": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ROLE": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "HIRE_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "EMPLOYEE_ID": "Unique identifier for the employee",
+            "FIRST_NAME": "First name of the employee",
+            "LAST_NAME": "Last name of the employee",
+            "EMAIL": "Email address of the employee",
+            "ROLE": "Role of the employee",
+            "HIRE_DATE": "Date when the employee was hired"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "INVENTORY": {
+        "description": "Stores inventory levels of products",
+        "use_case": "Used for managing product stock and availability",
+        "columns": {
+            "INVENTORY_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PRODUCT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "WAREHOUSE_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "QUANTITY_ON_HAND": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "REORDER_LEVEL": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "LAST_UPDATED": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "INVENTORY_ID": "Unique identifier for the inventory entry",
+            "PRODUCT_ID": "Foreign key referencing the product",
+            "WAREHOUSE_ID": "Foreign key referencing the warehouse where the product is stored",
+            "QUANTITY_ON_HAND": "Current quantity of the product in stock",
+            "REORDER_LEVEL": "Level at which the product should be reordered",
+            "LAST_UPDATED": "Date when the inventory level was last updated"
+        },
+        "foreign_keys": {
+            "PRODUCT_ID": "PRODUCTS.PRODUCT_ID",
+            "WAREHOUSE_ID": "WAREHOUSES.WAREHOUSE_ID"
+        },
+        "primary_keys": []
+    },
+    "ORDERS": {
+        "description": "Stores order information",
+        "use_case": "Used for managing customer orders and fulfillment",
+        "columns": {
+            "ORDER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CUSTOMER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "ORDER_DATE": {
+                "data_type": "DATE",
+                "nullable": "NO"
+            },
+            "STATUS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "TOTAL_AMOUNT": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "COUPON_ID": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "SHIPPING_ADDRESS_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "BILLING_ADDRESS_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            }
+        },
+        "column_context": {
+            "ORDER_ID": "Unique identifier for the order",
+            "CUSTOMER_ID": "Foreign key referencing the customer who made the order",
+            "ORDER_DATE": "Date when the order was made",
+            "STATUS": "Status of the order (e.g. pending, shipped, delivered)",
+            "TOTAL_AMOUNT": "Total amount of the order",
+            "COUPON_ID": "Foreign key referencing the coupon used (if applicable)",
+            "SHIPPING_ADDRESS_ID": "Foreign key referencing the shipping address",
+            "BILLING_ADDRESS_ID": "Foreign key referencing the billing address"
+        },
+        "foreign_keys": {
+            "CUSTOMER_ID": "CUSTOMERS.CUSTOMER_ID",
+            "COUPON_ID": "COUPONS.COUPON_ID",
+            "SHIPPING_ADDRESS_ID": "ADDRESSES.ADDRESS_ID",
+            "BILLING_ADDRESS_ID": "ADDRESSES.ADDRESS_ID"
+        },
+        "primary_keys": []
+    },
+    "ORDER_ITEMS": {
+        "description": "Stores order item information",
+        "use_case": "Used for managing order items and product quantities",
+        "columns": {
+            "ORDER_ITEM_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "ORDER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PRODUCT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "QUANTITY": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "UNIT_PRICE": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "DISCOUNT": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "ORDER_ITEM_ID": "Unique identifier for the order item",
+            "ORDER_ID": "Foreign key referencing the order",
+            "PRODUCT_ID": "Foreign key referencing the product",
+            "QUANTITY": "Quantity of the product ordered",
+            "UNIT_PRICE": "Unit price of the product",
+            "DISCOUNT": "Discount applied to the product (if applicable)"
+        },
+        "foreign_keys": {
+            "ORDER_ID": "ORDERS.ORDER_ID",
+            "PRODUCT_ID": "PRODUCTS.PRODUCT_ID"
+        },
+        "primary_keys": []
+    },
+    "PAYMENTS": {
+        "description": "Stores payment information",
+        "use_case": "Used for managing payment processing and order fulfillment",
+        "columns": {
+            "PAYMENT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "ORDER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PAYMENT_DATE": {
+                "data_type": "DATE",
+                "nullable": "NO"
+            },
+            "AMOUNT": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PAYMENT_METHOD": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "TRANSACTION_ID": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "STATUS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "PAYMENT_ID": "Unique identifier for the payment",
+            "ORDER_ID": "Foreign key referencing the order",
+            "PAYMENT_DATE": "Date when the payment was made",
+            "AMOUNT": "Amount of the payment",
+            "PAYMENT_METHOD": "Method used for the payment (e.g. credit card, PayPal)",
+            "TRANSACTION_ID": "Transaction ID for the payment",
+            "STATUS": "Status of the payment (e.g. completed, pending)"
+        },
+        "foreign_keys": {
+            "ORDER_ID": "ORDERS.ORDER_ID"
+        },
+        "primary_keys": []
+    },
+    "PRODUCTS": {
+        "description": "Stores product information",
+        "use_case": "Used for managing product catalog and inventory",
+        "columns": {
+            "PRODUCT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "DESCRIPTION": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "CATEGORY_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "SUPPLIER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PRICE": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "COST": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "WEIGHT_KG": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "SKU": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "CREATED_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "PRODUCT_ID": "Unique identifier for the product",
+            "NAME": "Name of the product",
+            "DESCRIPTION": "Description of the product",
+            "CATEGORY_ID": "Foreign key referencing the product category",
+            "SUPPLIER_ID": "Foreign key referencing the supplier",
+            "PRICE": "Price of the product",
+            "COST": "Cost of the product",
+            "WEIGHT_KG": "Weight of the product in kilograms",
+            "SKU": "Stock-keeping unit (SKU) for the product",
+            "CREATED_DATE": "Date when the product was created"
+        },
+        "foreign_keys": {
+            "CATEGORY_ID": "CATEGORIES.CATEGORY_ID",
+            "SUPPLIER_ID": "SUPPLIERS.SUPPLIER_ID"
+        },
+        "primary_keys": []
+    },
+    "QUERY_LOGS": {
+        "description": "Stores query logs",
+        "use_case": "Used for tracking and analyzing query performance",
+        "columns": {
+            "RUN_ID": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "USER_QUESTION": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "GENERATED_SQL": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "VALIDATION_STATUS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "EXECUTION_APPROVED": {
+                "data_type": "BOOLEAN",
+                "nullable": "YES"
+            },
+            "EXECUTION_STATUS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ROW_COUNT": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "MODEL_NAME": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "PROMPT_TOKENS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "COMPLETION_TOKENS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "TOTAL_TOKENS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "LLM_LATENCY_SECONDS": {
+                "data_type": "FLOAT",
+                "nullable": "YES"
+            },
+            "EXECUTION_LATENCY_SECONDS": {
+                "data_type": "FLOAT",
+                "nullable": "YES"
+            },
+            "RESPONSE_SUMMARY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ERROR_MESSAGE": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "CREATED_AT": {
+                "data_type": "TIMESTAMP_NTZ",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "RUN_ID": "Unique identifier for the query log",
+            "USER_QUESTION": "User question or query",
+            "GENERATED_SQL": "Generated SQL query",
+            "VALIDATION_STATUS": "Validation status of the query",
+            "EXECUTION_APPROVED": "Whether the query was approved for execution",
+            "EXECUTION_STATUS": "Status of the query execution",
+            "ROW_COUNT": "Number of rows returned by the query",
+            "MODEL_NAME": "Name of the model used for query execution",
+            "PROMPT_TOKENS": "Number of prompt tokens used",
+            "COMPLETION_TOKENS": "Number of completion tokens used",
+            "TOTAL_TOKENS": "Total number of tokens used",
+            "LLM_LATENCY_SECONDS": "Latency of the large language model (LLM) in seconds",
+            "EXECUTION_LATENCY_SECONDS": "Latency of the query execution in seconds",
+            "RESPONSE_SUMMARY": "Summary of the query response",
+            "ERROR_MESSAGE": "Error message (if applicable)",
+            "CREATED_AT": "Date and time when the query log was created"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "REVIEWS": {
+        "description": "Stores product reviews",
+        "use_case": "Used for managing product reviews and ratings",
+        "columns": {
+            "REVIEW_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PRODUCT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CUSTOMER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "RATING": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "COMMENT": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "REVIEW_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "REVIEW_ID": "Unique identifier for the review",
+            "PRODUCT_ID": "Foreign key referencing the product",
+            "CUSTOMER_ID": "Foreign key referencing the customer who wrote the review",
+            "RATING": "Rating given by the customer (e.g. 1-5 stars)",
+            "COMMENT": "Comment or review text",
+            "REVIEW_DATE": "Date when the review was written"
+        },
+        "foreign_keys": {
+            "PRODUCT_ID": "PRODUCTS.PRODUCT_ID",
+            "CUSTOMER_ID": "CUSTOMERS.CUSTOMER_ID"
+        },
+        "primary_keys": []
+    },
+    "SHIPPING": {
+        "description": "Stores shipping information",
+        "use_case": "Used for managing order shipping and fulfillment",
+        "columns": {
+            "SHIPMENT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "ORDER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CARRIER": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "TRACKING_NUMBER": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "SHIP_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            },
+            "DELIVERY_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            },
+            "STATUS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "SHIPPING_COST": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "SHIPMENT_ID": "Unique identifier for the shipment",
+            "ORDER_ID": "Foreign key referencing the order",
+            "CARRIER": "Shipping carrier (e.g. UPS, FedEx)",
+            "TRACKING_NUMBER": "Tracking number for the shipment",
+            "SHIP_DATE": "Date when the shipment was sent",
+            "DELIVERY_DATE": "Date when the shipment was delivered",
+            "STATUS": "Status of the shipment (e.g. in transit, delivered)",
+            "SHIPPING_COST": "Cost of shipping"
+        },
+        "foreign_keys": {
+            "ORDER_ID": "ORDERS.ORDER_ID"
+        },
+        "primary_keys": []
+    },
+    "SHOPPING_CART": {
+        "description": "Stores shopping cart information",
+        "use_case": "Used for managing customer shopping carts",
+        "columns": {
+            "CART_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CUSTOMER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PRODUCT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "QUANTITY": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "ADDED_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "CART_ID": "Unique identifier for the shopping cart",
+            "CUSTOMER_ID": "Foreign key referencing the customer",
+            "PRODUCT_ID": "Foreign key referencing the product",
+            "QUANTITY": "Quantity of the product in the cart",
+            "ADDED_DATE": "Date when the product was added to the cart"
+        },
+        "foreign_keys": {
+            "CUSTOMER_ID": "CUSTOMERS.CUSTOMER_ID",
+            "PRODUCT_ID": "PRODUCTS.PRODUCT_ID"
+        },
+        "primary_keys": []
+    },
+    "SUPPLIERS": {
+        "description": "Stores supplier information",
+        "use_case": "Used for managing supplier relationships and product sourcing",
+        "columns": {
+            "SUPPLIER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "CONTACT_NAME": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "EMAIL": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "PHONE": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ADDRESS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "COUNTRY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "SUPPLIER_ID": "Unique identifier for the supplier",
+            "NAME": "Name of the supplier",
+            "CONTACT_NAME": "Contact name at the supplier",
+            "EMAIL": "Email address of the supplier",
+            "PHONE": "Phone number of the supplier",
+            "ADDRESS": "Address of the supplier",
+            "COUNTRY": "Country of the supplier"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "TEXT2SQL_RUN_METADATA": {
+        "description": "Stores text-to-SQL run metadata",
+        "use_case": "Used for tracking and analyzing text-to-SQL model performance",
+        "columns": {
+            "RUN_ID": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "CREATED_AT": {
+                "data_type": "TIMESTAMP_NTZ",
+                "nullable": "YES"
+            },
+            "USER_QUESTION": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "GENERATED_SQL": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "VALIDATION_STATUS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "EXECUTION_APPROVED": {
+                "data_type": "BOOLEAN",
+                "nullable": "YES"
+            },
+            "EXECUTION_STATUS": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ROW_COUNT": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "MODEL_NAME": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "PROMPT_TOKENS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "COMPLETION_TOKENS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "TOTAL_TOKENS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "LLM_LATENCY_SECONDS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "EXECUTION_LATENCY_SECONDS": {
+                "data_type": "NUMBER",
+                "nullable": "YES"
+            },
+            "RESPONSE_SUMMARY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "ERROR_MESSAGE": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "RUN_ID": "Unique identifier for the run",
+            "CREATED_AT": "Date and time when the run was created",
+            "USER_QUESTION": "User question or query",
+            "GENERATED_SQL": "Generated SQL query",
+            "VALIDATION_STATUS": "Validation status of the query",
+            "EXECUTION_APPROVED": "Whether the query was approved for execution",
+            "EXECUTION_STATUS": "Status of the query execution",
+            "ROW_COUNT": "Number of rows returned by the query",
+            "MODEL_NAME": "Name of the model used for query execution",
+            "PROMPT_TOKENS": "Number of prompt tokens used",
+            "COMPLETION_TOKENS": "Number of completion tokens used",
+            "TOTAL_TOKENS": "Total number of tokens used",
+            "LLM_LATENCY_SECONDS": "Latency of the large language model (LLM) in seconds",
+            "EXECUTION_LATENCY_SECONDS": "Latency of the query execution in seconds",
+            "RESPONSE_SUMMARY": "Summary of the query response",
+            "ERROR_MESSAGE": "Error message (if applicable)"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "USERS": {
+        "description": "Stores user information",
+        "use_case": "Used for managing user accounts and roles",
+        "columns": {
+            "USER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "USER_NAME": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "EMAIL": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "COUNTRY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "USER_ID": "Unique identifier for the user",
+            "USER_NAME": "Username",
+            "EMAIL": "Email address of the user",
+            "COUNTRY": "Country of the user"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "WAREHOUSES": {
+        "description": "Stores warehouse information",
+        "use_case": "Used for managing warehouse locations and inventory",
+        "columns": {
+            "WAREHOUSE_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "NAME": {
+                "data_type": "TEXT",
+                "nullable": "NO"
+            },
+            "LOCATION": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            },
+            "COUNTRY": {
+                "data_type": "TEXT",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "WAREHOUSE_ID": "Unique identifier for the warehouse",
+            "NAME": "Name of the warehouse",
+            "LOCATION": "Location of the warehouse",
+            "COUNTRY": "Country of the warehouse"
+        },
+        "foreign_keys": {},
+        "primary_keys": []
+    },
+    "WISHLISTS": {
+        "description": "Stores wishlist information",
+        "use_case": "Used for managing customer wishlists",
+        "columns": {
+            "WISHLIST_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "CUSTOMER_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "PRODUCT_ID": {
+                "data_type": "NUMBER",
+                "nullable": "NO"
+            },
+            "ADDED_DATE": {
+                "data_type": "DATE",
+                "nullable": "YES"
+            }
+        },
+        "column_context": {
+            "WISHLIST_ID": "Unique identifier for the wishlist",
+            "CUSTOMER_ID": "Foreign key referencing the customer",
+            "PRODUCT_ID": "Foreign key referencing the product",
+            "ADDED_DATE": "Date when the product was added to the wishlist"
+        },
+        "foreign_keys": {
+            "CUSTOMER_ID": "CUSTOMERS.CUSTOMER_ID",
+            "PRODUCT_ID": "PRODUCTS.PRODUCT_ID"
+        },
+        "primary_keys": []
+    },
+    "_relationships": {
+        "ORDERS.SHIPPING_ADDRESS_ID": "References ADDRESSES.ADDRESS_ID \u2014 shipping address for the order",
+        "ORDERS.BILLING_ADDRESS_ID": "References ADDRESSES.ADDRESS_ID \u2014 billing address for the order",
+        "CATEGORIES.PARENT_CATEGORY_ID": "References CATEGORIES.CATEGORY_ID \u2014 parent category for the category",
+        "PRODUCTS.CATEGORY_ID": "References CATEGORIES.CATEGORY_ID \u2014 category for the product",
+        "COUPON_USAGE.COUPON_ID": "References COUPONS.COUPON_ID \u2014 coupon used for the order",
+        "ORDERS.COUPON_ID": "References COUPONS.COUPON_ID \u2014 coupon used for the order",
+        "SHOPPING_CART.CUSTOMER_ID": "References CUSTOMERS.CUSTOMER_ID \u2014 customer who owns the shopping cart",
+        "COUPON_USAGE.CUSTOMER_ID": "References CUSTOMERS.CUSTOMER_ID \u2014 customer who used the coupon",
+        "REVIEWS.CUSTOMER_ID": "References CUSTOMERS.CUSTOMER_ID \u2014 customer who wrote the review",
+        "ADDRESSES.CUSTOMER_ID": "References CUSTOMERS.CUSTOMER_ID \u2014 customer who owns the address",
+        "ORDERS.CUSTOMER_ID": "References CUSTOMERS.CUSTOMER_ID \u2014 customer who made the order",
+        "WISHLISTS.CUSTOMER_ID": "References CUSTOMERS.CUSTOMER_ID \u2014 customer who owns the wishlist",
+        "PAYMENTS.ORDER_ID": "References ORDERS.ORDER_ID \u2014 order for which the payment was made",
+        "COUPON_USAGE.ORDER_ID": "References ORDERS.ORDER_ID \u2014 order for which the coupon was used",
+        "SHIPPING.ORDER_ID": "References ORDERS.ORDER_ID \u2014 order for which the shipment was made",
+        "ORDER_ITEMS.ORDER_ID": "References ORDERS.ORDER_ID \u2014 order for which the order item belongs",
+        "SHOPPING_CART.PRODUCT_ID": "References PRODUCTS.PRODUCT_ID \u2014 product in the shopping cart",
+        "INVENTORY.PRODUCT_ID": "References PRODUCTS.PRODUCT_ID \u2014 product for which the inventory is tracked",
+        "REVIEWS.PRODUCT_ID": "References PRODUCTS.PRODUCT_ID \u2014 product being reviewed",
+        "WISHLISTS.PRODUCT_ID": "References PRODUCTS.PRODUCT_ID \u2014 product in the wishlist",
+        "ORDER_ITEMS.PRODUCT_ID": "References PRODUCTS.PRODUCT_ID \u2014 product in the order item",
+        "PRODUCTS.SUPPLIER_ID": "References SUPPLIERS.SUPPLIER_ID \u2014 supplier for the product",
+        "INVENTORY.WAREHOUSE_ID": "References WAREHOUSES.WAREHOUSE_ID \u2014 warehouse where the product is stored"
+    },
+    "_global_context": {
+        "domain": "e-commerce",
+        "default_locale": "en_US",
+        "currency": "USD",
+        "date_format": "YYYY-MM-DD",
+        "id_strategy": "All ID columns are sequential integers starting from 1"
+    }
+}

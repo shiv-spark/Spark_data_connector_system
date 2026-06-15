@@ -1,0 +1,21 @@
+MOUNTAIN_ID,NAME,LOCATION,HEIGHT,RANGE
+1,John Williams,Houston,Value_1,Value_1
+2,David Johnson,New York,Value_2,Value_2
+3,Mary Williams,Chicago,Value_3,Value_3
+4,Jane Miller,Los Angeles,Value_4,Value_4
+5,James Miller,Los Angeles,Value_5,Value_5
+6,Robert Jones,Chicago,Value_6,Value_6
+7,Michael Johnson,New York,Value_7,Value_7
+8,David Jones,Phoenix,Value_8,Value_8
+9,Jane Davis,San Diego,Value_9,Value_9
+10,John Garcia,San Antonio,Value_10,Value_10
+11,Emily Jones,San Diego,Value_11,Value_11
+12,David Williams,San Diego,Value_12,Value_12
+13,John Johnson,Philadelphia,Value_13,Value_13
+14,Emily Williams,San Diego,Value_14,Value_14
+15,Emily Taylor,Chicago,Value_15,Value_15
+16,John Garcia,San Diego,Value_16,Value_16
+17,Robert Taylor,San Antonio,Value_17,Value_17
+18,Michael Smith,Houston,Value_18,Value_18
+19,James Jones,New York,Value_19,Value_19
+20,Robert Davis,San Antonio,Value_20,Value_20

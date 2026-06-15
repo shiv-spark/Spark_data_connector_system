@@ -1,0 +1,106 @@
+{
+    "orders_to_s3": {
+        "pipeline_name": "orders_to_s3",
+        "source": "snowflake",
+        "target": "s3",
+        "table": "orders",
+        "schedule": "0 2 * * *",
+        "steps": [
+            "extract",
+            "load"
+        ]
+    },
+    "Daily Products ETL": {
+        "pipeline_name": "Daily Products ETL",
+        "source": "snowflake",
+        "target": "local_file_system",
+        "table": "products",
+        "schedule": "0 2 * * *",
+        "steps": [
+            "extract",
+            "load"
+        ]
+    },
+    "Department Data ETL": {
+        "pipeline_name": "Department Data ETL",
+        "source": "snowflake",
+        "target": "local_file_system",
+        "table": "departments",
+        "schedule": "0 2 * * *",
+        "steps": [
+            "extract",
+            "load"
+        ]
+    },
+    "Products ETL": {
+        "pipeline_name": "Products ETL",
+        "source": "snowflake",
+        "target": "local_file_system",
+        "table": "products",
+        "schedule": "0 2 * * *",
+        "steps": [
+            "extract",
+            "load"
+        ]
+    },
+    "Hourly Orders ETL": {
+        "pipeline_name": "Hourly Orders ETL",
+        "source": "snowflake",
+        "target": "local_file_system",
+        "table": "orders",
+        "schedule": "0 * * * *",
+        "steps": [
+            "extract",
+            "load"
+        ]
+    },
+    "daily_departments_etl": {
+        "pipeline_name": "daily_departments_etl",
+        "source": "Snowflake",
+        "target": "local_file_system",
+        "table": "departments",
+        "schedule": "0 2 * * *",
+        "steps": [
+            {
+                "step_name": "extract",
+                "action": "select * from departments",
+                "source_connection": "snowflake_connection"
+            },
+            {
+                "step_name": "transform",
+                "action": "no_transform"
+            },
+            {
+                "step_name": "load",
+                "action": "write_to_csv",
+                "target_connection": "local_file_system_connection",
+                "target_path": "/path/to/departments.csv"
+            }
+        ]
+    },
+    "Daily Orders ETL": {
+        "pipeline_name": "Daily Orders ETL",
+        "source": "snowflake",
+        "target": "local_file_system",
+        "table": "orders",
+        "schedule": "0 2 * * *",
+        "steps": [
+            {
+                "step_name": "Extract Orders Data",
+                "action": "SELECT * FROM orders",
+                "source_connection": "Snowflake"
+            },
+            {
+                "step_name": "Transform Orders Data",
+                "action": "Data Transformation",
+                "transformations": []
+            },
+            {
+                "step_name": "Load Orders Data",
+                "action": "Write to CSV",
+                "target_connection": "Local File System",
+                "target_path": "/path/to/orders/data"
+            }
+        ]
+    }
+}
