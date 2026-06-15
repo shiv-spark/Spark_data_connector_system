@@ -48,3 +48,9 @@ weasyprint
 
 # UI
 streamlit
+
+# Text-to-SQL Agent
+langchain>=0.1.0
+langchain-groq>=0.1.0
+langchain-openai>=0.1.0
+sqlglot>=23.0.0

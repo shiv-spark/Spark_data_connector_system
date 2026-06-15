@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { fdt } from "@/lib/format";
 
-type SourceType = "local_folder" | "s3" | "postgres" | "api" | "google_sheet" | "figma_design";
+type SourceType = "local_folder" | "s3" | "postgres" | "snowflake" | "api" | "google_sheet" | "figma_design";
 
 const initial = {
   name: "",
@@ -30,6 +30,11 @@ const initial = {
   figma_file_url: "",
   figma_access_token: "",
   figma_node_id: "",
+  // Snowflake fields
+  account: "",
+  warehouse: "",
+  schema: "PUBLIC",
+  sf_role: "",
 };
 
 export const Connections = () => {
@@ -44,7 +49,7 @@ export const Connections = () => {
 
   const save = useMutation({
     mutationFn: async () => {
-      const config = {
+      const config: Record<string, any> = {
         base_path: form.base_path,
         bucket: form.bucket,
         prefix: form.prefix,
@@ -63,6 +68,13 @@ export const Connections = () => {
         figma_access_token: form.figma_access_token,
         figma_node_id: form.figma_node_id,
       };
+      // Add Snowflake-specific fields
+      if (form.source_type === "snowflake") {
+        config.account = form.account;
+        config.warehouse = form.warehouse;
+        config.schema = form.schema;
+        config.role = form.sf_role;
+      }
       return (await api.post("/connections", {
         name: form.name,
         source_type: form.source_type,
@@ -109,6 +121,7 @@ export const Connections = () => {
                 <option value="local_folder">Local / mounted folder</option>
                 <option value="s3">S3 bucket</option>
                 <option value="postgres">Postgres database</option>
+                <option value="snowflake">Snowflake</option>
                 <option value="api">API base URL</option>
                 <option value="google_sheet">Google Sheet</option>
                 <option value="figma_design">Figma design</option>
@@ -131,6 +144,23 @@ export const Connections = () => {
                   <Input placeholder="User" value={form.user} onChange={(e) => update("user", e.target.value)} />
                   <Input placeholder="Password" type="password" value={form.password} onChange={(e) => update("password", e.target.value)} />
                   <Input placeholder="Port" value={form.port} onChange={(e) => update("port", e.target.value)} />
+                </div>
+              )}
+              {form.source_type === "snowflake" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input placeholder="Account (e.g., xy12345.us-east-1)" value={form.account} onChange={(e) => update("account", e.target.value)} />
+                    <Input placeholder="Warehouse" value={form.warehouse} onChange={(e) => update("warehouse", e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input placeholder="Database" value={form.database} onChange={(e) => update("database", e.target.value)} />
+                    <Input placeholder="Schema" value={form.schema} onChange={(e) => update("schema", e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input placeholder="User" value={form.user} onChange={(e) => update("user", e.target.value)} />
+                    <Input placeholder="Password" type="password" value={form.password} onChange={(e) => update("password", e.target.value)} />
+                  </div>
+                  <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
                 </div>
               )}
               {form.source_type === "api" && (

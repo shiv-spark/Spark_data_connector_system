@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LineChart,
   ListChecks,
+  MessageSquare,
   Network,
   Plus,
   ScrollText,
@@ -60,7 +61,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Intelligence",
-    items: [{ to: "/assistant", label: "AI Assistant", icon: Bot, badge: "Beta" }],
+    items: [
+      { to: "/assistant", label: "AI Assistant", icon: Bot, badge: "Beta" },
+      { to: "/text2sql", label: "Text-to-SQL", icon: MessageSquare, badge: "New" },
+    ],
   },
 ];
 

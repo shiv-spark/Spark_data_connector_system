@@ -25,13 +25,33 @@ import smtplib
 from typing import List
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
 from connectors.postgres_connector import postgres_connector
 from connectors.s3_connector import s3_connector
+from connectors.snowflake_connector import snowflake_connector
 
 from fastapi import FastAPI
 from agent.agent_router import router as agent_router
+
+# Load environment variables from project root .env file
+env_path = Path(__file__).resolve().parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()  # Fallback to current directory
+
+# Import Text-to-SQL router (after loading env vars)
+try:
+    from text_sql.router import router as text2sql_router
+    TEXT2SQL_AVAILABLE = True
+    print("✓ Text-to-SQL router imported successfully")
+except ImportError as e:
+    import traceback
+    print(f"Warning: Text-to-SQL module not available: {e}")
+    print(f"Traceback: {traceback.format_exc()}")
+    TEXT2SQL_AVAILABLE = False
 
 app = FastAPI()
 
@@ -39,8 +59,6 @@ def _rows_to_dicts(cursor):
     """Convert psycopg2 cursor result to list of dictionaries"""
     columns = [desc[0] for desc in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-load_dotenv()  # loads .env into environment
 
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
@@ -81,6 +99,32 @@ Airflow UI: http://localhost:8081
 
 app.include_router(agent_router)
 
+# Include Text-to-SQL router if available
+if TEXT2SQL_AVAILABLE:
+    # Router already has prefix="/text2sql" defined in router.py
+    app.include_router(text2sql_router)
+    print("✓ Text-to-SQL router loaded")
+    # Log available routes
+    print("✓ Text-to-SQL routes registered:")
+    for route in text2sql_router.routes:
+        if hasattr(route, 'methods'):
+            print(f"    {list(route.methods)} {route.path}")
+else:
+    print("⚠ Text-to-SQL router not available - check import errors above")
+
+# Startup event to log all registered routes
+@app.on_event("startup")
+async def log_routes():
+    print("\n" + "="*60)
+    print("REGISTERED ROUTES:")
+    print("="*60)
+    for route in app.routes:
+        if hasattr(route, 'methods'):
+            methods = list(route.methods)
+            if 'GET' in methods or 'POST' in methods or 'PUT' in methods or 'DELETE' in methods:
+                print(f"  {methods} {route.path}")
+    print("="*60 + "\n")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -105,7 +149,8 @@ DAG_MAP = {
     "csv":           "dynamic_connector_dag",   
     "excel":         "dynamic_connector_dag",
     "api":           "dynamic_connector_dag",
-    "google_sheets": "dynamic_connector_dag"
+    "google_sheets": "dynamic_connector_dag",
+    "snowflake":     "dynamic_connector_dag",
 }
 
 OPTION_MAP = {
@@ -231,6 +276,39 @@ def delete_connection(connection_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Connection not found")
     return {"status": "DELETED", "id": connection_id}
+
+
+# ─────────────────────────────────────────────
+# SNOWFLAKE CONNECTION TEST
+# ─────────────────────────────────────────────
+
+class SnowflakeTestRequest(BaseModel):
+    account: str
+    user: str
+    password: str
+    warehouse: str
+    database: str
+    schema: str = "PUBLIC"
+    role: Optional[str] = None
+
+@app.post("/test_snowflake_connection")
+def test_snowflake_conn(req: SnowflakeTestRequest):
+    """Test Snowflake connection."""
+    try:
+        from connectors.snowflake_connector import test_snowflake_connection
+        success, message = test_snowflake_connection(
+            account=req.account,
+            user=req.user,
+            password=req.password,
+            warehouse=req.warehouse,
+            database=req.database,
+            schema=req.schema,
+            role=req.role
+        )
+        return {"success": success, "message": message}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 
 # ─────────────────────────────────────────────
 # ROOT
@@ -458,6 +536,47 @@ def ingest_s3(req: S3Request):
     )
 
 
+# ─────────────────────────────────────────────
+# SNOWFLAKE CONNECTOR
+# ─────────────────────────────────────────────
+
+class SnowflakeRequest(BaseModel):
+    account: str
+    user: str
+    password: str
+    warehouse: str
+    database: str
+    schema: str = "PUBLIC"
+    query: str
+    option: str
+    table_name: str | None = None
+    sync_mode: str = "full"
+    incremental_column: str | None = None
+    role: str | None = None
+
+@app.post("/ingest_snowflake")
+def ingest_snowflake(req: SnowflakeRequest):
+    validate_inputs(req.option, req.table_name)
+    source = f"snowflake://{req.account}/{req.database}/{req.schema}"
+    return run_ingestion(
+        snowflake_connector,
+        source,
+        "SnowflakeConnector",
+        req.account,
+        req.user,
+        req.password,
+        req.warehouse,
+        req.database,
+        req.schema,
+        req.query,
+        role=req.role,
+        option=req.option,
+        table_name=req.table_name,
+        sync_mode=req.sync_mode,
+        incremental_column=req.incremental_column,
+    )
+
+
 @app.get("/runs")
 def get_runs():
     conn = get_conn()
@@ -637,6 +756,15 @@ class CreatePipelineRequest(BaseModel):
     s3_bucket:       Optional[str] = None
     s3_key:          Optional[str] = None
     s3_file_type:    Optional[str] = "csv"
+    # ── Snowflake fields ─────────────────
+    sf_account:      Optional[str] = None
+    sf_user:         Optional[str] = None
+    sf_password:     Optional[str] = None
+    sf_warehouse:    Optional[str] = None
+    sf_database:     Optional[str] = None
+    sf_schema:       Optional[str] = "PUBLIC"
+    sf_query:        Optional[str] = None
+    sf_role:         Optional[str] = None
     # ─── Incremental fields ─────────────────────
     sync_mode:     Optional[str] = "full"   # "full" or "incremental"
     incremental_column:    Optional[str] = None     # required if load_type is "incremental"
@@ -676,7 +804,7 @@ def create_pipeline(req: CreatePipelineRequest):
 
 
 class SourceConfig(BaseModel):
-    connector_type: str          # csv, excel, google_sheets, api, postgres, s3
+    connector_type: str          # csv, excel, google_sheets, api, postgres, s3, snowflake
     file_path:      Optional[str] = None
     folder_path:    Optional[str] = None
     sheet_url:      Optional[str] = None
@@ -690,6 +818,15 @@ class SourceConfig(BaseModel):
     src_pg_password:Optional[str] = None
     src_pg_port:    Optional[str] = "5432"
     pg_query:       Optional[str] = None
+    # Snowflake fields
+    sf_account:     Optional[str] = None
+    sf_user:        Optional[str] = None
+    sf_password:    Optional[str] = None
+    sf_warehouse:   Optional[str] = None
+    sf_database:    Optional[str] = None
+    sf_schema:      Optional[str] = "PUBLIC"
+    sf_query:       Optional[str] = None
+    sf_role:        Optional[str] = None
 
 class MultiSourcePipelineRequest(BaseModel):
     pipeline_name: str
@@ -748,6 +885,15 @@ class EditPipelineRequest(BaseModel):
     s3_bucket:          Optional[str] = None
     s3_key:             Optional[str] = None
     s3_file_type:       Optional[str] = None
+    # snowflake
+    sf_account:         Optional[str] = None
+    sf_user:            Optional[str] = None
+    sf_password:        Optional[str] = None
+    sf_warehouse:       Optional[str] = None
+    sf_database:        Optional[str] = None
+    sf_schema:          Optional[str] = None
+    sf_query:           Optional[str] = None
+    sf_role:            Optional[str] = None
 
 
 @app.patch("/edit_pipeline/{pipeline_name}")
