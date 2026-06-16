@@ -371,6 +371,7 @@ def _generate_simple_data(config: dict) -> pd.DataFrame:
             elif "integer" in hint or "number" in hint or ("uses" in hint or "count" in hint or "limit" in hint):
                 data[col] = [random.randint(1, 100) for _ in range(rows)]
             elif "name" in hint or "full name" in hint:
+                data[col] = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
             elif "email" in hint:
                 data[col] = [f"user{i+1}@example.com" for i in range(rows)]
             elif "phone" in hint or "mobile" in hint:

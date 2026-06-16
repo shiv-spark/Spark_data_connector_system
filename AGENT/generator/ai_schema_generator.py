@@ -213,6 +213,6 @@ def run(user_prompt: str, load_to_db: bool = True) -> dict:
 
 if __name__ == "__main__":
     run(
-        "Generate 100 realistic demo with id and name   ",
+        "Generate 10 german cars data",
         load_to_db=True
     )
