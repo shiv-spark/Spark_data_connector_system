@@ -10,9 +10,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+from pathlib import Path
 
-
-load_dotenv()
+project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / ".env")
 
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "postgres"),

@@ -48,11 +48,12 @@ except ImportError as e:
     data_gen_router = None
 
 # Load environment variables from project root .env file
-env_path = Path(__file__).resolve().parent.parent / ".env"
+project_root = Path(__file__).resolve().parent.parent
+env_path = project_root / ".env"
 if env_path.exists():
     load_dotenv(env_path)
 else:
-    load_dotenv()  # Fallback to current directory
+    load_dotenv()
 
 # Import Text-to-SQL router (after loading env vars)
 try:

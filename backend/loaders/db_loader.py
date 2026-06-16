@@ -7,9 +7,11 @@ from psycopg2 import sql
 import time
 from psycopg2.extras import execute_values
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / ".env")
 
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "postgres"),

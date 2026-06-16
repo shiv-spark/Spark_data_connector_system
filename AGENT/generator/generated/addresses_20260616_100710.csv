@@ -1,0 +1,13 @@
+ADDRESS_ID,CUSTOMER_ID,STREET,CITY,STATE,ZIP,COUNTRY,ADDRESS_TYPE
+1,1,Sample description 1,James Miller,Sample description 1,Sample description 1,94,"1 Main Street, City"
+2,2,Sample description 2,John Wilson,Sample description 2,Sample description 2,49,"2 Main Street, City"
+3,3,Sample description 3,Emily Smith,Sample description 3,Sample description 3,51,"3 Main Street, City"
+4,4,Sample description 4,Michael Brown,Sample description 4,Sample description 4,80,"4 Main Street, City"
+5,5,Sample description 5,Emily Johnson,Sample description 5,Sample description 5,61,"5 Main Street, City"
+6,6,Sample description 6,Robert Wilson,Sample description 6,Sample description 6,35,"6 Main Street, City"
+7,7,Sample description 7,David Miller,Sample description 7,Sample description 7,58,"7 Main Street, City"
+8,8,Sample description 8,John Brown,Sample description 8,Sample description 8,40,"8 Main Street, City"
+9,9,Sample description 9,Lisa Davis,Sample description 9,Sample description 9,26,"9 Main Street, City"
+10,10,Sample description 10,James Williams,Sample description 10,Sample description 10,3,"10 Main Street, City"
+11,11,Sample description 11,Sarah Miller,Sample description 11,Sample description 11,84,"11 Main Street, City"
+12,12,Sample description 12,John Davis,Sample description 12,Sample description 12,81,"12 Main Street, City"

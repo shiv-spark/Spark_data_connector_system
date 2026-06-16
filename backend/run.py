@@ -2,9 +2,12 @@ import uvicorn
 import os
 import psycopg2
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load from project root .env
+project_root = Path(__file__).parent.parent
+load_dotenv(project_root / ".env")
 
 from agent.logger import get_logger
 logger = get_logger("run")

@@ -52,6 +52,7 @@ import os
 import psycopg2
 from datetime import datetime
 from dotenv import load_dotenv
+from pathlib import Path
 import smtplib, traceback
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -59,7 +60,8 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 
-load_dotenv()
+project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / ".env")
 
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "postgres"),

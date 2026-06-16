@@ -21,6 +21,11 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 import pandas as pd
 
+# Load env vars from project root
+from dotenv import load_dotenv
+project_root = Path(__file__).resolve().parent.parent.parent
+load_dotenv(project_root / ".env")
+
 # Create router
 router = APIRouter(prefix="/datagen", tags=["Data Generator"])
 
@@ -133,10 +138,8 @@ def _parse_with_llm(description: str, connection_id: str = None) -> dict:
     If table doesn't exist, LLM will suggest schema and create it.
     """
     from groq import Groq
-    from dotenv import load_dotenv
     import os
     
-    load_dotenv()
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     
     # Build schema info from connection if available
@@ -495,7 +498,51 @@ def _save_csv(df: pd.DataFrame, config: dict) -> str:
     df.to_csv(filepath, index=False)
     
     print(f"[datagen] Saved {len(df)} rows → {filepath}")
+    
+    # Upload to S3 if configured
+    _upload_to_s3(filepath)
+    
     return filepath
+
+
+def _upload_to_s3(filepath: str) -> Optional[str]:
+    """Upload CSV file to S3 if AWS credentials are configured."""
+    import boto3
+    
+    s3_bucket = os.getenv("S3_BUCKET")
+    if not s3_bucket:
+        return None
+    
+    try:
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        aws_region = os.getenv("AWS_REGION", "us-east-1")
+        s3_path_prefix = os.getenv("S3_PATH_PREFIX", "generated/")
+        
+        if not aws_access_key or not aws_secret_key:
+            print(f"[datagen] S3_BUCKET set but AWS credentials missing, skipping upload")
+            return None
+        
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key,
+            region_name=aws_region,
+        )
+        
+        filename = os.path.basename(filepath)
+        s3_key = f"{s3_path_prefix.rstrip('/')}/{filename}"
+        
+        with open(filepath, "rb") as f:
+            s3_client.put_object(Bucket=s3_bucket, Key=s3_key, Body=f)
+        
+        s3_path = f"s3://{s3_bucket}/{s3_key}"
+        print(f"[datagen] Uploaded to S3: {s3_path}")
+        return s3_path
+        
+    except Exception as e:
+        print(f"[datagen] S3 upload failed: {e}")
+        return None
 
 
 # Try to import better generator, fall back to simple
@@ -526,8 +573,12 @@ try:
         if _csv_writer_module:
             _csv_writer_module.GENERATED_DIR = str(GENERATED_DIR)
             from generator.csv_writer import save_csv as _save_csv_orig
-            return _save_csv_orig(df, config)
-        return _save_csv(df, config)
+            filepath = _save_csv_orig(df, config)
+        else:
+            filepath = _save_csv(df, config)
+        
+        _upload_to_s3(filepath)
+        return filepath
     
     GENERATOR_AVAILABLE = True
     print("✓ Data generator (LLM) imported successfully")
@@ -546,7 +597,10 @@ except Exception as e:
     
     def save_csv(df: pd.DataFrame, config: dict) -> str:
         """Save CSV."""
-        return _save_csv(df, config)
+        filepath = _save_csv(df, config)
+        
+        _upload_to_s3(filepath)
+        return filepath
     
     GENERATOR_AVAILABLE = True
     print("✓ Data generator (simple) available")
@@ -577,6 +631,7 @@ class DataGenResponse(BaseModel):
     connection_name: Optional[str] = None
     error: Optional[str] = None
     generation_config: Optional[Dict[str, Any]] = None
+    s3_path: Optional[str] = None
 
 
 class LoadToDbRequest(BaseModel):
@@ -673,7 +728,7 @@ def get_connection(connection_id: str):
     return conn
 
 
-def load_to_db(filepath: str, config: dict, connection) -> int:
+def load_to_db(filepath: str, config: dict, connection, s3_path: str = None) -> int:
     """Load CSV data to database based on connection type."""
     table = config["table"].upper()
     columns = [c.upper() for c in config["columns"]]
@@ -681,7 +736,7 @@ def load_to_db(filepath: str, config: dict, connection) -> int:
     df = pd.read_csv(filepath)
     
     if connection.db_type == DatabaseType.SNOWFLAKE:
-        return _load_to_snowflake(filepath, table, columns, connection)
+        return _load_to_snowflake(filepath, table, columns, connection, s3_path)
     elif connection.db_type == DatabaseType.POSTGRESQL:
         return _load_to_postgres(df, table, connection)
     elif connection.db_type == DatabaseType.MYSQL:
@@ -827,8 +882,8 @@ def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> di
     return hints
 
 
-def _load_to_snowflake(filepath: str, table: str, columns: List[str], connection) -> int:
-    """Load CSV to Snowflake using table stage."""
+def _load_to_snowflake(filepath: str, table: str, columns: List[str], connection, s3_path: str = None) -> int:
+    """Load CSV to Snowflake using stored procedure."""
     if not connection._connection:
         connection.connect()
     
@@ -850,43 +905,17 @@ def _load_to_snowflake(filepath: str, table: str, columns: List[str], connection
         create_sql = f'CREATE TABLE IF NOT EXISTS {table} ({", ".join(col_defs)})'
         cursor.execute(create_sql)
         
-        # Create stage for the table if it doesn't exist
-        try:
-            cursor.execute(f"CREATE STAGE IF NOT EXISTS %{table}")
-        except:
-            pass  # Stage might already exist or be created automatically
-        
-        normalized_path = filepath.replace("\\", "/")
-        
-        put_sql = f"PUT 'file://{normalized_path}' @%{table} OVERWRITE=TRUE AUTO_COMPRESS=FALSE"
-        cursor.execute(put_sql)
-        
-        col_list = ", ".join([f'"{c.upper()}"' for c in columns])
-        filename = os.path.basename(filepath)
-        
-        copy_sql = f"""
-        COPY INTO {table} ({col_list})
-        FROM @%{table}/{filename}
-        FILE_FORMAT = (
-            TYPE = 'CSV'
-            FIELD_DELIMITER = ','
-            SKIP_HEADER = 1
-            FIELD_OPTIONALLY_ENCLOSED_BY = '"'
-            NULL_IF = ('', 'NULL', 'null', 'None')
-            EMPTY_FIELD_AS_NULL = TRUE
-        )
-        ON_ERROR = 'ABORT_STATEMENT'
-        """
-        
-        cursor.execute(copy_sql)
+        # Call stored procedure
+        call_sql = """CALL agent_db.agents.load_stage_files_to_tables(
+            'agent_db.agents.agents_ext_s3_stage',
+            'agent_db.agents',
+            FALSE,
+            'agent_db.agents.load_stage_audit'
+        )"""
+        cursor.execute(call_sql)
         
         cursor.execute(f"SELECT COUNT(*) FROM {table}")
         total_rows = cursor.fetchone()[0]
-        
-        try:
-            cursor.execute(f"REMOVE @%{table}/{filename}")
-        except:
-            pass  # Cleanup optional
         
         return total_rows
         
@@ -1172,6 +1201,11 @@ async def generate_data_endpoint(request: DataGenRequest):
         # Save to CSV
         csv_path = save_csv(df, config)
         
+        # Get S3 path if uploaded
+        s3_bucket = os.getenv("S3_BUCKET")
+        s3_path_prefix = os.getenv("S3_PATH_PREFIX", "generated/")
+        s3_path = f"s3://{s3_bucket}/{s3_path_prefix.rstrip('/')}/{os.path.basename(csv_path)}" if s3_bucket else None
+        
         # Get preview (first 5 rows)
         preview = df.head(5).to_dict(orient='records')
         
@@ -1182,7 +1216,8 @@ async def generate_data_endpoint(request: DataGenRequest):
             columns=list(df.columns),
             preview=preview,
             csv_path=csv_path,
-            generation_config=config
+            generation_config=config,
+            s3_path=s3_path
         )
         
         # Load to database if requested
@@ -1195,7 +1230,7 @@ async def generate_data_endpoint(request: DataGenRequest):
                     "columns": config["columns"]
                 }
                 
-                total_rows = load_to_db(csv_path, load_config, conn)
+                total_rows = load_to_db(csv_path, load_config, conn, s3_path)
                 
                 result.loaded_to_db = True
                 result.db_table = config["table"]
@@ -1232,6 +1267,10 @@ async def preview_data(request: DataGenRequest):
         
         csv_path = save_csv(df, config)
         
+        s3_bucket = os.getenv("S3_BUCKET")
+        s3_path_prefix = os.getenv("S3_PATH_PREFIX", "generated/")
+        s3_path = f"s3://{s3_bucket}/{s3_path_prefix.rstrip('/')}/{os.path.basename(csv_path)}" if s3_bucket else None
+        
         preview = df.head(5).to_dict(orient='records')
         
         return DataGenResponse(
@@ -1241,7 +1280,8 @@ async def preview_data(request: DataGenRequest):
             columns=list(df.columns),
             preview=preview,
             csv_path=csv_path,
-            generation_config=config
+            generation_config=config,
+            s3_path=s3_path
         )
         
     except HTTPException:

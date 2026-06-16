@@ -4,9 +4,12 @@ from utils.logger import DBLogger
 from utils.run_tracker import RunTracker
 from utils.schema_detector import detect_schema
 from loaders.db_loader import load_to_db
+import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / ".env")
 
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "postgres"),

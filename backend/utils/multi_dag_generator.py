@@ -1,8 +1,10 @@
 import os
 import re
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / ".env")
 
 DAGS_FOLDER = os.path.normpath(os.getenv(
     "DAGS_FOLDER",
