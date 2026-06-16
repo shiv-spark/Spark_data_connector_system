@@ -11,4 +11,5 @@ dist/
 .env
 airflow/data/
 opencode.json
-*.md
+*.mdAGENT/airflow/logs/
+AGENT/Pipeline/logs/
