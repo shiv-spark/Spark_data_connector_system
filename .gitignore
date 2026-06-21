@@ -13,3 +13,4 @@ airflow/data/
 opencode.json
 *.mdAGENT/airflow/logs/
 AGENT/Pipeline/logs/
+AGENT/generator/generated/
