@@ -1,0 +1,12 @@
+EMPLOYEE_ID,FIRST_NAME,LAST_NAME,EMAIL,ROLE,HIRE_DATE
+3275.81,Michael Garcia,James Johnson,user1@example.com,Sample description 1,2024-06-14
+158.6,Sarah Smith,James Davis,user2@example.com,Sample description 2,2024-10-12
+54.92,John Brown,Emily Miller,user3@example.com,Sample description 3,2024-11-19
+785.58,David Garcia,Mary Jones,user4@example.com,Sample description 4,2024-12-03
+1120.73,James Garcia,Emily Davis,user5@example.com,Sample description 5,2024-09-24
+4935.58,Mary Miller,James Davis,user6@example.com,Sample description 6,2024-09-27
+56.02,John Wilson,Mary Johnson,user7@example.com,Sample description 7,2024-05-27
+4195.56,Jane Jones,Lisa Davis,user8@example.com,Sample description 8,2024-04-17
+120.57,Robert Davis,Mary Williams,user9@example.com,Sample description 9,2024-05-01
+3656.79,John Davis,Michael Wilson,user10@example.com,Sample description 10,2024-07-23
+3106.05,David Taylor,Robert Brown,user11@example.com,Sample description 11,2024-10-16
