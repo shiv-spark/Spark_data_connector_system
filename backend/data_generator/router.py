@@ -923,11 +923,11 @@ def _load_to_snowflake(filepath: str, table: str, columns: List[str], connection
         cursor.execute(create_sql)
         
         # Call stored procedure
-        call_sql = """CALL agent_db.agents.load_stage_files_to_tables_v3(
-            'agent_db.agents.agents_ext_s3_stage',
-            'agent_db.agents',
+        call_sql = """CALL orbit_fivetran.raw.load_stage_files_to_tables_v3(
+            'orbit_fivetran.raw.external_stage',
+            'orbit_fivetran.raw',
             FALSE,
-            'agent_db.agents.load_stage_audit'
+            'orbit_fivetran.raw.load_stage_audit'
         )"""
         cursor.execute(call_sql)
         
