@@ -315,6 +315,29 @@ class Text2SQLAgent:
             return content.strip()
         return ""
     
+    def _generate_blocked_message(self, question: str, detected_pattern: str) -> str:
+        """Generate a custom message via LLM when blocked pattern is detected."""
+        blocked_msg_prompt = ChatPromptTemplate.from_template(
+            """You are a helpful SQL assistant. A user tried to execute a command that is not supported.
+            
+Detected blocked pattern: {pattern}
+User's original question: {question}
+
+Respond with a friendly, helpful message (1-2 sentences) explaining that this type of command is not supported in the text-to-sql interface. Do not mention the blocked pattern or security details. Keep it simple and professional.
+
+Response:"""
+        )
+        
+        try:
+            messages = blocked_msg_prompt.format_messages(
+                pattern=detected_pattern,
+                question=question
+            )
+            response = self.llm.invoke(messages)
+            return self._extract_response(response) or "This command is not supported in the text-to-sql interface."
+        except Exception:
+            return "This command is not supported in the text-to-sql interface."
+
     def screen_input(self, question: str) -> Tuple[bool, str]:
         """
         Screen user input for malicious patterns.
@@ -332,7 +355,8 @@ class Text2SQLAgent:
         
         for pattern in BLOCK_PATTERNS:
             if re.search(pattern, q):
-                return False, f"Blocked pattern detected: {pattern}"
+                custom_msg = self._generate_blocked_message(question, pattern)
+                return False, custom_msg
         
         return True, "SAFE"
     
@@ -536,7 +560,7 @@ class Text2SQLAgent:
                 "run_id": run_id,
                 "question": question,
                 "sql": None,
-                "error": f"Input validation failed: {screen_msg}",
+                "error": screen_msg,
                 "summary": None,
                 "execution_result": None
             }

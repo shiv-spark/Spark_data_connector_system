@@ -133,8 +133,24 @@ export default function Text2SQL() {
           status: response.execution_status
         }, ...prev].slice(0, 10));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Text2SQL error:", error);
+      const errMsg = error?.response?.data?.detail || error?.message || "An error occurred";
+      setResult({
+        success: false,
+        run_id: "",
+        question: question,
+        sql: null,
+        validation_status: "ERROR",
+        execution_status: "ERROR",
+        row_count: 0,
+        execution_result: null,
+        summary: null,
+        llm_latency: 0,
+        execution_latency: 0,
+        total_time: 0,
+        error: errMsg
+      });
     } finally {
       setIsLoading(false);
     }
@@ -328,8 +344,16 @@ export default function Text2SQL() {
             </CardContent>
           </Card>
 
-          {/* Results Area */}
-          {result && (
+          {/* Results Area for blocked commands */}
+          {result && result.error && result.error.includes("not supported") && (
+            <Card className="border shadow-sm">
+              <CardContent className="pt-4">
+                <p className="text-sm text-slate-600">{result.error}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {result && !result.error?.includes("not supported") && (
             <Card className={cn(
               "border shadow-sm",
               result.success ? "border-emerald-200 bg-emerald-50/30" : "border-rose-200 bg-rose-50/30"
@@ -346,11 +370,8 @@ export default function Text2SQL() {
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">
-                      <Clock className="h-3 w-3 mr-1" />
-                      {result.total_time.toFixed(2)}s
-                    </Badge>
-                    <Badge variant="outline" className="text-xs">
-                      {result.row_count} rows
+                      <Table className="h-3 w-3 mr-1" />
+                      {result.row_count ?? 0} rows
                     </Badge>
                   </div>
                 </div>
@@ -395,7 +416,7 @@ export default function Text2SQL() {
                 )}
 
                 {/* Results Table */}
-                {result.execution_result && result.execution_result.rows.length > 0 && (
+                {result.execution_result && result.execution_result.rows && result.execution_result.rows.length > 0 && (
                   <div className="space-y-2">
                     <span className="text-xs font-medium text-slate-500 flex items-center gap-1">
                       <Table className="h-3 w-3" />
@@ -449,8 +470,8 @@ export default function Text2SQL() {
 
                 {/* Metadata */}
                 <div className="flex items-center gap-4 text-xs text-slate-500 pt-2 border-t">
-                  <span>LLM: {result.llm_latency.toFixed(2)}s</span>
-                  <span>Execution: {result.execution_latency.toFixed(2)}s</span>
+                  <span>LLM: {(result.llm_latency ?? 0).toFixed(2)}s</span>
+                  <span>Execution: {(result.execution_latency ?? 0).toFixed(2)}s</span>
                   <span>Status: {result.validation_status}</span>
                 </div>
               </CardContent>
