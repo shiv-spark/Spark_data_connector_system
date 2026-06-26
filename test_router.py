@@ -295,11 +295,10 @@ def _parse_description(description: str) -> dict:
 
 
 def _generate_simple_data(config: dict) -> pd.DataFrame:
-    """Generate simple fake data without LLM, respecting database data types."""
+    """Generate simple fake data without LLM."""
     rows = config.get("rows", 10)
     columns = config.get("columns", ["ID", "NAME"])
     hints = config.get("hints", {})
-    data_types = config.get("data_types", {})  # Get data types from schema
     
     data = {}
     
@@ -319,12 +318,7 @@ def _generate_simple_data(config: dict) -> pd.DataFrame:
     mountain_names = ["Kangchenjunga", "Nanda Devi", "Kamet", "Saltoro Ri", "Saser Kangri", "K12", "Kangchenjunga South", "Mansarovar", "Teram Kangri", "Chorten Nyima"]
     
     for col in columns:
-        col_upper = col.upper()
         col_lower = col.lower()
-        
-        # Get data type for this column (from schema if available)
-        db_data_type = data_types.get(col_upper, data_types.get(col, "VARCHAR")).upper()
-        
         hint = hints.get(col, "").lower() if hints.get(col) else ""
         
         # Auto-infer hint from column name patterns if not provided
@@ -363,141 +357,130 @@ def _generate_simple_data(config: dict) -> pd.DataFrame:
             elif "is_" in col_lower or "has_" in col_lower or "active" in col_lower:
                 hint = "true or false"
         
-        # Generate data based on data type from database OR hint
-        generated_data = None
-        
-        # First check data type from schema (most accurate)
-        if "INT" in db_data_type or "BIGINT" in db_data_type or "SMALLINT" in db_data_type:
-            generated_data = list(range(1, rows + 1))
-        elif "DECIMAL" in db_data_type or "NUMERIC" in db_data_type or "NUMBER" in db_data_type or "FLOAT" in db_data_type or "DOUBLE" in db_data_type or "REAL" in db_data_type:
-            generated_data = [round(random.uniform(10, 5000), 2) for _ in range(rows)]
-        elif "BOOLEAN" in db_data_type or "BOOL" in db_data_type:
-            generated_data = [random.choice([True, False]) for _ in range(rows)]
-        elif "DATE" in db_data_type:
-            generated_data = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d}" for _ in range(rows)]
-        elif "TIMESTAMP" in db_data_type or "DATETIME" in db_data_type:
-            generated_data = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d} {random.randint(0,23):02d}:{random.randint(0,59):02d}:00" for _ in range(rows)]
-        
-        # If no data type match, fall back to hint logic
-        if generated_data is None:
-            # Check hint FIRST - this is most important
-            if hint:
-                if "sequential" in hint and "integer" in hint:
-                    generated_data = list(range(1, rows + 1))
-                elif "sequential" in hint or "starting from" in hint:
-                    generated_data = list(range(1, rows + 1))
-                elif "alphanumeric" in hint or "code like" in hint or "coupon" in hint:
-                    generated_data = [f"CPN{1000+i:04d}" for i in range(rows)]
-                elif "discount" in hint and "percent" in hint:
-                    generated_data = [round(random.uniform(5, 50), 2) for _ in range(rows)]
-                elif "discount" in hint or "amount" in hint or "price" in hint or "cost" in hint or "salary" in hint or "monetary" in hint:
-                    generated_data = [round(random.uniform(10, 500), 2) for _ in range(rows)]
-                elif "decimal" in hint:
-                    generated_data = [round(random.uniform(1, 1000), 2) for _ in range(rows)]
-                elif "integer" in hint or "number" in hint or ("uses" in hint or "count" in hint or "limit" in hint):
-                    generated_data = [random.randint(1, 100) for _ in range(rows)]
-                elif "name" in hint or "full name" in hint:
-                    generated_data = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
-                elif "email" in hint:
-                    generated_data = [f"user{i+1}@example.com" for i in range(rows)]
-                elif "phone" in hint or "mobile" in hint:
-                    generated_data = [f"+1-555-{1000+i:04d}" for i in range(rows)]
-                elif "city" in hint or "location" in hint:
-                    if "india" in hint:
-                        generated_data = [random.choice(indian_cities) for _ in range(rows)]
-                    else:
-                        generated_data = [random.choice(cities) for _ in range(rows)]
-                elif "range" in hint:
-                    generated_data = [random.choice(indian_ranges) for _ in range(rows)]
-                elif "mountain" in hint and "name" in hint:
-                    generated_data = [f"{mountain_names[i % len(mountain_names)]}" for i in range(rows)]
-                elif "height" in hint or "meter" in hint or "elevation" in hint:
-                    generated_data = [round(random.uniform(1000, 8000), 2) for _ in range(rows)]
-                elif "country" in hint:
-                    generated_data = [random.choice(countries) for _ in range(rows)]
-                elif "address" in hint:
-                    generated_data = [f"{i+1} Main Street, City" for i in range(rows)]
-                elif "date" in hint:
-                    generated_data = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d}" for _ in range(rows)]
-                elif "amount" in hint or "price" in hint or "cost" in hint or "salary" in hint or "monetary" in hint:
-                    generated_data = [round(random.uniform(100, 10000), 2) for _ in range(rows)]
-                elif "quantity" in hint or "qty" in hint or "count" in hint:
-                    generated_data = [random.randint(1, 100) for _ in range(rows)]
-                elif "product" in hint or "item" in hint:
-                    generated_data = [random.choice(products) for _ in range(rows)]
-                elif "company" in hint or "organization" in hint or "org" in hint:
-                    generated_data = [f"Company {chr(65+i%26)}" for i in range(rows)]
-                elif "department" in hint or "dept" in hint:
-                    generated_data = [random.choice(departments) for _ in range(rows)]
-                elif "description" in hint or "comment" in hint or "note" in hint or "text" in hint or "issue" in hint:
-                    generated_data = [f"Sample description {i+1}" for i in range(rows)]
-                elif "status" in hint:
-                    generated_data = [random.choice(statuses) for _ in range(rows)]
-                elif "priority" in hint:
-                    generated_data = [random.choice(priorities) for _ in range(rows)]
-                elif "boolean" in hint or "true/false" in hint or "yes/no" in hint:
-                    generated_data = [random.choice([True, False]) for _ in range(rows)]
-                elif "integer" in hint or "number" in hint:
-                    generated_data = [random.randint(1, 1000) for _ in range(rows)]
-                elif "decimal" in hint or "float" in hint:
-                    generated_data = [round(random.uniform(1, 1000), 2) for _ in range(rows)]
-            
-            # Check column name pattern if still no data
-            if generated_data is None:
+        # Check hint FIRST - this is most important
+        if hint:
+            if "sequential" in hint and "integer" in hint:
+                data[col] = list(range(1, rows + 1))
+            elif "sequential" in hint or "starting from" in hint:
+                data[col] = list(range(1, rows + 1))
+            elif "alphanumeric" in hint or "code like" in hint or "coupon" in hint:
+                data[col] = [f"CPN{1000+i:04d}" for i in range(rows)]
+            elif "discount" in hint and "percent" in hint:
+                data[col] = [round(random.uniform(5, 50), 2) for _ in range(rows)]
+            elif "discount" in hint or "amount" in hint or "price" in hint or "cost" in hint or "salary" in hint or "monetary" in hint:
+                data[col] = [round(random.uniform(10, 500), 2) for _ in range(rows)]
+            elif "decimal" in hint:
+                data[col] = [round(random.uniform(1, 1000), 2) for _ in range(rows)]
+            elif "integer" in hint or "number" in hint or ("uses" in hint or "count" in hint or "limit" in hint):
+                data[col] = [random.randint(1, 100) for _ in range(rows)]
+            elif "name" in hint or "full name" in hint:
+                data[col] = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
+            elif "email" in hint:
+                data[col] = [f"user{i+1}@example.com" for i in range(rows)]
+            elif "phone" in hint or "mobile" in hint:
+                data[col] = [f"+1-555-{1000+i:04d}" for i in range(rows)]
+            elif "city" in hint or "location" in hint:
+                if "india" in hint:
+                    data[col] = [random.choice(indian_cities) for _ in range(rows)]
+                else:
+                    data[col] = [random.choice(cities) for _ in range(rows)]
+            elif "range" in hint:
+                if "india" in hint:
+                    data[col] = [random.choice(indian_ranges) for _ in range(rows)]
+                else:
+                    data[col] = [random.choice(indian_ranges) for _ in range(rows)]
+            elif "mountain" in hint and "name" in hint:
+                data[col] = [f"{mountain_names[i % len(mountain_names)]}" for i in range(rows)]
+            elif "height" in hint or "meter" in hint or "elevation" in hint:
+                data[col] = [round(random.uniform(1000, 8000), 2) for _ in range(rows)]
+            elif "country" in hint:
+                data[col] = [random.choice(countries) for _ in range(rows)]
+            elif "address" in hint:
+                data[col] = [f"{i+1} Main Street, City" for i in range(rows)]
+            elif "date" in hint:
+                data[col] = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d}" for _ in range(rows)]
+            elif "amount" in hint or "price" in hint or "cost" in hint or "salary" in hint or "monetary" in hint:
+                data[col] = [round(random.uniform(100, 10000), 2) for _ in range(rows)]
+            elif "quantity" in hint or "qty" in hint or "count" in hint:
+                data[col] = [random.randint(1, 100) for _ in range(rows)]
+            elif "product" in hint or "item" in hint:
+                data[col] = [random.choice(products) for _ in range(rows)]
+            elif "company" in hint or "organization" in hint or "org" in hint:
+                data[col] = [f"Company {chr(65+i%26)}" for i in range(rows)]
+            elif "department" in hint or "dept" in hint:
+                data[col] = [random.choice(departments) for _ in range(rows)]
+            elif "description" in hint or "comment" in hint or "note" in hint or "text" in hint or "issue" in hint:
+                data[col] = [f"Sample description {i+1}" for i in range(rows)]
+            elif "status" in hint:
+                data[col] = [random.choice(statuses) for _ in range(rows)]
+            elif "priority" in hint:
+                data[col] = [random.choice(priorities) for _ in range(rows)]
+            elif "boolean" in hint or "true/false" in hint or "yes/no" in hint:
+                data[col] = [random.choice([True, False]) for _ in range(rows)]
+            elif "integer" in hint or "number" in hint:
+                data[col] = [random.randint(1, 1000) for _ in range(rows)]
+            elif "decimal" in hint or "float" in hint:
+                data[col] = [round(random.uniform(1, 1000), 2) for _ in range(rows)]
+            else:
+                # Use column name pattern as fallback
                 if "id" in col_lower or "_id" in col_lower:
-                    generated_data = list(range(1, rows + 1))
+                    data[col] = list(range(1, rows + 1))
                 elif "name" in col_lower:
-                    generated_data = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
-                elif "first_name" in col_lower:
-                    generated_data = [random.choice(first_names) for _ in range(rows)]
-                elif "last_name" in col_lower:
-                    generated_data = [random.choice(last_names) for _ in range(rows)]
-                elif "email" in col_lower:
-                    generated_data = [f"user{i+1}@example.com" for i in range(rows)]
-                elif "phone" in col_lower or "mobile" in col_lower:
-                    generated_data = [f"+1-555-{1000+i:04d}" for i in range(rows)]
-                elif "city" in col_lower or "location" in col_lower:
-                    generated_data = [random.choice(cities) for _ in range(rows)]
-                elif "country" in col_lower:
-                    generated_data = [random.choice(countries) for _ in range(rows)]
-                elif "address" in col_lower:
-                    generated_data = [f"{i+1} Main Street, City" for i in range(rows)]
-                elif "state" in col_lower or "province" in col_lower:
-                    generated_data = ["California", "Texas", "New York", "Florida", "Illinois"][:rows]
-                    while len(generated_data) < rows:
-                        generated_data.append(random.choice(["California", "Texas", "New York"]))
-                elif "zip" in col_lower or "postal" in col_lower or "pincode" in col_lower:
-                    generated_data = [f"{10000 + i}" for i in range(rows)]
-                elif "age" in col_lower:
-                    generated_data = [random.randint(18, 65) for _ in range(rows)]
-                elif "date" in col_lower or "dob" in col_lower or "birthday" in col_lower or "created" in col_lower or "updated" in col_lower:
-                    generated_data = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d}" for _ in range(rows)]
-                elif "time" in col_lower or "timestamp" in hint:
-                    generated_data = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d} {random.randint(0,23):02d}:{random.randint(0,59):02d}:00" for _ in range(rows)]
-                elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower or "salary" in col_lower:
-                    generated_data = [round(random.uniform(100, 10000), 2) for _ in range(rows)]
-                elif "quantity" in col_lower or "qty" in col_lower or "count" in col_lower:
-                    generated_data = [random.randint(1, 100) for _ in range(rows)]
-                elif "product" in col_lower or "item" in col_lower:
-                    generated_data = [random.choice(products) for _ in range(rows)]
-                elif "company" in col_lower or "organization" in col_lower or "org" in col_lower:
-                    generated_data = [f"Company {chr(65+i%26)}" for i in range(rows)]
-                elif "department" in col_lower or "dept" in col_lower:
-                    generated_data = [random.choice(departments) for _ in range(rows)]
-                elif "description" in col_lower or "comment" in col_lower or "note" in col_lower:
-                    generated_data = [f"Sample description {i+1}" for i in range(rows)]
-                elif "status" in col_lower:
-                    generated_data = [random.choice(statuses) for _ in range(rows)]
-                elif "priority" in col_lower:
-                    generated_data = [random.choice(priorities) for _ in range(rows)]
-                elif "is_" in col_lower or "has_" in col_lower or "active" in col_lower:
-                    generated_data = [random.choice([True, False]) for _ in range(rows)]
-        
-        # Default fallback
-        if generated_data is None:
-            generated_data = [f"Value_{i+1}" for i in range(rows)]
-        
-        data[col] = generated_data
+                    data[col] = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
+                else:
+                    data[col] = [f"Value_{i+1}" for i in range(rows)]
+        # Check column name pattern if no hint or fallback
+        elif "id" in col_lower or "_id" in col_lower or "no" in col_lower:
+            data[col] = list(range(1, rows + 1))
+        elif "name" in col_lower:
+            data[col] = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
+        elif "first_name" in col_lower:
+            data[col] = [random.choice(first_names) for _ in range(rows)]
+        elif "last_name" in col_lower:
+            data[col] = [random.choice(last_names) for _ in range(rows)]
+        elif "email" in col_lower:
+            data[col] = [f"user{i+1}@example.com" for i in range(rows)]
+        elif "phone" in col_lower or "mobile" in col_lower:
+            data[col] = [f"+1-555-{1000+i:04d}" for i in range(rows)]
+        elif "city" in col_lower or "location" in col_lower:
+            data[col] = [random.choice(cities) for _ in range(rows)]
+        elif "country" in col_lower:
+            data[col] = [random.choice(countries) for _ in range(rows)]
+        elif "address" in col_lower:
+            data[col] = [f"{i+1} Main Street, City" for i in range(rows)]
+        elif "state" in col_lower or "province" in col_lower:
+            data[col] = ["California", "Texas", "New York", "Florida", "Illinois"][:rows]
+            while len(data[col]) < rows:
+                data[col].append(random.choice(["California", "Texas", "New York"]))
+        elif "zip" in col_lower or "postal" in col_lower or "pincode" in col_lower:
+            data[col] = [f"{10000 + i}" for i in range(rows)]
+        elif "age" in col_lower:
+            data[col] = [random.randint(18, 65) for _ in range(rows)]
+        elif "date" in col_lower or "dob" in col_lower or "birthday" in col_lower or "created" in col_lower or "updated" in col_lower:
+            data[col] = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d}" for _ in range(rows)]
+        elif "time" in col_lower or "timestamp" in hint:
+            data[col] = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d} {random.randint(0,23):02d}:{random.randint(0,59):02d}:00" for _ in range(rows)]
+        elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower or "salary" in col_lower:
+            data[col] = [round(random.uniform(100, 10000), 2) for _ in range(rows)]
+        elif "quantity" in col_lower or "qty" in col_lower or "count" in col_lower:
+            data[col] = [random.randint(1, 100) for _ in range(rows)]
+        elif "product" in col_lower or "item" in col_lower:
+            data[col] = [random.choice(products) for _ in range(rows)]
+        elif "company" in col_lower or "organization" in col_lower or "org" in col_lower:
+            data[col] = [f"Company {chr(65+i%26)}" for i in range(rows)]
+        elif "department" in col_lower or "dept" in col_lower:
+            data[col] = [random.choice(departments) for _ in range(rows)]
+        elif "description" in col_lower or "comment" in col_lower or "note" in col_lower:
+            data[col] = [f"Sample description {i+1}" for i in range(rows)]
+        elif "status" in col_lower:
+            data[col] = [random.choice(statuses) for _ in range(rows)]
+        elif "priority" in col_lower:
+            data[col] = [random.choice(priorities) for _ in range(rows)]
+        elif "is_" in col_lower or "has_" in col_lower or "active" in col_lower:
+            data[col] = [random.choice([True, False]) for _ in range(rows)]
+        # Default
+        else:
+            data[col] = [f"Value_{i+1}" for i in range(rows)]
     
     return pd.DataFrame(data)
 
@@ -820,14 +803,16 @@ def get_table_schema(connection, table_name: str) -> dict:
     
     return schema
 
-
 def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> dict:
     """Build hints from database schema for data generation."""
     hints = {}
     columns = schema.get("columns", {})
-    sample_data = schema.get("sample_data", [])
-    
-    # Get data type mappings to hints
+
+    # Build a case-insensitive lookup so column name casing differences
+    # between INFORMATION_SCHEMA results and our config don't cause
+    # every hint to silently fall back to "realistic value".
+    columns_ci = {k.upper(): v for k, v in columns.items()}
+
     type_hints = {
         "VARCHAR": "text value",
         "TEXT": "text value",
@@ -837,6 +822,7 @@ def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> di
         "BIGINT": "integer",
         "SMALLINT": "integer",
         "NUMERIC": "decimal number",
+        "NUMBER": "decimal number",
         "DECIMAL": "decimal number",
         "FLOAT": "decimal number",
         "DOUBLE": "decimal number",
@@ -844,21 +830,30 @@ def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> di
         "BOOLEAN": "true or false",
         "DATE": "date",
         "TIMESTAMP": "timestamp",
+        "TIMESTAMP_NTZ": "timestamp",
+        "TIMESTAMP_LTZ": "timestamp",
+        "TIMESTAMP_TZ": "timestamp",
         "DATETIME": "datetime",
     }
-    
+
     col_names = user_columns if user_columns else list(columns.keys())
-    
+
     for col in col_names:
         col_upper = col.upper()
         col_lower = col.lower()
-        
-        if col_upper in columns:
-            data_type = columns[col_upper].get("data_type", "VARCHAR").upper()
-            hint = type_hints.get(data_type, "realistic value")
-            
-            # Add column-specific hints based on name patterns
-            if "id" in col_lower or "_id" in col_lower or "no" in col_lower or "num" in col_lower:
+
+        if col_upper in columns_ci:
+            data_type = columns_ci[col_upper].get("data_type", "VARCHAR").upper()
+            hint = type_hints.get(data_type, "text value")
+
+            # Type-based hints take priority for date/timestamp/boolean —
+            # a column named "manager_id" that is actually a DATE should
+            # still get a date hint, not an integer hint.
+            if data_type in ("DATE", "TIMESTAMP", "TIMESTAMP_NTZ", "TIMESTAMP_LTZ", "TIMESTAMP_TZ", "DATETIME"):
+                hint = "recent date in YYYY-MM-DD format" if data_type == "DATE" else "recent timestamp"
+            elif data_type == "BOOLEAN":
+                hint = "true or false"
+            elif "id" in col_lower or "_id" in col_lower or "no" in col_lower or "num" in col_lower:
                 hint = "sequential integer starting from 1"
             elif "code" in col_lower or "coupon" in col_lower or "ref" in col_lower or "sku" in col_lower:
                 hint = "alphanumeric code like COUPON10, SAVE20"
@@ -874,34 +869,104 @@ def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> di
                 hint = "city name"
             elif "country" in col_lower:
                 hint = "country name"
-            elif "date" in col_lower or "created" in col_lower or "updated" in col_lower:
-                hint = "recent date"
             elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower:
                 hint = "monetary amount"
-            elif "id" in col_lower or "_id" in col_lower:
-                hint = "unique sequential integer"
             elif "status" in col_lower:
                 hint = "status value like active, inactive, pending"
             elif "description" in col_lower or "comment" in col_lower:
                 hint = "short text description"
             elif "discount" in col_lower or "percent" in col_lower:
                 hint = "decimal number for discount percentage"
-            elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower:
-                hint = "monetary amount"
             elif "count" in col_lower or "qty" in col_lower or "quantity" in col_lower or "uses" in col_lower or "limit" in col_lower:
                 hint = "integer number"
-            
+
             hints[col] = hint
         else:
-            # Default hint for unknown columns
-            hints[col] = "realistic value"
-    
+            # Genuinely unknown column (not in schema) — safe text fallback
+            hints[col] = "text value"
+
     return hints
+# def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> dict:
+#     """Build hints from database schema for data generation."""
+#     hints = {}
+#     columns = schema.get("columns", {})
+#     sample_data = schema.get("sample_data", [])
+    
+#     # Get data type mappings to hints
+#     type_hints = {
+#         "VARCHAR": "text value",
+#         "TEXT": "text value",
+#         "CHAR": "text value",
+#         "INTEGER": "integer",
+#         "INT": "integer",
+#         "BIGINT": "integer",
+#         "SMALLINT": "integer",
+#         "NUMERIC": "decimal number",
+#         "DECIMAL": "decimal number",
+#         "FLOAT": "decimal number",
+#         "DOUBLE": "decimal number",
+#         "REAL": "decimal number",
+#         "BOOLEAN": "true or false",
+#         "DATE": "date",
+#         "TIMESTAMP": "timestamp",
+#         "DATETIME": "datetime",
+#     }
+    
+#     col_names = user_columns if user_columns else list(columns.keys())
+    
+#     for col in col_names:
+#         col_upper = col.upper()
+#         col_lower = col.lower()
+        
+#         if col_upper in columns:
+#             data_type = columns[col_upper].get("data_type", "VARCHAR").upper()
+#             hint = type_hints.get(data_type, "realistic value")
+            
+#             # Add column-specific hints based on name patterns
+#             if "id" in col_lower or "_id" in col_lower or "no" in col_lower or "num" in col_lower:
+#                 hint = "sequential integer starting from 1"
+#             elif "code" in col_lower or "coupon" in col_lower or "ref" in col_lower or "sku" in col_lower:
+#                 hint = "alphanumeric code like COUPON10, SAVE20"
+#             elif "name" in col_lower:
+#                 hint = "realistic name"
+#             elif "email" in col_lower:
+#                 hint = "email address"
+#             elif "phone" in col_lower or "mobile" in col_lower:
+#                 hint = "phone number"
+#             elif "address" in col_lower:
+#                 hint = "full address"
+#             elif "city" in col_lower:
+#                 hint = "city name"
+#             elif "country" in col_lower:
+#                 hint = "country name"
+#             elif "date" in col_lower or "created" in col_lower or "updated" in col_lower:
+#                 hint = "recent date"
+#             elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower:
+#                 hint = "monetary amount"
+#             elif "id" in col_lower or "_id" in col_lower:
+#                 hint = "unique sequential integer"
+#             elif "status" in col_lower:
+#                 hint = "status value like active, inactive, pending"
+#             elif "description" in col_lower or "comment" in col_lower:
+#                 hint = "short text description"
+#             elif "discount" in col_lower or "percent" in col_lower:
+#                 hint = "decimal number for discount percentage"
+#             elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower:
+#                 hint = "monetary amount"
+#             elif "count" in col_lower or "qty" in col_lower or "quantity" in col_lower or "uses" in col_lower or "limit" in col_lower:
+#                 hint = "integer number"
+            
+#             hints[col] = hint
+#         else:
+#             # Default hint for unknown columns
+#             hints[col] = "realistic value"
+    
+#     return hints
 
 
 def _load_to_snowflake(filepath: str, table: str, columns: List[str], connection, s3_path: str = None) -> int:
     """Load CSV to Snowflake using stored procedure."""
-    if not connection._connection:  
+    if not connection._connection:
         connection.connect()
     
     cursor = connection._cursor
@@ -923,6 +988,12 @@ def _load_to_snowflake(filepath: str, table: str, columns: List[str], connection
         cursor.execute(create_sql)
         
         # Call stored procedure
+        # call_sql = """CALL agent_db.agents.load_stage_files_to_tables_v3(
+        #     'agent_db.agents.agents_ext_s3_stage',
+        #     'agent_db.agents',
+        #     FALSE,
+        #     'agent_db.agents.load_stage_audit'
+        # )"""
         call_sql = """CALL orbit_fivetran.raw.load_stage_files_to_tables_v3(
             'orbit_fivetran.raw.external_stage',
             'orbit_fivetran.raw',
@@ -1166,7 +1237,6 @@ async def generate_data_endpoint(request: DataGenRequest):
         
         # Handle table creation if needed
         table_created = False
-        table_schema = None  # Store schema with data types
         if request.connection_id and config.get("table"):
             try:
                 conn = get_connection(request.connection_id)
@@ -1200,18 +1270,12 @@ async def generate_data_endpoint(request: DataGenRequest):
                             config["columns"] = ["ID", "NAME", "VALUE"]
                             config["hints"] = {"ID": "sequential integer", "NAME": "text", "VALUE": "text"}
                 else:
-                    # Table exists - get actual schema with data types
-                    table_schema = get_table_schema(conn, table_name)
-                    if table_schema.get("columns"):
-                        config["columns"] = list(table_schema["columns"].keys())
-                        config["hints"] = _build_hints_from_schema(table_schema, config["columns"])
-                        # Add data_types to config for correct type generation
-                        config["data_types"] = {
-                            col: table_schema["columns"][col].get("data_type", "VARCHAR").upper()
-                            for col in config["columns"]
-                        }
-                        print(f"[datagen] Using existing table columns with data types: {config['columns']}")
-                        print(f"[datagen] Data types: {config['data_types']}")
+                    # Table exists - get actual schema
+                    schema = get_table_schema(conn, table_name)
+                    if schema.get("columns"):
+                        config["columns"] = list(schema["columns"].keys())
+                        config["hints"] = _build_hints_from_schema(schema, config["columns"])
+                        print(f"[datagen] Using existing table columns: {config['columns']}")
                         
             except Exception as e:
                 import traceback

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3";
+type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
 
 const connectorLabels: Record<Connector, string> = {
   csv: "CSV",
@@ -15,6 +15,7 @@ const connectorLabels: Record<Connector, string> = {
   api: "API",
   postgres: "Postgres",
   s3: "S3",
+  snowflake: "Snowflake",
 };
 
 const initial = {
@@ -35,6 +36,15 @@ const initial = {
   bucket: "",
   key: "",
   file_type: "csv",
+  // ── Snowflake fields ──────────────────
+  sf_account: "",
+  sf_user: "",
+  sf_password: "",
+  sf_warehouse: "",
+  sf_database: "",
+  sf_schema: "PUBLIC",
+  sf_role: "",
+  sf_query: "",
 };
 
 export const DirectIngest = () => {
@@ -67,6 +77,17 @@ export const DirectIngest = () => {
           query: form.query,
         },
         s3: { ...common, bucket: form.bucket, key: form.key, file_type: form.file_type },
+        snowflake: {
+          ...common,
+          account: form.sf_account,
+          user: form.sf_user,
+          password: form.sf_password,
+          warehouse: form.sf_warehouse,
+          database: form.sf_database,
+          schema: form.sf_schema,
+          role: form.sf_role || null,
+          query: form.sf_query,
+        },
       };
       const endpoints = {
         csv: "/ingest_csv",
@@ -75,6 +96,7 @@ export const DirectIngest = () => {
         api: "/ingest_api",
         postgres: "/ingest_postgres",
         s3: "/ingest_s3",
+        snowflake: "/ingest_snowflake",
       };
       const response = await api.post(endpoints[form.connector], payloads[form.connector]);
       return response.data;
@@ -148,6 +170,18 @@ export const DirectIngest = () => {
                 <Input placeholder="Bucket" value={form.bucket} onChange={(e) => update("bucket", e.target.value)} required />
                 <Input placeholder="Key" value={form.key} onChange={(e) => update("key", e.target.value)} required />
                 <Input placeholder="File type" value={form.file_type} onChange={(e) => update("file_type", e.target.value)} />
+              </div>
+            )}
+            {form.connector === "snowflake" && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input placeholder="Account (e.g. XROJPNQ-RO43084)" value={form.sf_account} onChange={(e) => update("sf_account", e.target.value)} required />
+                <Input placeholder="User" value={form.sf_user} onChange={(e) => update("sf_user", e.target.value)} required />
+                <Input placeholder="Password" type="password" value={form.sf_password} onChange={(e) => update("sf_password", e.target.value)} required />
+                <Input placeholder="Warehouse" value={form.sf_warehouse} onChange={(e) => update("sf_warehouse", e.target.value)} required />
+                <Input placeholder="Database" value={form.sf_database} onChange={(e) => update("sf_database", e.target.value)} required />
+                <Input placeholder="Schema (default PUBLIC)" value={form.sf_schema} onChange={(e) => update("sf_schema", e.target.value)} />
+                <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
+                <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={form.sf_query} onChange={(e) => update("sf_query", e.target.value)} required />
               </div>
             )}
 

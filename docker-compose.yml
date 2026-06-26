@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Universal Data Connector — full stack (postgres + backend + frontend + airflow)
+# Universal Data Connector — full stack
 # Run:  docker compose up -d
 # ─────────────────────────────────────────────────────────────────────────────
 services:
@@ -20,7 +20,6 @@ services:
       - ./backups:/backups
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      # host 5433 → container 5432 (host 5432 is taken by a local Postgres)
       - "5433:5432"
     networks:
       - connector_net
@@ -32,7 +31,7 @@ services:
       retries: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Backend — FastAPI (built from ./backend/Dockerfile)
+  # Backend — FastAPI
   # ═══════════════════════════════════════════════════════════════════════════
   backend:
     build:
@@ -42,19 +41,29 @@ services:
     container_name: data_connector_backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       TZ: Asia/Kolkata
-      DB_HOST: postgres   # service name on the docker network
-      DB_PORT: "5432"     # internal port, not the host-mapped 5433
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      # DAG file location inside backend container
+      DAGS_FOLDER: /app/dags
+      # Airflow container paths (used when generating DAG files)
+      CONTAINER_DATA_PATH: /opt/airflow/data
+      CONTAINER_DATASET_PATH: /opt/airflow/dataset
+      # Windows paths — what users type in the frontend
+      # These must match your actual Windows folder paths
+      WINDOWS_DATA_PATH: ${WINDOWS_DATA_PATH}
+      WINDOWS_DATASET_PATH: ${WINDOWS_DATASET_PATH}
     volumes:
-      - dags_volume:/app/dags
-      - ./data:/app/data
-      - ./Dataset:/app/dataset
+      - dags_volume:/app/dags                          # shared with Airflow
+      - user_data:/opt/airflow/user_data               # processed/failed folders
+      - ./data:/app/data                               # data files
+      - ./Dataset:/app/dataset                         # dataset files
       - ${WINDOWS_DOWNLOADS:-./data/uploads}:/app/uploads
       - ${WINDOWS_DOCUMENTS:-./Dataset}:/opt/airflow/dataset_win
       - ./backend:/app/current_dir
-    env_file:
-      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,7 +72,7 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Frontend — React (built from ./frontend/Dockerfile, served by nginx)
+  # Frontend — React served by nginx
   # ═══════════════════════════════════════════════════════════════════════════
   frontend:
     build:
@@ -72,7 +81,6 @@ services:
     image: data_connector_frontend:latest
     container_name: data_connector_frontend
     ports:
-      # host 3001 → container 80 (host 3000 is taken by another app)
       - "3001:80"
     environment:
       TZ: Asia/Kolkata
@@ -83,7 +91,7 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Airflow — init / webserver / scheduler
+  # Airflow — init
   # ═══════════════════════════════════════════════════════════════════════════
   airflow-init:
     image: apache/airflow:2.7.0
@@ -107,6 +115,9 @@ services:
     networks:
       - connector_net
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Airflow — webserver
+  # ═══════════════════════════════════════════════════════════════════════════
   airflow-webserver:
     image: apache/airflow:2.7.0
     container_name: airflow_webserver
@@ -115,9 +126,10 @@ services:
     ports:
       - "8081:8080"
     volumes:
-      - dags_volume:/opt/airflow/dags
-      - ./data:/opt/airflow/data
-      - ./Dataset:/opt/airflow/dataset
+      - dags_volume:/opt/airflow/dags                  # same volume as backend
+      - user_data:/opt/airflow/user_data               # same volume as backend
+      - ./data:/opt/airflow/data                       # same Windows folder as backend
+      - ./Dataset:/opt/airflow/dataset                 # same Windows folder as backend
       - airflow_logs:/opt/airflow/logs
       - ${WINDOWS_DOCUMENTS:-./Dataset}:/opt/airflow/dataset_win
     depends_on:
@@ -136,16 +148,26 @@ services:
     networks:
       - connector_net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Airflow — scheduler
+  # ═══════════════════════════════════════════════════════════════════════════
   airflow-scheduler:
     image: apache/airflow:2.7.0
     container_name: airflow_scheduler
     env_file:
       - .env
     volumes:
-      - dags_volume:/opt/airflow/dags
-      - ./data:/opt/airflow/data
-      - ./Dataset:/opt/airflow/dataset
+      - dags_volume:/opt/airflow/dags                  # same volume as backend
+      - user_data:/opt/airflow/user_data               # same volume as backend
+      - ./data:/opt/airflow/data                       # same Windows folder as backend
+      - ./Dataset:/opt/airflow/dataset                 # same Windows folder as backend
       - airflow_logs:/opt/airflow/logs
       - ${WINDOWS_DOCUMENTS:-./Dataset}:/opt/airflow/dataset_win
     depends_on:
@@ -168,7 +190,8 @@ services:
 volumes:
   postgres_data:
   airflow_logs:
-  dags_volume:
+  dags_volume:       # shared between backend + airflow-webserver + airflow-scheduler
+  user_data:         # shared between backend + airflow-webserver + airflow-scheduler
 
 networks:
   connector_net:

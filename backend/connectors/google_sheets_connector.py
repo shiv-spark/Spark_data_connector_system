@@ -148,7 +148,7 @@ def _read_urls_from_csv(file_path: str) -> list:
     """
     df = pd.read_csv(file_path)
 
-    # URL column dhundho
+    #find URL column 
     url_col = None
     for col in df.columns:
         if col.strip().lower() in ("url", "sheet_url", "link", "google_sheet"):
@@ -156,7 +156,7 @@ def _read_urls_from_csv(file_path: str) -> list:
             break
 
     if url_col is None:
-        # Pehla column use karo
+        # use first column
         url_col = df.columns[0]
         print(f"No 'url' column found — using first column: '{url_col}'")
 
@@ -199,7 +199,7 @@ def _read_urls_from_json(file_path: str) -> list:
                 # Format 1 — plain string
                 raw_urls.append(item)
             elif isinstance(item, dict):
-                # Format 2 — object, url field dhundho
+                # Format 2 — find object, url field 
                 for key in ("url", "sheet_url", "link", "google_sheet"):
                     if key in item:
                         raw_urls.append(item[key])

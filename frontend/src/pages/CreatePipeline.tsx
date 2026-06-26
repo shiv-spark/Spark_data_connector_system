@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { SchedulerFields } from "@/components/SchedulerFields";
 import { buildCron, defaultSchedule } from "@/lib/schedule";
 
-type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3";
+type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
 
 const base = {
   pipeline_name: "",
@@ -31,6 +31,15 @@ const base = {
   s3_bucket: "",
   s3_key: "",
   s3_file_type: "csv",
+  // ── Snowflake fields ──────────────────
+  sf_account: "",
+  sf_user: "",
+  sf_password: "",
+  sf_warehouse: "",
+  sf_database: "",
+  sf_schema: "PUBLIC",
+  sf_role: "",
+  sf_query: "",
 };
 
 export const CreatePipeline = () => {
@@ -83,6 +92,7 @@ export const CreatePipeline = () => {
                   <option value="api">API</option>
                   <option value="postgres">Postgres</option>
                   <option value="s3">S3</option>
+                  <option value="snowflake">Snowflake</option>
                 </select>
               </label>
               <label className="space-y-1 text-sm font-medium">Target table<Input value={form.table_name} onChange={(e) => update("table_name", e.target.value)} required /></label>
@@ -135,6 +145,18 @@ export const CreatePipeline = () => {
                 <Input placeholder="Bucket" value={form.s3_bucket} onChange={(e) => update("s3_bucket", e.target.value)} />
                 <Input placeholder="Key" value={form.s3_key} onChange={(e) => update("s3_key", e.target.value)} />
                 <Input placeholder="File type" value={form.s3_file_type} onChange={(e) => update("s3_file_type", e.target.value)} />
+              </div>
+            )}
+            {form.connector_type === "snowflake" && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input placeholder="Account (e.g. XROJPNQ-RO43084)" value={form.sf_account} onChange={(e) => update("sf_account", e.target.value)} />
+                <Input placeholder="User" value={form.sf_user} onChange={(e) => update("sf_user", e.target.value)} />
+                <Input placeholder="Password" type="password" value={form.sf_password} onChange={(e) => update("sf_password", e.target.value)} />
+                <Input placeholder="Warehouse" value={form.sf_warehouse} onChange={(e) => update("sf_warehouse", e.target.value)} />
+                <Input placeholder="Database" value={form.sf_database} onChange={(e) => update("sf_database", e.target.value)} />
+                <Input placeholder="Schema (default PUBLIC)" value={form.sf_schema} onChange={(e) => update("sf_schema", e.target.value)} />
+                <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
+                <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={form.sf_query} onChange={(e) => update("sf_query", e.target.value)} />
               </div>
             )}
 

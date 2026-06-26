@@ -1,3 +1,2147 @@
+# import re
+# import json
+# import httpx
+# from pydantic import BaseModel
+# from typing import Optional, List
+# import httpx
+# import os
+# from fastapi.middleware.cors import CORSMiddleware
+# from fastapi import FastAPI, Query, HTTPException
+# from pydantic import BaseModel
+# import psycopg2
+# from psycopg2 import sql
+# import requests
+# import threading
+# import time
+# from requests.auth import HTTPBasicAuth
+# from typing import Optional
+# from utils.dag_generator import create_dag_file, delete_dag_file, list_dag_files
+# from connectors.csv_connector import csv_connector
+# from connectors.excel_connector import excel_connector
+# from connectors.google_sheets_connector import google_sheet_connector
+# from connectors.api_connector import api_connector
+# from utils.ingest_runner import run_ingestion
+# import smtplib
+# from typing import List
+# from email.mime.text import MIMEText
+# from email.mime.multipart import MIMEMultipart
+# from pathlib import Path
+# from dotenv import load_dotenv
+# from datetime import datetime
+# from connectors.postgres_connector import postgres_connector
+# from connectors.s3_connector import s3_connector
+# from connectors.snowflake_connector import snowflake_connector
+
+# from fastapi import FastAPI
+# from agent.agent_router import router as agent_router
+
+# # Import Data Generator router
+# try:
+#     from data_generator.router import router as data_gen_router
+#     DATA_GEN_AVAILABLE = True
+#     print("✓ Data Generator router imported successfully")
+# except ImportError as e:
+#     import traceback
+#     print(f"Warning: Data Generator module not available: {e}")
+#     print(f"Traceback: {traceback.format_exc()}")
+#     DATA_GEN_AVAILABLE = False
+#     data_gen_router = None
+
+# # Load environment variables from project root .env file
+# project_root = Path(__file__).resolve().parent.parent
+# env_path = project_root / ".env"
+# if env_path.exists():
+#     load_dotenv(env_path)
+# else:
+#     load_dotenv()
+
+# # Import Text-to-SQL router (after loading env vars)
+# try:
+#     from text_sql.router import router as text2sql_router
+#     TEXT2SQL_AVAILABLE = True
+#     print("✓ Text-to-SQL router imported successfully")
+# except ImportError as e:
+#     import traceback
+#     print(f"Warning: Text-to-SQL module not available: {e}")
+#     print(f"Traceback: {traceback.format_exc()}")
+#     TEXT2SQL_AVAILABLE = False
+
+# app = FastAPI()
+
+# def _rows_to_dicts(cursor):
+#     """Convert psycopg2 cursor result to list of dictionaries"""
+#     columns = [desc[0] for desc in cursor.description]
+#     return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+# EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+# EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+# EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
+# SMTP_HOST      = os.getenv("SMTP_HOST", "smtp.gmail.com")
+# SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+
+
+
+# def send_failure_email(dag_id: str, run_id: str, error: str = "", status: str = "failed"):
+#     try:
+#         msg = MIMEMultipart()
+#         msg["From"]    = EMAIL_SENDER
+#         msg["To"]      = EMAIL_RECEIVER
+#         msg["Subject"] = f"Pipeline {status.upper()}: {dag_id}"
+
+#         emoji = "✅" if status == "success" else "❌"
+#         body = f"""
+# Pipeline {status.upper()} Alert
+# ──────────────────────────────
+# {emoji} DAG ID : {dag_id}
+#    Run ID : {run_id}
+#    Status : {status.upper()}
+#    {f'Error  : {error}' if status == "failed" else ''}
+
+# Airflow UI: http://localhost:8081
+#         """
+#         msg.attach(MIMEText(body, "plain"))
+#         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+#             server.starttls()
+#             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+#             server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+#         print(f"Alert email sent for: {dag_id} — {status.upper()}")
+#     except Exception as e:
+#         print(f"Email send failed: {e}")
+
+# #################################
+
+# app.include_router(agent_router)
+
+# # Include Text-to-SQL router if available
+# if TEXT2SQL_AVAILABLE:
+#     # Router already has prefix="/text2sql" defined in router.py
+#     app.include_router(text2sql_router)
+#     print("✓ Text-to-SQL router loaded")
+#     # Log available routes
+#     print("✓ Text-to-SQL routes registered:")
+#     for route in text2sql_router.routes:
+#         if hasattr(route, 'methods'):
+#             print(f"    {list(route.methods)} {route.path}")
+# else:
+#     print("⚠ Text-to-SQL router not available - check import errors above")
+
+# # Include Data Generator router if available
+# if DATA_GEN_AVAILABLE:
+#     app.include_router(data_gen_router)
+#     print("✓ Data Generator router loaded")
+#     print("✓ Data Generator routes registered:")
+#     for route in data_gen_router.routes:
+#         if hasattr(route, 'methods'):
+#             print(f"    {list(route.methods)} {route.path}")
+# else:
+#     print("⚠ Data Generator router not available - check import errors above")
+
+# # Startup event to log all registered routes
+# @app.on_event("startup")
+# async def log_routes():
+#     # Check and regenerate business context if schema changed
+#     try:
+#         # Add path to text-sql module
+#         text_sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "text-sql")
+#         sys.path.insert(0, text_sql_path)
+#         from schema_manager import check_schema_changes
+#         print("\n" + "="*60)
+#         print("CHECKING FOR SCHEMA CHANGES...")
+#         print("="*60)
+#         regenerated = check_schema_changes()
+#         if regenerated:
+#             print("✓ Business context regenerated with updated schema")
+#         else:
+#             print("✓ No schema changes detected")
+#     except ImportError as e:
+#         print(f"⚠ Schema manager not available: {e}")
+#     except Exception as e:
+#         print(f"⚠ Schema check failed: {e}")
+    
+#     print("\n" + "="*60)
+#     print("REGISTERED ROUTES:")
+#     print("="*60)
+#     for route in app.routes:
+#         if hasattr(route, 'methods'):
+#             methods = list(route.methods)
+#             if 'GET' in methods or 'POST' in methods or 'PUT' in methods or 'DELETE' in methods:
+#                 print(f"  {methods} {route.path}")
+#     print("="*60 + "\n")
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+# # ─────────────────────────────────────────────
+# # GLOBAL CONFIG
+# # ─────────────────────────────────────────────
+# AIRFLOW_BASE = os.getenv("AIRFLOW_BASE_URL", "http://airflow-webserver:8080/api/v1/dags")
+
+# # AIRFLOW_AUTH = HTTPBasicAuth("admin", "admin")
+# AIRFLOW_AUTH = HTTPBasicAuth(
+#     os.getenv("AIRFLOW_USER", "admin"),
+#     os.getenv("AIRFLOW_PASSWORD", "admin")
+# )
+
+
+
+
+# DAG_MAP = {
+#     "csv":           "dynamic_connector_dag",   
+#     "excel":         "dynamic_connector_dag",
+#     "api":           "dynamic_connector_dag",
+#     "google_sheets": "dynamic_connector_dag",
+#     "snowflake":     "dynamic_connector_dag",
+# }
+
+# OPTION_MAP = {
+#     "1": "append",
+#     "2": "overwrite",
+#     "3": "create_new"
+# }
+
+# # ─────────────────────────────────────────────
+# # DB CONFIG
+# # ─────────────────────────────────────────────
+# DB_CONFIG = {
+#     "host":     os.getenv("DB_HOST",     "postgres"),
+#     "database": os.getenv("DB_NAME",     "airflow"),
+#     "user":     os.getenv("DB_USER",     "airflow"),
+#     "password": os.getenv("DB_PASSWORD", "airflow"),
+#     "port":     os.getenv("DB_PORT",     "5432")
+# }
+
+
+# def get_conn():
+#     return psycopg2.connect(**DB_CONFIG)
+
+
+# class ConnectionRequest(BaseModel):
+#     name: str
+#     source_type: str
+#     config: dict = {}
+
+
+# def ensure_connections_table():
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("""
+#         CREATE TABLE IF NOT EXISTS saved_connections (
+#             id SERIAL PRIMARY KEY,
+#             name VARCHAR(160) NOT NULL,
+#             source_type VARCHAR(60) NOT NULL,
+#             config JSONB NOT NULL DEFAULT '{}'::jsonb,
+#             status VARCHAR(30) NOT NULL DEFAULT 'created',
+#             created_at TIMESTAMP DEFAULT NOW(),
+#             updated_at TIMESTAMP DEFAULT NOW()
+#         )
+#     """)
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+
+
+# def _public_connection(row: dict) -> dict:
+#     config = row.get("config") or {}
+#     safe_config = dict(config)
+#     for key in list(safe_config.keys()):
+#         lower = key.lower()
+#         if "password" in lower or "secret" in lower or "token" in lower or ("key" in lower and "path" not in lower):
+#             safe_config[key] = "********"
+#     return {**row, "config": safe_config}
+
+
+# @app.get("/connections")
+# def list_connections():
+#     ensure_connections_table()
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("""
+#         SELECT id, name, source_type, config, status, created_at, updated_at
+#         FROM saved_connections
+#         ORDER BY updated_at DESC, id DESC
+#     """)
+#     rows = _rows_to_dicts(cur)
+#     cur.close()
+#     conn.close()
+#     return {"connections": [_public_connection(row) for row in rows]}
+
+
+# @app.post("/connections")
+# def save_connection(req: ConnectionRequest):
+#     ensure_connections_table()
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("""
+#         INSERT INTO saved_connections (name, source_type, config, status, updated_at)
+#         VALUES (%s, %s, %s::jsonb, 'connected', NOW())
+#         RETURNING id, name, source_type, config, status, created_at, updated_at
+#     """, (req.name, req.source_type, json.dumps(req.config)))
+#     row = dict(zip([d[0] for d in cur.description], cur.fetchone()))
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+#     return _public_connection(row)
+
+
+# @app.get("/connections/{connection_id}")
+# def get_connection(connection_id: int):
+#     ensure_connections_table()
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("""
+#         SELECT id, name, source_type, config, status, created_at, updated_at
+#         FROM saved_connections WHERE id = %s
+#     """, (connection_id,))
+#     row = cur.fetchone()
+#     if not row:
+#         cur.close()
+#         conn.close()
+#         raise HTTPException(status_code=404, detail="Connection not found")
+#     data = dict(zip([d[0] for d in cur.description], row))
+#     cur.close()
+#     conn.close()
+#     return _public_connection(data)
+
+
+# @app.delete("/connections/{connection_id}")
+# def delete_connection(connection_id: int):
+#     ensure_connections_table()
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("DELETE FROM saved_connections WHERE id = %s RETURNING id", (connection_id,))
+#     deleted = cur.fetchone()
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+#     if not deleted:
+#         raise HTTPException(status_code=404, detail="Connection not found")
+#     return {"status": "DELETED", "id": connection_id}
+
+
+# # ─────────────────────────────────────────────
+# # SNOWFLAKE CONNECTION TEST
+# # ─────────────────────────────────────────────
+
+# class SnowflakeTestRequest(BaseModel):
+#     account: str
+#     user: str
+#     password: str
+#     warehouse: str
+#     database: str
+#     schema: str = "PUBLIC"
+#     role: Optional[str] = None
+
+# @app.post("/test_snowflake_connection")
+# def test_snowflake_conn(req: SnowflakeTestRequest):
+#     """Test Snowflake connection."""
+#     try:
+#         from connectors.snowflake_connector import test_snowflake_connection
+#         success, message = test_snowflake_connection(
+#             account=req.account,
+#             user=req.user,
+#             password=req.password,
+#             warehouse=req.warehouse,
+#             database=req.database,
+#             schema=req.schema,
+#             role=req.role
+#         )
+#         return {"success": success, "message": message}
+#     except Exception as e:
+#         return {"success": False, "message": str(e)}
+
+
+# # ─────────────────────────────────────────────
+# # ROOT
+# # ─────────────────────────────────────────────
+
+# @app.get("/")
+# def root():
+#     return {"message": "SparkBrains Data Connector API Running — Ready to ingest data into Airflow pipelines!"}
+
+
+# # ─────────────────────────────────────────────
+# # VALIDATION
+# # ─────────────────────────────────────────────
+
+# def validate_inputs(option, table_name):
+#     if option not in ["1", "2", "3"]:
+#         raise HTTPException(status_code=400, detail="Invalid option. Use 1, 2, or 3")
+#     if not table_name:
+#         raise HTTPException(status_code=400, detail="table_name is required")
+
+# # ─────────────────────────────────────────────
+# # CSV
+# # ─────────────────────────────────────────────
+
+# class CSVRequest(BaseModel):
+#     file_path: str
+#     option: str
+#     table_name: str | None = None
+#     sync_mode:  str        = "full"
+#     incremental_column: str | None = None
+
+# @app.post("/ingest_csv")
+# def ingest_csv(req: CSVRequest):
+#     validate_inputs(req.option, req.table_name)
+#     return run_ingestion(
+#         csv_connector,
+#         req.file_path,
+#         "CSVConnector",
+#         req.file_path,
+#         option=req.option,
+#         table_name=req.table_name,
+#         sync_mode          = req.sync_mode,
+#         incremental_column = req.incremental_column,
+#     )
+
+
+# # ─────────────────────────────────────────────
+# # EXCEL
+# # ─────────────────────────────────────────────
+
+# class ExcelRequest(BaseModel):
+#     file_path: str
+#     option: str
+#     table_name: str | None = None
+#     sync_mode:  str        = "full"
+#     incremental_column: str | None = None
+
+# @app.post("/ingest_excel")
+# def ingest_excel(req: ExcelRequest):
+#     validate_inputs(req.option, req.table_name)
+#     return run_ingestion(
+#         excel_connector,
+#         req.file_path,
+#         "ExcelConnector",
+#         req.file_path,
+#         option=req.option,
+#         table_name=req.table_name,
+#         sync_mode          = req.sync_mode,
+#         incremental_column = req.incremental_column,
+#     )
+
+
+# # ─────────────────────────────────────────────
+# # GOOGLE SHEETS
+# # ─────────────────────────────────────────────
+
+# class GoogleSheetRequest(BaseModel):
+#     sheet_url: str
+#     option: str
+#     table_name: str | None = None
+#     sync_mode:  str        = "full"
+#     incremental_column: str | None = None
+
+# @app.post("/ingest_google_sheet")
+# def ingest_google_sheet(req: GoogleSheetRequest):
+#     validate_inputs(req.option, req.table_name)
+#     return run_ingestion(
+#         google_sheet_connector,
+#         req.sheet_url,
+#         "GoogleSheetsConnector",
+#         req.sheet_url,
+#         "pandas",
+#         option=req.option,
+#         table_name=req.table_name,
+#         sync_mode          = req.sync_mode,
+#         incremental_column = req.incremental_column,
+#     )
+# # ─────────────────────────────────────────────
+# # Multi-source Google Sheets
+# # ─────────────────────────────────────────────
+
+# class GoogleSheetMultiRequest(BaseModel):
+#     file_path:  str              # URL file  path
+#     option:     str
+#     table_name: str | None = None
+#     engine:     str        = "pandas"
+#     sync_mode:  str        = "full"
+#     incremental_column: str | None = None
+
+
+# @app.post("/ingest_google_sheets_multi")
+# def ingest_google_sheets_multi(req: GoogleSheetMultiRequest):
+#     """
+#     Read multiple Google Sheet URLs from a file and ingest all.
+#     Supported: .txt, .csv, .json, .xlsx
+#     """
+#     validate_inputs(req.option, req.table_name)
+
+#     from connectors.google_sheets_connector import google_sheets_multi_connector
+
+#     return run_ingestion(
+#         google_sheets_multi_connector,
+#         req.file_path,
+#         "GoogleSheetsMultiConnector",
+#         req.file_path,
+#         req.engine,
+#         option             = req.option,
+#         table_name         = req.table_name,
+#         sync_mode          = req.sync_mode,
+#         incremental_column = req.incremental_column,
+#     )
+
+
+
+# # ─────────────────────────────────────────────
+# # API CONNECTOR
+# # ─────────────────────────────────────────────
+
+# class APIRequest(BaseModel):
+#     url: str
+#     option: str
+#     table_name: str | None = None
+#     sync_mode:  str        = "full"
+#     incremental_column: str | None = None
+
+# @app.post("/ingest_api")
+# def ingest_api(req: APIRequest):
+#     validate_inputs(req.option, req.table_name)
+#     return run_ingestion(
+#         api_connector,
+#         req.url,
+#         "APIConnector",
+#         req.url,
+#         option=req.option,
+#         table_name=req.table_name,
+#         sync_mode          = req.sync_mode,
+#         incremental_column = req.incremental_column,
+#     )
+
+# # ─────────────────────────────────────────────
+# # POSTGRES CONNECTOR
+# # ────────────────────────────────────────────
+# from connectors.postgres_connector import postgres_connector
+# class PostgresRequest(BaseModel):
+#     host: str
+#     database: str
+#     user: str
+#     password: str
+#     port: str = "5432"
+#     query: str
+#     option: str
+#     table_name: str | None = None
+#     sync_mode:  str        = "full"
+#     incremental_column: str | None = None
+
+# @app.post("/ingest_postgres")
+# def ingest_postgres(req: PostgresRequest):
+#     validate_inputs(req.option, req.table_name)
+#     source = f"{req.host}/{req.database}"
+#     return run_ingestion(
+#         postgres_connector,
+#         source,
+#         "PostgresConnector",
+#         req.host,
+#         req.database,
+#         req.user,
+#         req.password,
+#         req.port,
+#         req.query,
+#         option=req.option,
+#         table_name=req.table_name,
+#         sync_mode          = req.sync_mode,
+#         incremental_column = req.incremental_column,
+#     )
+
+
+# # ─────────────────────────────────────────────
+# # S3 CONNECTOR
+# # ─────────────────────────────────────────────
+
+# class S3Request(BaseModel):
+#     bucket:     str
+#     key:        str           # e.g. "folder/sales.csv"
+#     file_type:  str = "csv"   # csv, xlsx, parquet, json
+#     option:     str
+#     table_name: str | None = None
+#     sync_mode:  str        = "full"
+#     incremental_column: str | None = None
+
+# @app.post("/ingest_s3")
+# def ingest_s3(req: S3Request):
+#     validate_inputs(req.option, req.table_name)
+#     source = f"s3://{req.bucket}/{req.key}"
+#     return run_ingestion(
+#         s3_connector,
+#         source,
+#         "S3Connector",
+#         req.bucket,
+#         req.key,
+#         req.file_type,
+#         option     = req.option,
+#         table_name = req.table_name,
+#         sync_mode          = req.sync_mode,
+#         incremental_column = req.incremental_column,
+#     )
+
+
+# # ─────────────────────────────────────────────
+# # SNOWFLAKE CONNECTOR
+# # ─────────────────────────────────────────────
+
+# class SnowflakeRequest(BaseModel):
+#     account: str
+#     user: str
+#     password: str
+#     warehouse: str
+#     database: str
+#     schema: str = "PUBLIC"
+#     query: str
+#     option: str
+#     table_name: str | None = None
+#     sync_mode: str = "full"
+#     incremental_column: str | None = None
+#     role: str | None = None
+
+# @app.post("/ingest_snowflake")
+# def ingest_snowflake(req: SnowflakeRequest):
+#     validate_inputs(req.option, req.table_name)
+#     source = f"snowflake://{req.account}/{req.database}/{req.schema}"
+#     return run_ingestion(
+#         snowflake_connector,
+#         source,
+#         "SnowflakeConnector",
+#         req.account,
+#         req.user,
+#         req.password,
+#         req.warehouse,
+#         req.database,
+#         req.schema,
+#         req.query,
+#         role=req.role,
+#         option=req.option,
+#         table_name=req.table_name,
+#         sync_mode=req.sync_mode,
+#         incremental_column=req.incremental_column,
+#     )
+
+
+# @app.get("/runs")
+# def get_runs():
+#     conn = get_conn()
+#     cursor = conn.cursor()
+#     cursor.execute("SELECT * FROM pipeline_runs ORDER BY start_time DESC")
+#     result = _rows_to_dicts(cursor)
+#     conn.close()
+#     return result
+
+
+# @app.get("/logs/{run_id}")
+# def get_logs(run_id: int):
+#     conn = get_conn()
+#     cursor = conn.cursor()
+#     cursor.execute(
+#         "SELECT * FROM pipeline_logs WHERE run_id=%s ORDER BY log_time",
+#         (run_id,)
+#     )
+#     data = cursor.fetchall()
+#     conn.close()
+#     return data
+
+
+# def insert_pipeline_log(data):
+#     conn = get_conn()
+#     cur = conn.cursor()
+ 
+#     query = """
+#     INSERT INTO airflow_pipeline_runs (
+#         dag_id, dag_run_id, pipeline_name,
+#         connector_type, file_path, folder_path,
+#         sheet_url, api_url, operation, table_name,
+#         schedule, status, execution_date, triggered_by
+#     )
+#     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+#     """
+ 
+#     cur.execute(query, (
+#         data.get("dag_id"),
+#         data.get("dag_run_id"),
+#         data.get("pipeline_name"),
+#         data.get("connector_type"),
+#         data.get("file_path"),
+#         data.get("folder_path"),
+#         data.get("sheet_url"),
+#         data.get("api_url"),
+#         data.get("operation"),
+#         data.get("table_name"),
+#         data.get("schedule"),
+#         data.get("status"),
+#         data.get("execution_date"),
+#         data.get("triggered_by", "manual"),
+#     ))
+ 
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+# # ─────────────────────────────────────────────
+# # UPDATE STATUS IN DB
+# # ─────────────────────────────────────────────
+
+# def update_status_in_db(dag_run_id, status):
+#     conn = get_conn()
+#     cur = conn.cursor()
+
+#     cur.execute("""
+#         UPDATE airflow_pipeline_runs
+#         SET status = %s
+#         WHERE dag_run_id = %s
+#     """, (status, dag_run_id))
+
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+
+
+# # ─────────────────────────────────────────────
+# # AUTO STATUS TRACKER — Background Thread
+# # ─────────────────────────────────────────────
+
+# def track_pipeline_status(dag_run_id: str, dag_id: str):
+#     url = f"{AIRFLOW_BASE}/{dag_id}/dagRuns/{dag_run_id}"
+
+#     print(f"🔍 Auto tracking started for: {dag_run_id}")
+
+#     max_attempts = 60
+#     attempt = 0
+
+#     while attempt < max_attempts:
+#         try:
+#             res = requests.get(url, auth=AIRFLOW_AUTH, timeout=10)
+
+#             if res.status_code != 200:
+#                 print(f"⚠️ Airflow API error: {res.status_code}")
+#                 time.sleep(5)
+#                 attempt += 1
+#                 continue
+
+#             data   = res.json()
+#             status = data.get("state")
+
+#             print(f"📊 [{dag_run_id}] Status: {status}")
+
+#             if status in ["success", "failed"]:
+#                 update_status_in_db(dag_run_id, status.upper())
+#                 print(f"✅ Final status '{status.upper()}' saved for: {dag_run_id}")
+#                 send_failure_email(dag_id=dag_id, run_id=dag_run_id, status=status)
+#                 return
+
+#             time.sleep(5)
+#             attempt += 1
+
+#         except Exception as e:
+#             print(f"❌ Tracking error: {e}")
+#             time.sleep(5)
+#             attempt += 1
+
+#     update_status_in_db(dag_run_id, "TIMEOUT")
+#     print(f"⏰ Tracking timeout for: {dag_run_id}")
+
+# # ─────────────────────────────────────────────
+# # MANUAL STATUS CHECK
+# # ─────────────────────────────────────────────
+
+# @app.get("/pipeline_status/{connector_type}/{dag_run_id}")
+# def get_status(connector_type: str, dag_run_id: str):
+#     dag_id = DAG_MAP.get(connector_type)
+#     if not dag_id:
+#         raise HTTPException(status_code=400, detail=f"Invalid connector_type: {connector_type}")
+
+#     url  = f"{AIRFLOW_BASE}/{dag_id}/dagRuns/{dag_run_id}"
+#     res  = requests.get(url, auth=AIRFLOW_AUTH)
+#     data = res.json()
+#     status = data.get("state")
+#     update_status_in_db(dag_run_id, status)
+#     return {"dag_id": dag_id, "dag_run_id": dag_run_id, "status": status}
+
+
+# # ─────────────────────────────────────────────
+# # ALL PIPELINES
+# # ─────────────────────────────────────────────
+
+# @app.get("/all_pipelines")
+# def get_all():
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("SELECT * FROM airflow_pipeline_runs ORDER BY created_at DESC LIMIT 50")
+#     rows = cur.fetchall()
+#     cols = [d[0] for d in cur.description]
+#     conn.close()
+#     return [dict(zip(cols, r)) for r in rows]
+
+
+# # ── Request model ────────────────────────────────────────────────────────────
+
+# class CreatePipelineRequest(BaseModel):
+#     pipeline_name:   str
+#     connector_type:  str
+#     table_name:      str
+#     option:          str         = "1"
+#     after_first_run: Optional[str] = None   # option "3" required — "1" or "2"
+#     schedule:        str         = "*/5 * * * *"
+#     timezone:        Optional[str] = "Asia/Kolkata"
+#     folder_path:     Optional[str] = None
+#     file_path:       Optional[str] = None
+#     sheet_url:       Optional[str] = None
+#     api_url:         Optional[str] = None
+
+#     # ── Postgres fields ──────────────────
+#     src_pg_host:     Optional[str] = None
+#     src_pg_db:       Optional[str] = None
+#     src_pg_user:     Optional[str] = None
+#     src_pg_password: Optional[str] = None
+#     src_pg_port:     Optional[str] = "5432"
+#     pg_query:        Optional[str] = None
+#     # ── S3 fields ────────────────────────
+#     s3_bucket:       Optional[str] = None
+#     s3_key:          Optional[str] = None
+#     s3_file_type:    Optional[str] = "csv"
+#     # ── Snowflake fields ─────────────────
+#     sf_account:      Optional[str] = None
+#     sf_user:         Optional[str] = None
+#     sf_password:     Optional[str] = None
+#     sf_warehouse:    Optional[str] = None
+#     sf_database:     Optional[str] = None
+#     sf_schema:       Optional[str] = "PUBLIC"
+#     sf_query:        Optional[str] = None
+#     sf_role:         Optional[str] = None
+#     # ─── Incremental fields ─────────────────────
+#     sync_mode:     Optional[str] = "full"   # "full" or "incremental"
+#     incremental_column:    Optional[str] = None     # required if load_type is "incremental"
+ 
+
+ 
+# @app.post("/create_pipeline")
+# def create_pipeline(req: CreatePipelineRequest):
+#     result = create_dag_file(req.model_dump())
+ 
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=400, detail=result)
+ 
+#     # ✅ Log pipeline creation to DB
+#     dag_id = result.get("dag_id")
+#     insert_pipeline_log({
+#         "dag_id":         dag_id,
+#         "dag_run_id":     f"created__{dag_id}",   # placeholder — no real run yet
+#         "pipeline_name":  dag_id,
+#         "connector_type": req.connector_type,
+#         "file_path":      req.file_path,
+#         "folder_path":    req.folder_path,
+#         "sheet_url":      req.sheet_url,
+#         "api_url":        req.api_url,
+#         "operation":      OPTION_MAP.get(req.option, "unknown"),
+#         "table_name":     req.table_name,
+#         "schedule":       req.schedule,
+#         "status":         "CREATED",
+#         "execution_date": None,
+#         "triggered_by":   "create_pipeline",
+#     })
+ 
+#     return result
+# # ────────────────────────────────────────────
+# # Multiple sources pipeline creation 
+# # ───────────────────────────────────────────
+
+
+# class SourceConfig(BaseModel):
+#     connector_type: str          # csv, excel, google_sheets, api, postgres, s3, snowflake
+#     file_path:      Optional[str] = None
+#     folder_path:    Optional[str] = None
+#     sheet_url:      Optional[str] = None
+#     api_url:        Optional[str] = None
+#     s3_bucket:      Optional[str] = None
+#     s3_key:         Optional[str] = None
+#     s3_file_type:   Optional[str] = "csv"
+#     src_pg_host:    Optional[str] = None
+#     src_pg_db:      Optional[str] = None
+#     src_pg_user:    Optional[str] = None
+#     src_pg_password:Optional[str] = None
+#     src_pg_port:    Optional[str] = "5432"
+#     pg_query:       Optional[str] = None
+#     # Snowflake fields
+#     sf_account:     Optional[str] = None
+#     sf_user:        Optional[str] = None
+#     sf_password:    Optional[str] = None
+#     sf_warehouse:   Optional[str] = None
+#     sf_database:    Optional[str] = None
+#     sf_schema:      Optional[str] = "PUBLIC"
+#     sf_query:       Optional[str] = None
+#     sf_role:        Optional[str] = None
+
+# class MultiSourcePipelineRequest(BaseModel):
+#     pipeline_name: str
+#     table_name:    str
+#     option:        str          = "1"   # for first source. Subsequent sources will always append (option "1") to avoid overwriting.
+#     schedule:      str          = "*/5 * * * *"
+#     timezone:      Optional[str] = "Asia/Kolkata"
+#     sync_mode:     str          = "full"
+#     incremental_column: Optional[str] = None
+#     sources:       List[SourceConfig]  # ← multiple sources
+
+
+# @app.post("/create_multi_pipeline")
+# def create_multi_pipeline(req: MultiSourcePipelineRequest):
+#     if not req.sources:
+#         raise HTTPException(status_code=400, detail="At least one source required.")
+
+#     from utils.multi_dag_generator import create_multi_dag_file
+#     result = create_multi_dag_file(req.model_dump())
+
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=400, detail=result)
+
+#     return result
+
+# # ────────────────────────────────────────────
+# # Edit existing pipeline
+# # ────────────────────────────────────────────
+
+# from utils.dag_generator import create_dag_file, delete_dag_file, list_dag_files, edit_dag_file
+
+# class EditPipelineRequest(BaseModel):
+#     # source config
+#     folder_path:        Optional[str] = None
+#     file_path:          Optional[str] = None
+#     sheet_url:          Optional[str] = None
+#     api_url:            Optional[str] = None
+#     # scheduling
+#     schedule:           Optional[str] = None
+#     timezone:           Optional[str] = None
+#     # load config
+#     option:             Optional[str] = None
+#     after_first_run:    Optional[str] = None
+#     table_name:         Optional[str] = None
+#     # sync
+#     sync_mode:          Optional[str] = None
+#     incremental_column: Optional[str] = None
+#     # postgres
+#     src_pg_host:        Optional[str] = None
+#     src_pg_db:          Optional[str] = None
+#     src_pg_user:        Optional[str] = None
+#     src_pg_password:    Optional[str] = None
+#     src_pg_port:        Optional[str] = None
+#     pg_query:           Optional[str] = None
+#     # s3
+#     s3_bucket:          Optional[str] = None
+#     s3_key:             Optional[str] = None
+#     s3_file_type:       Optional[str] = None
+#     # snowflake
+#     sf_account:         Optional[str] = None
+#     sf_user:            Optional[str] = None
+#     sf_password:        Optional[str] = None
+#     sf_warehouse:       Optional[str] = None
+#     sf_database:        Optional[str] = None
+#     sf_schema:          Optional[str] = None
+#     sf_query:           Optional[str] = None
+#     sf_role:            Optional[str] = None
+
+
+# @app.patch("/edit_pipeline/{pipeline_name}")
+# def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
+#     """
+#     Update variables of an existing DAG file without regenerating the whole DAG.
+#     Only the fields you pass will be updated — rest remain unchanged.
+
+#     Example:
+#         PATCH /edit_pipeline/sales_data
+#         { "schedule": "0 */6 * * *", "option": "2" }
+#     """
+#     # Only non-None fields pass in edit function 
+#     updates = {k: v for k, v in req.model_dump().items() if v is not None}
+
+#     if not updates:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="At least one field required for update."
+#         )
+
+#     # validate option if provided
+#     if "option" in updates and updates["option"] not in ("1", "2", "3"):
+#         raise HTTPException(
+#             status_code=400,
+#             detail="option '1' (append), '2' (overwrite), and '3' (create only) are valid."
+#         )
+
+#     # sync_mode validate if provided
+#     if "sync_mode" in updates and updates["sync_mode"] not in ("full", "incremental"):
+#         raise HTTPException(
+#             status_code=400,
+#             detail="sync_mode 'full' or 'incremental' is required."
+#         )
+
+#     result = edit_dag_file(pipeline_name, updates)
+
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=404, detail=result)
+
+#     # Update DB record if schedule, table_name, or operation (option) changed
+#     try:
+#         dag_id = f"pipeline_{pipeline_name}" if not pipeline_name.startswith("pipeline_") else pipeline_name
+#         conn = get_conn()
+#         cur  = conn.cursor()
+#         cur.execute("""
+#             UPDATE airflow_pipeline_runs
+#             SET    schedule      = COALESCE(%s, schedule),
+#                    table_name    = COALESCE(%s, table_name),
+#                    operation     = COALESCE(%s, operation)
+#             WHERE  dag_id = %s
+#         """, (
+#             updates.get("schedule"),
+#             updates.get("table_name"),
+#             updates.get("option"),
+#             dag_id,
+#         ))
+#         conn.commit()
+#         cur.close()
+#         conn.close()
+#     except Exception as e:
+#         print(f"DB update failed (non-critical): {e}")
+
+#     return result
+
+
+
+# # ── DELETE /delete_pipeline/{pipeline_name} ──────────────────────────────────
+ 
+# @app.delete("/delete_pipeline/{pipeline_name}")
+# def delete_pipeline(pipeline_name: str):
+#     """
+#     Delete an existing DAG file.
+#     Example: DELETE /delete_pipeline/hr_data_csv
+#     """
+#     result = delete_dag_file(pipeline_name)
+ 
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=404, detail=result)
+ 
+#     return result
+ 
+ 
+# # ── GET /pipelines ────────────────────────────────────────────────────────────
+ 
+# @app.get("/pipelines")
+# def list_pipelines():
+#     """
+#     List of all generated pipeline files.
+#     """
+#     return {
+#         "status":    "SUCCESS",
+#         "pipelines": list_dag_files()
+#     }
+# @app.get("/table/{table_name}")
+# def get_table_data(
+#     table_name: str,
+#     limit:  int            = Query(50,   ge=1, le=1000),
+#     offset: int            = Query(0,    ge=0),
+#     sort_by: Optional[str] = Query(None),
+#     order:   str           = Query("asc", pattern="^(asc|desc)$"),
+#     filter_col: Optional[str] = Query(None),
+#     filter_val: Optional[str] = Query(None),
+# ):
+#     conn   = get_conn()
+#     cursor = conn.cursor()
+
+#     try:
+#         # ── 1. Validate table name ─────────────────────────────────────
+#         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+#             raise HTTPException(status_code=400, detail=f"Invalid table name '{table_name}'.")
+
+#         cursor.execute("""
+#             SELECT EXISTS (
+#                 SELECT FROM information_schema.tables
+#                 WHERE table_schema = 'public' AND table_name = %s
+#             )
+#         """, (table_name,))
+#         if not cursor.fetchone()[0]:
+#             raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found.")
+
+#         # ── 2. Validate sort_by column (must exist in table) ───────────
+#         cursor.execute("""
+#             SELECT column_name FROM information_schema.columns
+#             WHERE table_schema = 'public' AND table_name = %s
+#         """, (table_name,))
+#         valid_columns = {row[0] for row in cursor.fetchall()}
+
+#         if sort_by and sort_by not in valid_columns:
+#             raise HTTPException(status_code=400, detail=f"sort_by column '{sort_by}' not found in table.")
+
+#         if filter_col and filter_col not in valid_columns:
+#             raise HTTPException(status_code=400, detail=f"filter_col '{filter_col}' not found in table.")
+
+#         # ── 3. Build base query with optional filter ───────────────────
+#         #    filter_val is passed as a parameter — never interpolated
+#         where_clause = sql.SQL("")
+#         count_params = []
+#         data_params  = []
+
+#         if filter_col and filter_val is not None:
+#             where_clause = sql.SQL("WHERE CAST({col} AS TEXT) ILIKE %s").format(
+#                 col=sql.Identifier(filter_col)
+#             )
+#             like_val     = f"%{filter_val}%"
+#             count_params = [like_val]
+#             data_params  = [like_val]
+
+#         # ── 4. Total count (for pagination metadata) ───────────────────
+#         count_query = sql.SQL("SELECT COUNT(*) FROM {table} {where}").format(
+#             table=sql.Identifier(table_name),
+#             where=where_clause,
+#         )
+#         cursor.execute(count_query, count_params)
+#         total = cursor.fetchone()[0]
+
+#         # ── 5. Main data query with sort + limit + offset ──────────────
+#         order_clause = sql.SQL("ORDER BY {col} {dir}").format(
+#             col=sql.Identifier(sort_by) if sort_by else sql.Identifier(list(valid_columns)[0]),
+#             dir=sql.SQL("DESC" if order == "desc" else "ASC"),
+#         ) if sort_by else sql.SQL("")
+
+#         data_query = sql.SQL(
+#             "SELECT * FROM {table} {where} {order} LIMIT %s OFFSET %s"
+#         ).format(
+#             table=sql.Identifier(table_name),
+#             where=where_clause,
+#             order=order_clause,
+#         )
+#         data_params.extend([limit, offset])
+#         cursor.execute(data_query, data_params)
+
+#         rows = cursor.fetchall()
+#         cols = [desc[0] for desc in cursor.description]
+#         data = [dict(zip(cols, row)) for row in rows]
+
+#         # ── 6. Response with pagination metadata ───────────────────────
+#         return {
+#             "table":      table_name,
+#             "columns":    sorted(valid_columns),
+#             "pagination": {
+#                 "total":    total,
+#                 "limit":    limit,
+#                 "offset":   offset,
+#                 "has_more": (offset + limit) < total,
+#                 "page":     (offset // limit) + 1,
+#                 "pages":    -(-total // limit),   # ceiling division
+#             },
+#             "filter": {
+#                 "col": filter_col,
+#                 "val": filter_val,
+#             },
+#             "sort": {
+#                 "col":   sort_by,
+#                 "order": order,
+#             },
+#             "row_count": len(data),
+#             "data":      data,
+#         }
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+#     finally:
+#         conn.close()
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # DAG PAUSE / UNPAUSE
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# @app.patch("/pipeline/{pipeline_name}/pause")
+# def pause_pipeline(pipeline_name: str):
+#     """
+#     DAG pause .
+#     Example: PATCH /pipeline/hr_analytics_testing/pause
+#     """
+#     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+
+#     url    = f"{AIRFLOW_BASE}/{dag_id}"
+
+#     res  = requests.patch(url, json={"is_paused": True}, auth=AIRFLOW_AUTH)
+#     data = res.json()
+
+#     if res.status_code != 200:
+#         raise HTTPException(status_code=res.status_code, detail=data)
+
+#     return {
+#         "status":  "PAUSED",
+#         "dag_id":  dag_id,
+#         "message": f"Pipeline '{dag_id}' paused."
+#     }
+
+
+# @app.patch("/pipeline/{pipeline_name}/unpause")
+# def unpause_pipeline(pipeline_name: str):
+#     """
+#     DAG unpause  (resume).
+#     Example: PATCH /pipeline/hr_analytics_testing/unpause
+#     """
+#     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+#     url    = f"{AIRFLOW_BASE}/{dag_id}"
+
+#     res  = requests.patch(url, json={"is_paused": False}, auth=AIRFLOW_AUTH)
+#     data = res.json()
+
+#     if res.status_code != 200:
+#         raise HTTPException(status_code=res.status_code, detail=data)
+
+#     return {
+#         "status":  "ACTIVE",
+#         "dag_id":  dag_id,
+#         "message": f"Pipeline '{dag_id}' is active ."
+#     }
+
+
+# @app.get("/pipeline/{pipeline_name}/status")
+# def pipeline_status(pipeline_name: str):
+#     """
+#     DAG  current status  — paused / active.
+#     Example: GET /pipeline/hr_analytics_testing/status
+#     """
+#     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+
+#     url    = f"{AIRFLOW_BASE}/{dag_id}"
+
+#     res  = requests.get(url, auth=AIRFLOW_AUTH)
+#     data = res.json()
+
+#     if res.status_code != 200:
+#         raise HTTPException(status_code=res.status_code, detail=data)
+
+#     return {
+#         "dag_id":    dag_id,
+#         "is_paused": data.get("is_paused"),
+#         "status":    "PAUSED" if data.get("is_paused") else "ACTIVE",
+#         "next_run":  data.get("next_dagrun"),
+#     }
+
+# ##### these are helper functions for the connectors and should ideally be in their respective files, but keeping here for now to avoid merge conflicts with recent edits in connectors/google_sheets_connector.py
+
+# @app.get("/pipeline/{pipeline_name}/runs")
+# def get_pipeline_runs(
+#     pipeline_name: str,
+#     limit: int = 20,
+#     offset: int = 0,
+#     status: Optional[str] = None,       # filter by: success, failed, running
+# ):
+#     """
+#     Get all historical runs for a specific pipeline.
+ 
+#     Examples:
+#         GET /pipeline/hr_data_csv/runs
+#         GET /pipeline/hr_data_csv/runs?limit=10&offset=0
+#         GET /pipeline/hr_data_csv/runs?status=failed
+#     """
+#     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+ 
+#     conn = get_conn()
+#     cur  = conn.cursor()
+ 
+#     try:
+#         # Build query with optional status filter
+#         base_query = """
+#             SELECT
+#                 id,
+#                 dag_id,
+#                 dag_run_id,
+#                 pipeline_name,
+#                 connector_type,
+#                 file_path,
+#                 folder_path,
+#                 sheet_url,
+#                 api_url,
+#                 operation,
+#                 table_name,
+#                 schedule,
+#                 status,
+#                 triggered_by,
+#                 execution_date,
+#                 created_at
+#             FROM airflow_pipeline_runs
+#             WHERE dag_id = %s
+#         """
+#         params = [dag_id]
+ 
+#         if status:
+#             base_query += " AND UPPER(status) = %s"
+#             params.append(status.upper())
+ 
+#         base_query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+#         params.extend([limit, offset])
+ 
+#         cur.execute(base_query, params)
+#         rows = cur.fetchall()
+#         cols = [desc[0] for desc in cur.description]
+ 
+#         # Total count (for pagination)
+#         count_query = "SELECT COUNT(*) FROM airflow_pipeline_runs WHERE dag_id = %s"
+#         count_params = [dag_id]
+#         if status:
+#             count_query += " AND UPPER(status) = %s"
+#             count_params.append(status.upper())
+ 
+#         cur.execute(count_query, count_params)
+#         total = cur.fetchone()[0]
+ 
+#         runs = [dict(zip(cols, row)) for row in rows]
+ 
+#         # Summary stats
+#         cur.execute("""
+#             SELECT
+#                 COUNT(*)                                         AS total_runs,
+#                 COUNT(*) FILTER (WHERE UPPER(status) = 'SUCCESS') AS success_count,
+#                 COUNT(*) FILTER (WHERE UPPER(status) = 'FAILED')  AS failed_count,
+#                 COUNT(*) FILTER (WHERE UPPER(status) = 'RUNNING') AS running_count,
+#                 MAX(created_at)                                  AS last_run_at
+#             FROM airflow_pipeline_runs
+#             WHERE dag_id = %s
+#         """, [dag_id])
+ 
+#         stats_row = cur.fetchone()
+#         stats = {
+#             "total_runs":    stats_row[0],
+#             "success_count": stats_row[1],
+#             "failed_count":  stats_row[2],
+#             "running_count": stats_row[3],
+#             "last_run_at":   stats_row[4].isoformat() if stats_row[4] else None,
+#         }
+ 
+#         return {
+#             "pipeline":   dag_id,
+#             "stats":      stats,
+#             "pagination": {
+#                 "total":   total,
+#                 "limit":   limit,
+#                 "offset":  offset,
+#                 "has_more": (offset + limit) < total,
+#             },
+#             "runs": runs,
+#         }
+ 
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+ 
+#     finally:
+#         cur.close()
+#         conn.close()
+
+# import glob as _glob
+ 
+ 
+# def _read_log_from_filesystem(pipeline_id: str, dag_run_id: str = None) -> dict:
+#     """
+#     Fallback — read log directly from Airflow log files
+#     when DB has no entry yet (e.g. run still in progress).
+#     """
+#     if dag_run_id:
+#         # specific run
+#         pattern = (
+#             f"E:\\Universal_data_connector_system\\airflow\\logs\\"
+#             f"dag_id={pipeline_id}\\run_id={dag_run_id}"
+#             f"\\task_id=run_connector\\attempt=*.log"
+#         )
+#     else:
+#         # latest run — wildcard on run_id
+#         pattern = (
+#             f"E:\\Universal_data_connector_system\\airflow\\logs\\"
+#             f"dag_id={pipeline_id}\\run_id=*"
+#             f"\\task_id=run_connector\\attempt=*.log"
+#         )
+ 
+#     log_files = sorted(_glob.glob(pattern))
+#     if not log_files:
+#         return {"source": "filesystem", "log_content": None, "log_file_path": None}
+ 
+#     latest = log_files[-1]
+#     try:
+#         with open(latest, "r", encoding="utf-8", errors="replace") as f:
+#             content = f.read()
+#         return {"source": "filesystem", "log_content": content, "log_file_path": latest}
+#     except Exception as e:
+#         return {"source": "filesystem", "log_content": f"Could not read: {e}", "log_file_path": latest}
+ 
+ 
+# # ─────────────────────────────────────────────
+# # GET /pipeline/{name}/logs
+# # Returns latest run's logs
+# # ─────────────────────────────────────────────
+ 
+# @app.get("/pipeline/{pipeline_name}/logs")
+# def get_pipeline_logs_latest(pipeline_name: str):
+#     """
+#     Get logs of the latest run of a pipeline.
+#     Tries DB first, falls back to filesystem.
+ 
+#     Example: GET /pipeline/hr_data_csv/logs
+#     """
+#     pipeline_id = (
+#         pipeline_name
+#         if pipeline_name.startswith("pipeline_")
+#         else f"pipeline_{pipeline_name}"
+#     )
+ 
+#     conn = get_conn()
+#     cur  = conn.cursor()
+ 
+#     try:
+#         cur.execute("""
+#             SELECT
+#                 l.id, l.pipeline_id, l.dag_run_id, l.task_id,
+#                 l.status, l.log_content, l.log_file_path, l.created_at
+#             FROM pipeline_dag_logs l
+#             WHERE l.pipeline_id = %s
+#             ORDER BY l.created_at DESC
+#             LIMIT 1
+#         """, (pipeline_id,))
+ 
+#         row = cur.fetchone()
+ 
+#         if row:
+#             cols = [desc[0] for desc in cur.description]
+#             data = dict(zip(cols, row))
+#             return {
+#                 "pipeline":  pipeline_id,
+#                 "source":    "db",
+#                 "dag_run_id": data["dag_run_id"],
+#                 "status":    data["status"],
+#                 "log_file":  data["log_file_path"],
+#                 "log":       data["log_content"],
+#                 "logged_at": data["created_at"],
+#             }
+ 
+#         # fallback to filesystem
+#         fs = _read_log_from_filesystem(pipeline_id)
+#         if fs["log_content"]:
+#             return {
+#                 "pipeline":  pipeline_id,
+#                 "source":    "filesystem",
+#                 "dag_run_id": None,
+#                 "status":    None,
+#                 "log_file":  fs["log_file_path"],
+#                 "log":       fs["log_content"],
+#                 "logged_at": None,
+#             }
+ 
+#         raise HTTPException(
+#             status_code=404,
+#             detail=f"No logs found for pipeline '{pipeline_id}'. Has it run yet?"
+#         )
+ 
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+#     finally:
+#         cur.close()
+#         conn.close()
+ 
+ 
+# # ─────────────────────────────────────────────
+# # GET /pipeline/{name}/logs/{dag_run_id}
+# # Returns logs for a specific run
+# # ─────────────────────────────────────────────
+ 
+# @app.get("/pipeline/{pipeline_name}/logs/{dag_run_id:path}")
+# def get_pipeline_logs_by_run(pipeline_name: str, dag_run_id: str):
+#     """
+#     Get logs of a specific run by dag_run_id.
+#     Tries DB first, falls back to filesystem.
+ 
+#     Example: GET /pipeline/hr_data_csv/logs/run__pipeline_hr_data_csv__20260324_103000
+#     """
+#     pipeline_id = (
+#         pipeline_name
+#         if pipeline_name.startswith("pipeline_")
+#         else f"pipeline_{pipeline_name}"
+#     )
+ 
+#     conn = get_conn()
+#     cur  = conn.cursor()
+ 
+#     try:
+#         cur.execute("""
+#             SELECT
+#                 l.id, l.pipeline_id, l.dag_run_id, l.task_id,
+#                 l.status, l.log_content, l.log_file_path, l.created_at
+#             FROM pipeline_dag_logs l
+#             WHERE l.pipeline_id = %s
+#               AND l.dag_run_id   = %s
+#             ORDER BY l.created_at DESC
+#             LIMIT 1
+#         """, (pipeline_id, dag_run_id))
+ 
+#         row = cur.fetchone()
+ 
+#         if row:
+#             cols = [desc[0] for desc in cur.description]
+#             data = dict(zip(cols, row))
+#             return {
+#                 "pipeline":  pipeline_id,
+#                 "source":    "db",
+#                 "dag_run_id": data["dag_run_id"],
+#                 "status":    data["status"],
+#                 "log_file":  data["log_file_path"],
+#                 "log":       data["log_content"],
+#                 "logged_at": data["created_at"],
+#             }
+ 
+#         # fallback to filesystem
+#         fs = _read_log_from_filesystem(pipeline_id, dag_run_id)
+#         if fs["log_content"]:
+#             return {
+#                 "pipeline":  pipeline_id,
+#                 "source":    "filesystem",
+#                 "dag_run_id": dag_run_id,
+#                 "status":    None,
+#                 "log_file":  fs["log_file_path"],
+#                 "log":       fs["log_content"],
+#                 "logged_at": None,
+#             }
+ 
+#         raise HTTPException(
+#             status_code=404,
+#             detail=f"No logs found for run '{dag_run_id}' in pipeline '{pipeline_id}'."
+#         )
+ 
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+#     finally:
+#         cur.close()
+#         conn.close()
+
+
+
+# # metrics endpoint to get historical performance data for a pipeline
+
+# @app.get("/metrics/{pipeline_id}")
+# def get_pipeline_metrics(pipeline_id: str, limit: int = 20):
+#     """Latest N runs metrics for a pipeline."""
+#     conn = get_conn()
+#     cur  = conn.cursor()
+
+#     pipeline_id = pipeline_id if pipeline_id.startswith("pipeline_") \
+#                   else f"pipeline_{pipeline_id}"
+
+#     cur.execute("""
+#         SELECT
+#             status,
+#             rows_inserted,
+#             rows_skipped,
+#             duration_sec,
+#             evolved_columns,
+#             match_pct,
+#             file_name,
+#             error_message,
+#             logged_at
+#         FROM pipeline_metrics
+#         WHERE pipeline_id = %s
+#         ORDER BY logged_at DESC
+#         LIMIT %s
+#     """, (pipeline_id, limit))
+
+#     rows = cur.fetchall()
+#     cols = [d[0] for d in cur.description]
+#     conn.close()
+
+#     return {"pipeline": pipeline_id, "runs": [dict(zip(cols, r)) for r in rows]}
+
+# # aggregated metrics summary for all pipelines
+# @app.get("/metrics/summary/all")
+# def get_all_metrics_summary():
+#     """All pipelines aggregated summary."""
+#     conn = get_conn()
+#     cur  = conn.cursor()
+
+#     cur.execute("""
+#         SELECT
+#             pipeline_id,
+#             connector_type,
+#             COUNT(*)                                            AS total_runs,
+#             SUM(rows_inserted)                                  AS total_rows,
+#             ROUND(AVG(duration_sec)::numeric, 2)               AS avg_duration_sec,
+#             COUNT(*) FILTER (WHERE status = 'SUCCESS')          AS success_count,
+#             COUNT(*) FILTER (WHERE status = 'FAILED')           AS failed_count,
+#             ROUND(AVG(match_pct)::numeric, 1)                  AS avg_match_pct,
+#             MAX(logged_at)                                      AS last_run_at
+#         FROM pipeline_metrics
+#         GROUP BY pipeline_id, connector_type
+#         ORDER BY last_run_at DESC
+#     """)
+
+#     rows = cur.fetchall()
+#     cols = [d[0] for d in cur.description]
+#     conn.close()
+
+#     return {"summary": [dict(zip(cols, r)) for r in rows]}
+
+
+
+
+# @app.get("/dashboard/summary")
+# def dashboard_summary():
+#     conn = get_conn()
+#     cur  = conn.cursor()
+
+#     try:
+#         # ── 1. Metric cards (last 24h) ────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 COUNT(*)                                              AS total_runs,
+#                 COUNT(*) FILTER (WHERE status = 'SUCCESS')           AS success,
+#                 COUNT(*) FILTER (WHERE status = 'FAILED')            AS failed,
+#                 COUNT(*) FILTER (WHERE status = 'SKIPPED')           AS skipped,
+#                 COALESCE(SUM(rows_inserted), 0)                      AS total_rows,
+#                 ROUND(AVG(duration_sec)::numeric, 2)                 AS avg_duration,
+#                 ROUND(
+#                     COUNT(*) FILTER (WHERE status = 'SUCCESS') * 100.0
+#                     / NULLIF(COUNT(*), 0), 1
+#                 )                                                     AS success_rate_pct
+#             FROM pipeline_metrics
+#             WHERE logged_at >= NOW() - INTERVAL '7 days'
+#         """)
+#         metrics = dict(zip([d[0] for d in cur.description], cur.fetchone()))
+
+#         # ── 2. System health ──────────────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 CASE
+#                     WHEN COUNT(*) FILTER (WHERE status = 'FAILED'
+#                          AND logged_at >= NOW() - INTERVAL '1 hour') > 0
+#                     THEN 'DEGRADED'
+#                     WHEN COUNT(*) FILTER (WHERE status = 'FAILED'
+#                          AND logged_at >= NOW() - INTERVAL '7 days') > 3
+#                     THEN 'WARNING'
+#                     ELSE 'HEALTHY'
+#                 END AS system_health
+#             FROM pipeline_metrics
+#         """)
+#         health = cur.fetchone()[0]
+
+#         # ── 3. Last 7 days daily breakdown ────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 DATE(logged_at)                                       AS day,
+#                 COUNT(*) FILTER (WHERE status = 'SUCCESS')           AS success,
+#                 COUNT(*) FILTER (WHERE status = 'FAILED')            AS failed,
+#                 COUNT(*) FILTER (WHERE status = 'SKIPPED')           AS skipped,
+#                 COALESCE(SUM(rows_inserted), 0)                      AS rows
+#             FROM pipeline_metrics
+#             WHERE logged_at >= NOW() - INTERVAL '7 days'
+#             GROUP BY DATE(logged_at)
+#             ORDER BY day
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         daily = [dict(zip(cols, r)) for r in rows]
+
+#         # ── 4. Hourly trend (last 24h) ────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 DATE_TRUNC('hour', logged_at)                        AS hour,
+#                 COUNT(*)                                             AS total,
+#                 COUNT(*) FILTER (WHERE status = 'SUCCESS')           AS success,
+#                 COUNT(*) FILTER (WHERE status = 'FAILED')            AS failed,
+#                 COALESCE(SUM(rows_inserted), 0)                      AS rows
+#             FROM pipeline_metrics
+#             WHERE logged_at >= NOW() - INTERVAL '24 hours'
+#             GROUP BY DATE_TRUNC('hour', logged_at)
+#             ORDER BY hour
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         hourly = [dict(zip(cols, r)) for r in rows]
+
+#         # ── 5. Connector breakdown ────────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 connector_type,
+#                 COUNT(*)                                             AS runs,
+#                 ROUND(AVG(duration_sec)::numeric, 2)                AS avg_dur,
+#                 COALESCE(SUM(rows_inserted), 0)                     AS total_rows,
+#                 ROUND(
+#                     COUNT(*) FILTER (WHERE status = 'SUCCESS') * 100.0
+#                     / NULLIF(COUNT(*), 0), 1
+#                 )                                                    AS success_rate
+#             FROM pipeline_metrics
+#             GROUP BY connector_type
+#             ORDER BY runs DESC
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         connectors = [dict(zip(cols, r)) for r in rows]
+
+#         # ── 6. Per pipeline health ────────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 pipeline_id,
+#                 connector_type,
+#                 COUNT(*)                                             AS total_runs,
+#                 COUNT(*) FILTER (WHERE status = 'SUCCESS')          AS success,
+#                 COUNT(*) FILTER (WHERE status = 'FAILED')           AS failed,
+#                 ROUND(
+#                     COUNT(*) FILTER (WHERE status = 'SUCCESS') * 100.0
+#                     / NULLIF(COUNT(*), 0), 1
+#                 )                                                    AS success_rate,
+#                 ROUND(AVG(duration_sec)::numeric, 2)                AS avg_duration,
+#                 (ARRAY_AGG(status ORDER BY logged_at DESC))[1]      AS last_status,
+#                 MAX(logged_at)                                       AS last_run_at
+#             FROM pipeline_metrics
+#             GROUP BY pipeline_id, connector_type
+#             ORDER BY last_run_at DESC
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         pipeline_health = [dict(zip(cols, r)) for r in rows]
+
+#         # ── 7. Top failing pipelines ──────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 pipeline_id,
+#                 COUNT(*)                                             AS fail_count,
+#                 MAX(error_message)                                   AS last_error,
+#                 MAX(logged_at)                                       AS last_failed_at
+#             FROM pipeline_metrics
+#             WHERE status = 'FAILED'
+#               AND logged_at >= NOW() - INTERVAL '7 days'
+#             GROUP BY pipeline_id
+#             ORDER BY fail_count DESC
+#             LIMIT 5
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         top_failing = [dict(zip(cols, r)) for r in rows]
+
+#         # ── 8. Data volume trend (last 30 days) ───────────────────
+#         cur.execute("""
+#             SELECT
+#                 DATE(logged_at)                                      AS day,
+#                 COALESCE(SUM(rows_inserted), 0)                     AS total_rows,
+#                 COUNT(*)                                             AS runs
+#             FROM pipeline_metrics
+#             WHERE logged_at >= NOW() - INTERVAL '30 days'
+#               AND status = 'SUCCESS'
+#             GROUP BY DATE(logged_at)
+#             ORDER BY day
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         volume_trend = [dict(zip(cols, r)) for r in rows]
+
+#         # ── 9. Recent runs ────────────────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 pipeline_id,
+#                 connector_type,
+#                 status,
+#                 rows_inserted,
+#                 duration_sec,
+#                 error_message,
+#                 logged_at
+#             FROM pipeline_metrics
+#             ORDER BY logged_at DESC
+#             LIMIT 20
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         recent = [dict(zip(cols, r)) for r in rows]
+
+#         return {
+#             "system_health":   health,           # HEALTHY / WARNING / DEGRADED
+#             "metrics":         metrics,           # 24h summary + success_rate_pct
+#             "daily":           daily,             # last 7 days
+#             "hourly":          hourly,            # last 24h hour by hour
+#             "connectors":      connectors,        # per connector breakdown
+#             "pipeline_health": pipeline_health,   # per pipeline success rate
+#             "top_failing":     top_failing,       # worst 5 pipelines
+#             "volume_trend":    volume_trend,      # 30 day row volume
+#             "recent_runs":     recent,            # last 20 runs
+#         }
+
+#     finally:
+#         cur.close()
+#         conn.close()
+
+
+# @app.get("/health")
+# def health_check():
+#     try:
+#         conn = get_conn()
+#         conn.close()
+#         db_status = "ok"
+#     except:
+#         db_status = "unreachable"
+
+#     return {
+#         "status":    "ok" if db_status == "ok" else "degraded",
+#         "database":  db_status,
+#         "timestamp": datetime.now().isoformat(),
+#         "version":   "1.7"
+#     }
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # CHATBOT ENDPOINT
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# class ChatMessage(BaseModel):
+#     role:    str   # "user" ya "assistant"
+#     content: str
+
+
+# class ChatRequest(BaseModel):
+#     messages:      List[ChatMessage]
+#     openrouter_key: str
+#     model:         str = "mistralai/mistral-7b-instruct"
+#     pipeline_name: Optional[str] = None   # specific pipeline ke logs chahiye to
+
+
+# # ── DB context builder ────────────────────────────────────────────────────────
+
+# def _build_db_context(pipeline_name: Optional[str] = None) -> str:
+#     """
+#     Create a context string by fetching relevant data from the database.
+#     This context is provided to the LLM.
+#     """
+#     parts = []
+#     conn  = get_conn()
+#     cur   = conn.cursor()
+
+#     try:
+#         # ── 1. pipeline_runs — last 20 ───────────────────────────
+#         cur.execute("""
+#             SELECT run_id, connector_name, source, start_time, end_time,
+#                    status, records_count, error
+#             FROM pipeline_runs
+#             ORDER BY start_time DESC
+#             LIMIT 20
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_runs (Last 20) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"run_id={rd['run_id']} | connector={rd['connector_name']} | "
+#                     f"status={rd['status']} | rows={rd['records_count']} | "
+#                     f"error={str(rd['error'] or '')[:100]} | "
+#                     f"start={rd['start_time']} | end={rd['end_time']}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 2. pipeline_metrics — last 30 ────────────────────────
+#         cur.execute("""
+#             SELECT pipeline_id, table_name, rows_inserted, rows_skipped,
+#                    rows_failed, duration_sec, evolved_columns, match_pct,
+#                    connector_type, option, status, error_message, logged_at
+#             FROM pipeline_metrics
+#             ORDER BY logged_at DESC
+#             LIMIT 30
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_metrics (Last 30) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"pipeline={rd['pipeline_id']} | status={rd['status']} | "
+#                     f"rows_inserted={rd['rows_inserted']} | "
+#                     f"duration={rd['duration_sec']}s | "
+#                     f"match_pct={rd['match_pct']}% | "
+#                     f"connector={rd['connector_type']} | "
+#                     f"evolved_cols={rd['evolved_columns']} | "
+#                     f"error={str(rd['error_message'] or '')[:100]} | "
+#                     f"time={rd['logged_at']}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 3. airflow_pipeline_runs — last 20 ───────────────────
+#         cur.execute("""
+#             SELECT dag_id, dag_run_id, pipeline_name, connector_type,
+#                    operation, table_name, schedule, status,
+#                    triggered_by, error_message, created_at
+#             FROM airflow_pipeline_runs
+#             ORDER BY created_at DESC
+#             LIMIT 20
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== airflow_pipeline_runs (Last 20) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"dag={rd['dag_id']} | status={rd['status']} | "
+#                     f"connector={rd['connector_type']} | "
+#                     f"schedule={rd['schedule']} | "
+#                     f"triggered_by={rd['triggered_by']} | "
+#                     f"error={str(rd['error_message'] or '')[:100]} | "
+#                     f"time={rd['created_at']}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 4. pipeline_logs — recent errors ─────────────────────
+#         cur.execute("""
+#             SELECT pl.run_id, pl.log_time, pl.level, pl.message
+#             FROM pipeline_logs pl
+#             WHERE pl.level = 'ERROR'
+#             ORDER BY pl.log_time DESC
+#             LIMIT 15
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_logs (Recent ERRORS) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"run_id={rd['run_id']} | time={rd['log_time']} | "
+#                     f"{rd['message'][:150]}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 5. pipeline_dag_logs — specific pipeline ya latest ───
+#         if pipeline_name:
+#             pid = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+#             cur.execute("""
+#                 SELECT pipeline_id, dag_run_id, task_id, status,
+#                        log_content, log_file_path, created_at
+#                 FROM pipeline_dag_logs
+#                 WHERE pipeline_id = %s
+#                 ORDER BY created_at DESC
+#                 LIMIT 3
+#             """, (pid,))
+#         else:
+#             cur.execute("""
+#                 SELECT pipeline_id, dag_run_id, task_id, status,
+#                        log_content, log_file_path, created_at
+#                 FROM pipeline_dag_logs
+#                 ORDER BY created_at DESC
+#                 LIMIT 5
+#             """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_dag_logs (Latest) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 # Log content truncate karo — too long hota hai
+#                 log_snippet = str(rd['log_content'] or '')[:400]
+#                 lines.append(
+#                     f"pipeline={rd['pipeline_id']} | "
+#                     f"run={rd['dag_run_id']} | "
+#                     f"status={rd['status']} | "
+#                     f"time={rd['created_at']}\n"
+#                     f"LOG_SNIPPET: {log_snippet}..."
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 6. Summary stats ──────────────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 COUNT(*)                                              AS total_runs,
+#                 COUNT(*) FILTER (WHERE status = 'SUCCESS')           AS success,
+#                 COUNT(*) FILTER (WHERE status = 'FAILED')            AS failed,
+#                 COUNT(*) FILTER (WHERE status = 'SKIPPED')           AS skipped,
+#                 COALESCE(SUM(rows_inserted), 0)                      AS total_rows,
+#                 ROUND(AVG(duration_sec)::numeric, 2)                 AS avg_duration,
+#                 ROUND(
+#                     COUNT(*) FILTER (WHERE status = 'SUCCESS') * 100.0
+#                     / NULLIF(COUNT(*), 0), 1
+#                 )                                                     AS success_rate
+#             FROM pipeline_metrics
+#             WHERE logged_at >= NOW() - INTERVAL '24 hours'
+#         """)
+#         row  = cur.fetchone()
+#         cols = [d[0] for d in cur.description]
+#         if row:
+#             rd = dict(zip(cols, row))
+#             parts.insert(0, f"""=== SYSTEM SUMMARY (Last 24h) ===
+# Total Runs   : {rd['total_runs']}
+# Success      : {rd['success']}
+# Failed       : {rd['failed']}
+# Skipped      : {rd['skipped']}
+# Success Rate : {rd['success_rate']}%
+# Total Rows   : {rd['total_rows']:,}
+# Avg Duration : {rd['avg_duration']}s
+# """)
+
+#     except Exception as e:
+#         parts.append(f"=== DB FETCH ERROR: {e} ===")
+#     finally:
+#         cur.close()
+#         conn.close()
+
+#     return "\n\n".join(parts)
+
+
+# SYSTEM_PROMPT = """
+#         You are the Pipeline Assistant for SparkBrains Universal Data Connector.
+
+#         Your role:
+#         Help users understand, debug, and monitor their data pipelines using the live database context.
+
+#         Tone:
+#         - Conversational, friendly, and clear (like a helpful teammate)
+#         - Avoid robotic or overly formal responses
+#         - Keep it concise but natural
+
+#         Context:
+#         You have access to:
+#         - pipeline_runs: run_id, connector_name, status, records_count, error, start_time, end_time
+#         - pipeline_logs: level (INFO/ERROR), message, timestamp, run_id
+#         - pipeline_metrics: rows_inserted, duration_sec, match_pct, evolved_columns, connector_type, status, error_message
+#         - airflow_pipeline_runs: dag_id, connector_type, schedule, status, triggered_by, error_message
+#         - pipeline_dag_logs: pipeline_id, log_content, log_file_path, status, created_at
+
+#         Guidelines:
+#         - Always base answers strictly on the DB context — don’t assume missing data
+#         - If no data is available, say clearly:
+#         → "I couldn’t find any data for this — try running the pipeline first."
+
+#         Response Style:
+#         - Start with a short, natural explanation (1–2 lines)
+#         - Then provide structured insights if needed:
+#         - ✅ Status summary
+#         - ⚠️ Issues (if any)
+#         - 💡 Suggested fix (practical and actionable)
+#         - Use bullet points, not long paragraphs
+#         - Avoid sounding like logs or raw SQL output
+
+#         Error Handling:
+#         - Clearly explain the root cause in simple terms
+#         - Suggest a fix like you would to a teammate (practical, not generic)
+
+#         Formatting:
+#         - Use Markdown (bold, bullets, small tables)
+#         - Format numbers cleanly (e.g., 10,000 rows, 25 sec)
+
+#         Length:
+#         - Keep responses short and useful (100–250 words preferred)
+
+#         Goal:
+#         Make the user feel like they are chatting with a smart engineer, not reading a system report.
+#         """
+
+
+# # ── Endpoint ──────────────────────────────────────────────────────────────────
+
+# @app.post("/chatbot")
+# async def chatbot(req: ChatRequest):
+#     """
+#     Ask questions about your data pipelines and get insights.
+#     It fetches live context from the database and generates answers using OpenRouter.
+
+#     Request:
+#         messages:       Chat history
+#         openrouter_key: API key
+#         model:          OpenRouter model name
+#         pipeline_name:  Optional — For specific pipeline logs
+#     """
+#     # ── DB context fetch karo ─────────────────────────────────────
+#     try:
+#         db_context = _build_db_context(req.pipeline_name)
+#     except Exception as e:
+#         db_context = f"DB context fetch failed: {e}"
+
+#     # ── Messages build  ───────────────────────────────────────
+#     # IN Last user message inject context  
+#     messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+#     # History add  (last 8 messages)
+#     history = req.messages[-8:]
+#     for i, msg in enumerate(history):
+#         if i == len(history) - 1 and msg.role == "user":
+#             # DB context inject in the last user message
+#             messages_for_llm.append({
+#                 "role": "user",
+#                 "content": f"""User ka sawaal: {msg.content}
+
+# --- DATABASE CONTEXT (Live Data from PostgreSQL) ---
+# {db_context}
+# --- END CONTEXT ---
+# Present your answer clearly and concisely based on the live data provided above. 
+# If the context doesn't have the answer, say "Data not found in context" instead of making assumptions."""
+#             })
+#         else:
+#             messages_for_llm.append({
+#                 "role":    msg.role,
+#                 "content": msg.content,
+#             })
+
+#     # ── OpenRouter call ───────────────────────────────────────────
+#     try:
+#         async with httpx.AsyncClient(timeout=30) as client:
+#             response = await client.post(
+#                 "https://openrouter.ai/api/v1/chat/completions",
+#                 headers={
+#                     "Authorization": f"Bearer {req.openrouter_key}",
+#                     "Content-Type":  "application/json",
+#                     "HTTP-Referer":  "http://localhost:8000",
+#                     "X-Title":       "SparkBrains Pipeline Assistant",
+#                 },
+#                 json={
+#                     "model":       req.model,
+#                     "messages":    messages_for_llm,
+#                     "max_tokens":  1200,
+#                     "temperature": 0.3,
+#                 },
+#             )
+
+#         if response.status_code == 200:
+#             data   = response.json()
+#             answer = data["choices"][0]["message"]["content"]
+#             return {
+#                 "status":  "SUCCESS",
+#                 "answer":  answer,
+#                 "model":   req.model,
+#                 "context_length": len(db_context),
+#             }
+#         elif response.status_code == 401:
+#             raise HTTPException(status_code=401, detail="Invalid OpenRouter API key.")
+#         elif response.status_code == 429:
+#             raise HTTPException(status_code=429, detail="OpenRouter rate limit. Wait.")
+#         else:
+#             raise HTTPException(
+#                 status_code=response.status_code,
+#                 detail=f"OpenRouter error: {response.text[:300]}"
+#             )
+
+#     except httpx.TimeoutException:
+#         raise HTTPException(status_code=504, detail="OpenRouter request timeout.")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
+
+
+# # ── Simple context-only endpoint (bina LLM ke) ───────────────────────────────
+
+# @app.get("/chatbot/context")
+# def get_chatbot_context(pipeline_name: Optional[str] = None):
+#     """
+#     Debug  — See what context is available.
+#     GET /chatbot/context
+#     GET /chatbot/context?pipeline_name=spark1
+#     """
+#     try:
+#         context = _build_db_context(pipeline_name)
+#         return {
+#             "status":         "SUCCESS",
+#             "pipeline_name":  pipeline_name,
+#             "context_length": len(context),
+#             "context":        context,
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+    
+#     app.include_router(agent_router)
+
+
 import re
 import json
 import httpx
@@ -5,6 +2149,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import httpx
 import os
+import sys
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, Query, HTTPException
 from pydantic import BaseModel
@@ -30,7 +2175,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from connectors.postgres_connector import postgres_connector
 from connectors.s3_connector import s3_connector
-from connectors.snowflake_connector import snowflake_connector
+from connectors.snowflake_connector import snowflake_connector  # ADDED
 
 from fastapi import FastAPI
 from agent.agent_router import router as agent_router
@@ -79,8 +2224,6 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 SMTP_HOST      = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 
-
-
 def send_failure_email(dag_id: str, run_id: str, error: str = "", status: str = "failed"):
     try:
         msg = MIMEMultipart()
@@ -95,7 +2238,7 @@ Pipeline {status.upper()} Alert
 {emoji} DAG ID : {dag_id}
    Run ID : {run_id}
    Status : {status.upper()}
-   {f'Error  : {error}' if status == "failed" else ''}
+   {f'Error  : {error}' if status == 'failed' else ''}
 
 Airflow UI: http://localhost:8081
         """
@@ -174,6 +2317,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # ─────────────────────────────────────────────
 # GLOBAL CONFIG
 # ─────────────────────────────────────────────
@@ -185,15 +2329,12 @@ AIRFLOW_AUTH = HTTPBasicAuth(
     os.getenv("AIRFLOW_PASSWORD", "admin")
 )
 
-
-
-
 DAG_MAP = {
     "csv":           "dynamic_connector_dag",   
     "excel":         "dynamic_connector_dag",
     "api":           "dynamic_connector_dag",
     "google_sheets": "dynamic_connector_dag",
-    "snowflake":     "dynamic_connector_dag",
+    "snowflake":     "dynamic_connector_dag",  # ADDED
 }
 
 OPTION_MAP = {
@@ -213,16 +2354,13 @@ DB_CONFIG = {
     "port":     os.getenv("DB_PORT",     "5432")
 }
 
-
 def get_conn():
     return psycopg2.connect(**DB_CONFIG)
-
 
 class ConnectionRequest(BaseModel):
     name: str
     source_type: str
     config: dict = {}
-
 
 def ensure_connections_table():
     conn = get_conn()
@@ -242,7 +2380,6 @@ def ensure_connections_table():
     cur.close()
     conn.close()
 
-
 def _public_connection(row: dict) -> dict:
     config = row.get("config") or {}
     safe_config = dict(config)
@@ -251,7 +2388,6 @@ def _public_connection(row: dict) -> dict:
         if "password" in lower or "secret" in lower or "token" in lower or ("key" in lower and "path" not in lower):
             safe_config[key] = "********"
     return {**row, "config": safe_config}
-
 
 @app.get("/connections")
 def list_connections():
@@ -268,7 +2404,6 @@ def list_connections():
     conn.close()
     return {"connections": [_public_connection(row) for row in rows]}
 
-
 @app.post("/connections")
 def save_connection(req: ConnectionRequest):
     ensure_connections_table()
@@ -284,7 +2419,6 @@ def save_connection(req: ConnectionRequest):
     cur.close()
     conn.close()
     return _public_connection(row)
-
 
 @app.get("/connections/{connection_id}")
 def get_connection(connection_id: int):
@@ -305,7 +2439,6 @@ def get_connection(connection_id: int):
     conn.close()
     return _public_connection(data)
 
-
 @app.delete("/connections/{connection_id}")
 def delete_connection(connection_id: int):
     ensure_connections_table()
@@ -319,7 +2452,6 @@ def delete_connection(connection_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Connection not found")
     return {"status": "DELETED", "id": connection_id}
-
 
 # ─────────────────────────────────────────────
 # SNOWFLAKE CONNECTION TEST
@@ -352,7 +2484,6 @@ def test_snowflake_conn(req: SnowflakeTestRequest):
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 # ─────────────────────────────────────────────
 # ROOT
 # ─────────────────────────────────────────────
@@ -360,7 +2491,6 @@ def test_snowflake_conn(req: SnowflakeTestRequest):
 @app.get("/")
 def root():
     return {"message": "SparkBrains Data Connector API Running — Ready to ingest data into Airflow pipelines!"}
-
 
 # ─────────────────────────────────────────────
 # VALIDATION
@@ -397,7 +2527,6 @@ def ingest_csv(req: CSVRequest):
         incremental_column = req.incremental_column,
     )
 
-
 # ─────────────────────────────────────────────
 # EXCEL
 # ─────────────────────────────────────────────
@@ -422,7 +2551,6 @@ def ingest_excel(req: ExcelRequest):
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
     )
-
 
 # ─────────────────────────────────────────────
 # GOOGLE SHEETS
@@ -449,6 +2577,7 @@ def ingest_google_sheet(req: GoogleSheetRequest):
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
     )
+
 # ─────────────────────────────────────────────
 # Multi-source Google Sheets
 # ─────────────────────────────────────────────
@@ -460,7 +2589,6 @@ class GoogleSheetMultiRequest(BaseModel):
     engine:     str        = "pandas"
     sync_mode:  str        = "full"
     incremental_column: str | None = None
-
 
 @app.post("/ingest_google_sheets_multi")
 def ingest_google_sheets_multi(req: GoogleSheetMultiRequest):
@@ -483,8 +2611,6 @@ def ingest_google_sheets_multi(req: GoogleSheetMultiRequest):
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
     )
-
-
 
 # ─────────────────────────────────────────────
 # API CONNECTOR
@@ -515,6 +2641,7 @@ def ingest_api(req: APIRequest):
 # POSTGRES CONNECTOR
 # ────────────────────────────────────────────
 from connectors.postgres_connector import postgres_connector
+
 class PostgresRequest(BaseModel):
     host: str
     database: str
@@ -547,7 +2674,6 @@ def ingest_postgres(req: PostgresRequest):
         incremental_column = req.incremental_column,
     )
 
-
 # ─────────────────────────────────────────────
 # S3 CONNECTOR
 # ─────────────────────────────────────────────
@@ -578,7 +2704,6 @@ def ingest_s3(req: S3Request):
         incremental_column = req.incremental_column,
     )
 
-
 # ─────────────────────────────────────────────
 # SNOWFLAKE CONNECTOR
 # ─────────────────────────────────────────────
@@ -597,6 +2722,28 @@ class SnowflakeRequest(BaseModel):
     incremental_column: str | None = None
     role: str | None = None
 
+# @app.post("/ingest_snowflake")
+# def ingest_snowflake(req: SnowflakeRequest):
+#     validate_inputs(req.option, req.table_name)
+#     source = f"snowflake://{req.account}/{req.database}/{req.schema}"
+#     return run_ingestion(
+#         snowflake_connector,
+#         source,
+#         "SnowflakeConnector",
+#         req.account,
+#         req.user,
+#         req.password,
+#         req.warehouse,
+#         req.database,
+#         req.schema,
+#         req.query,
+#         role=req.role,
+#         option=req.option,
+#         table_name=req.table_name,
+#         sync_mode=req.sync_mode,
+#         incremental_column=req.incremental_column,
+#     )
+
 @app.post("/ingest_snowflake")
 def ingest_snowflake(req: SnowflakeRequest):
     validate_inputs(req.option, req.table_name)
@@ -612,13 +2759,12 @@ def ingest_snowflake(req: SnowflakeRequest):
         req.database,
         req.schema,
         req.query,
-        role=req.role,
+        req.role,
         option=req.option,
         table_name=req.table_name,
         sync_mode=req.sync_mode,
         incremental_column=req.incremental_column,
     )
-
 
 @app.get("/runs")
 def get_runs():
@@ -628,7 +2774,6 @@ def get_runs():
     result = _rows_to_dicts(cursor)
     conn.close()
     return result
-
 
 @app.get("/logs/{run_id}")
 def get_logs(run_id: int):
@@ -642,11 +2787,10 @@ def get_logs(run_id: int):
     conn.close()
     return data
 
-
 def insert_pipeline_log(data):
     conn = get_conn()
     cur = conn.cursor()
- 
+
     query = """
     INSERT INTO airflow_pipeline_runs (
         dag_id, dag_run_id, pipeline_name,
@@ -656,7 +2800,7 @@ def insert_pipeline_log(data):
     )
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
- 
+
     cur.execute(query, (
         data.get("dag_id"),
         data.get("dag_run_id"),
@@ -673,10 +2817,11 @@ def insert_pipeline_log(data):
         data.get("execution_date"),
         data.get("triggered_by", "manual"),
     ))
- 
+
     conn.commit()
     cur.close()
     conn.close()
+
 # ─────────────────────────────────────────────
 # UPDATE STATUS IN DB
 # ─────────────────────────────────────────────
@@ -694,7 +2839,6 @@ def update_status_in_db(dag_run_id, status):
     conn.commit()
     cur.close()
     conn.close()
-
 
 # ─────────────────────────────────────────────
 # AUTO STATUS TRACKER — Background Thread
@@ -757,7 +2901,6 @@ def get_status(connector_type: str, dag_run_id: str):
     update_status_in_db(dag_run_id, status)
     return {"dag_id": dag_id, "dag_run_id": dag_run_id, "status": status}
 
-
 # ─────────────────────────────────────────────
 # ALL PIPELINES
 # ─────────────────────────────────────────────
@@ -771,7 +2914,6 @@ def get_all():
     cols = [d[0] for d in cur.description]
     conn.close()
     return [dict(zip(cols, r)) for r in rows]
-
 
 # ── Request model ────────────────────────────────────────────────────────────
 
@@ -811,16 +2953,14 @@ class CreatePipelineRequest(BaseModel):
     # ─── Incremental fields ─────────────────────
     sync_mode:     Optional[str] = "full"   # "full" or "incremental"
     incremental_column:    Optional[str] = None     # required if load_type is "incremental"
- 
 
- 
 @app.post("/create_pipeline")
 def create_pipeline(req: CreatePipelineRequest):
     result = create_dag_file(req.model_dump())
- 
+
     if result.get("status") == "FAILED":
         raise HTTPException(status_code=400, detail=result)
- 
+
     # ✅ Log pipeline creation to DB
     dag_id = result.get("dag_id")
     insert_pipeline_log({
@@ -839,12 +2979,12 @@ def create_pipeline(req: CreatePipelineRequest):
         "execution_date": None,
         "triggered_by":   "create_pipeline",
     })
- 
+
     return result
+
 # ────────────────────────────────────────────
 # Multiple sources pipeline creation 
 # ───────────────────────────────────────────
-
 
 class SourceConfig(BaseModel):
     connector_type: str          # csv, excel, google_sheets, api, postgres, s3, snowflake
@@ -880,7 +3020,6 @@ class MultiSourcePipelineRequest(BaseModel):
     sync_mode:     str          = "full"
     incremental_column: Optional[str] = None
     sources:       List[SourceConfig]  # ← multiple sources
-
 
 @app.post("/create_multi_pipeline")
 def create_multi_pipeline(req: MultiSourcePipelineRequest):
@@ -937,7 +3076,6 @@ class EditPipelineRequest(BaseModel):
     sf_schema:          Optional[str] = None
     sf_query:           Optional[str] = None
     sf_role:            Optional[str] = None
-
 
 @app.patch("/edit_pipeline/{pipeline_name}")
 def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
@@ -1002,10 +3140,8 @@ def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
 
     return result
 
-
-
 # ── DELETE /delete_pipeline/{pipeline_name} ──────────────────────────────────
- 
+
 @app.delete("/delete_pipeline/{pipeline_name}")
 def delete_pipeline(pipeline_name: str):
     """
@@ -1013,15 +3149,14 @@ def delete_pipeline(pipeline_name: str):
     Example: DELETE /delete_pipeline/hr_data_csv
     """
     result = delete_dag_file(pipeline_name)
- 
+
     if result.get("status") == "FAILED":
         raise HTTPException(status_code=404, detail=result)
- 
+
     return result
- 
- 
+
 # ── GET /pipelines ────────────────────────────────────────────────────────────
- 
+
 @app.get("/pipelines")
 def list_pipelines():
     """
@@ -1031,6 +3166,7 @@ def list_pipelines():
         "status":    "SUCCESS",
         "pipelines": list_dag_files()
     }
+
 @app.get("/table/{table_name}")
 def get_table_data(
     table_name: str,
@@ -1144,7 +3280,6 @@ def get_table_data(
     finally:
         conn.close()
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # DAG PAUSE / UNPAUSE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1171,7 +3306,6 @@ def pause_pipeline(pipeline_name: str):
         "message": f"Pipeline '{dag_id}' paused."
     }
 
-
 @app.patch("/pipeline/{pipeline_name}/unpause")
 def unpause_pipeline(pipeline_name: str):
     """
@@ -1192,7 +3326,6 @@ def unpause_pipeline(pipeline_name: str):
         "dag_id":  dag_id,
         "message": f"Pipeline '{dag_id}' is active ."
     }
-
 
 @app.get("/pipeline/{pipeline_name}/status")
 def pipeline_status(pipeline_name: str):
@@ -1228,17 +3361,17 @@ def get_pipeline_runs(
 ):
     """
     Get all historical runs for a specific pipeline.
- 
+
     Examples:
         GET /pipeline/hr_data_csv/runs
         GET /pipeline/hr_data_csv/runs?limit=10&offset=0
         GET /pipeline/hr_data_csv/runs?status=failed
     """
     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
- 
+
     conn = get_conn()
     cur  = conn.cursor()
- 
+
     try:
         # Build query with optional status filter
         base_query = """
@@ -1263,30 +3396,30 @@ def get_pipeline_runs(
             WHERE dag_id = %s
         """
         params = [dag_id]
- 
+
         if status:
             base_query += " AND UPPER(status) = %s"
             params.append(status.upper())
- 
+
         base_query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
- 
+
         cur.execute(base_query, params)
         rows = cur.fetchall()
         cols = [desc[0] for desc in cur.description]
- 
+
         # Total count (for pagination)
         count_query = "SELECT COUNT(*) FROM airflow_pipeline_runs WHERE dag_id = %s"
         count_params = [dag_id]
         if status:
             count_query += " AND UPPER(status) = %s"
             count_params.append(status.upper())
- 
+
         cur.execute(count_query, count_params)
         total = cur.fetchone()[0]
- 
+
         runs = [dict(zip(cols, row)) for row in rows]
- 
+
         # Summary stats
         cur.execute("""
             SELECT
@@ -1298,7 +3431,7 @@ def get_pipeline_runs(
             FROM airflow_pipeline_runs
             WHERE dag_id = %s
         """, [dag_id])
- 
+
         stats_row = cur.fetchone()
         stats = {
             "total_runs":    stats_row[0],
@@ -1307,7 +3440,7 @@ def get_pipeline_runs(
             "running_count": stats_row[3],
             "last_run_at":   stats_row[4].isoformat() if stats_row[4] else None,
         }
- 
+
         return {
             "pipeline":   dag_id,
             "stats":      stats,
@@ -1319,17 +3452,16 @@ def get_pipeline_runs(
             },
             "runs": runs,
         }
- 
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
     finally:
         cur.close()
         conn.close()
 
 import glob as _glob
- 
- 
+
 def _read_log_from_filesystem(pipeline_id: str, dag_run_id: str = None) -> dict:
     """
     Fallback — read log directly from Airflow log files
@@ -1349,11 +3481,11 @@ def _read_log_from_filesystem(pipeline_id: str, dag_run_id: str = None) -> dict:
             f"dag_id={pipeline_id}\\run_id=*"
             f"\\task_id=run_connector\\attempt=*.log"
         )
- 
+
     log_files = sorted(_glob.glob(pattern))
     if not log_files:
         return {"source": "filesystem", "log_content": None, "log_file_path": None}
- 
+
     latest = log_files[-1]
     try:
         with open(latest, "r", encoding="utf-8", errors="replace") as f:
@@ -1361,20 +3493,87 @@ def _read_log_from_filesystem(pipeline_id: str, dag_run_id: str = None) -> dict:
         return {"source": "filesystem", "log_content": content, "log_file_path": latest}
     except Exception as e:
         return {"source": "filesystem", "log_content": f"Could not read: {e}", "log_file_path": latest}
- 
- 
+
 # ─────────────────────────────────────────────
 # GET /pipeline/{name}/logs
 # Returns latest run's logs
 # ─────────────────────────────────────────────
- 
+
+# @app.get("/pipeline/{pipeline_name}/logs")
+# def get_pipeline_logs_latest(pipeline_name: str):
+#     """
+#     Get logs of the latest run of a pipeline.
+#     Tries DB first, falls back to filesystem.
+
+#     Example: GET /pipeline/hr_data_csv/logs
+#     """
+#     pipeline_id = (
+#         pipeline_name
+#         if pipeline_name.startswith("pipeline_")
+#         else f"pipeline_{pipeline_name}"
+#     )
+
+#     conn = get_conn()
+#     cur  = conn.cursor()
+
+#     try:
+#         cur.execute("""
+#             SELECT
+#                 l.id, l.pipeline_id, l.dag_run_id, l.task_id,
+#                 l.status, l.log_content, l.log_file_path, l.created_at
+#             FROM pipeline_dag_logs l
+#             WHERE l.pipeline_id = %s
+#             ORDER BY l.created_at DESC
+#             LIMIT 1
+#         """, (pipeline_id,))
+
+#         row = cur.fetchone()
+
+#         if row:
+#             cols = [desc[0] for desc in cur.description]
+#             data = dict(zip(cols, row))
+#             return {
+#                 "pipeline":  pipeline_id,
+#                 "source":    "db",
+#                 "dag_run_id": data["dag_run_id"],
+#                 "status":    data["status"],
+#                 "log_file":  data["log_file_path"],
+#                 "log":       data["log_content"],
+#                 "logged_at": data["created_at"],
+#             }
+
+#         # fallback to filesystem
+#         fs = _read_log_from_filesystem(pipeline_id)
+#         if fs["log_content"]:
+#             return {
+#                 "pipeline":  pipeline_id,
+#                 "source":    "filesystem",
+#                 "dag_run_id": None,
+#                 "status":    None,
+#                 "log_file":  fs["log_file_path"],
+#                 "log":       fs["log_content"],
+#                 "logged_at": None,
+#             }
+
+#         raise HTTPException(
+#             status_code=404,
+#             detail=f"No logs found for pipeline '{pipeline_id}'. Has it run yet?"
+#         )
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+#     finally:
+#         cur.close()
+#         conn.close()
 @app.get("/pipeline/{pipeline_name}/logs")
-def get_pipeline_logs_latest(pipeline_name: str):
+def get_pipeline_logs_latest(pipeline_name: str, limit: int = Query(10, ge=1, le=100)):
     """
-    Get logs of the latest run of a pipeline.
-    Tries DB first, falls back to filesystem.
+    Get the most recent `limit` log entries for a pipeline.
+    Tries DB first, falls back to filesystem (single entry) if DB has none.
  
-    Example: GET /pipeline/hr_data_csv/logs
+    Example: GET /pipeline/hr_data_csv/logs?limit=20
     """
     pipeline_id = (
         pipeline_name
@@ -1393,35 +3592,46 @@ def get_pipeline_logs_latest(pipeline_name: str):
             FROM pipeline_dag_logs l
             WHERE l.pipeline_id = %s
             ORDER BY l.created_at DESC
-            LIMIT 1
-        """, (pipeline_id,))
+            LIMIT %s
+        """, (pipeline_id, limit))
  
-        row = cur.fetchone()
+        rows = cur.fetchall()
  
-        if row:
+        if rows:
             cols = [desc[0] for desc in cur.description]
-            data = dict(zip(cols, row))
+            logs_list = [dict(zip(cols, row)) for row in rows]
             return {
                 "pipeline":  pipeline_id,
                 "source":    "db",
-                "dag_run_id": data["dag_run_id"],
-                "status":    data["status"],
-                "log_file":  data["log_file_path"],
-                "log":       data["log_content"],
-                "logged_at": data["created_at"],
+                "count":     len(logs_list),
+                "logs": [
+                    {
+                        "dag_run_id": entry["dag_run_id"],
+                        "status":     entry["status"],
+                        "log_file":   entry["log_file_path"],
+                        "log":        entry["log_content"],
+                        "logged_at":  entry["created_at"],
+                    }
+                    for entry in logs_list
+                ],
             }
  
-        # fallback to filesystem
+        # fallback to filesystem — only one entry available this way
         fs = _read_log_from_filesystem(pipeline_id)
         if fs["log_content"]:
             return {
-                "pipeline":  pipeline_id,
-                "source":    "filesystem",
-                "dag_run_id": None,
-                "status":    None,
-                "log_file":  fs["log_file_path"],
-                "log":       fs["log_content"],
-                "logged_at": None,
+                "pipeline": pipeline_id,
+                "source":   "filesystem",
+                "count":    1,
+                "logs": [
+                    {
+                        "dag_run_id": None,
+                        "status":     None,
+                        "log_file":   fs["log_file_path"],
+                        "log":        fs["log_content"],
+                        "logged_at":  None,
+                    }
+                ],
             }
  
         raise HTTPException(
@@ -1436,19 +3646,17 @@ def get_pipeline_logs_latest(pipeline_name: str):
     finally:
         cur.close()
         conn.close()
- 
- 
 # ─────────────────────────────────────────────
 # GET /pipeline/{name}/logs/{dag_run_id}
 # Returns logs for a specific run
 # ─────────────────────────────────────────────
- 
+
 @app.get("/pipeline/{pipeline_name}/logs/{dag_run_id:path}")
 def get_pipeline_logs_by_run(pipeline_name: str, dag_run_id: str):
     """
     Get logs of a specific run by dag_run_id.
     Tries DB first, falls back to filesystem.
- 
+
     Example: GET /pipeline/hr_data_csv/logs/run__pipeline_hr_data_csv__20260324_103000
     """
     pipeline_id = (
@@ -1456,10 +3664,10 @@ def get_pipeline_logs_by_run(pipeline_name: str, dag_run_id: str):
         if pipeline_name.startswith("pipeline_")
         else f"pipeline_{pipeline_name}"
     )
- 
+
     conn = get_conn()
     cur  = conn.cursor()
- 
+
     try:
         cur.execute("""
             SELECT
@@ -1471,9 +3679,9 @@ def get_pipeline_logs_by_run(pipeline_name: str, dag_run_id: str):
             ORDER BY l.created_at DESC
             LIMIT 1
         """, (pipeline_id, dag_run_id))
- 
+
         row = cur.fetchone()
- 
+
         if row:
             cols = [desc[0] for desc in cur.description]
             data = dict(zip(cols, row))
@@ -1486,7 +3694,7 @@ def get_pipeline_logs_by_run(pipeline_name: str, dag_run_id: str):
                 "log":       data["log_content"],
                 "logged_at": data["created_at"],
             }
- 
+
         # fallback to filesystem
         fs = _read_log_from_filesystem(pipeline_id, dag_run_id)
         if fs["log_content"]:
@@ -1499,12 +3707,12 @@ def get_pipeline_logs_by_run(pipeline_name: str, dag_run_id: str):
                 "log":       fs["log_content"],
                 "logged_at": None,
             }
- 
+
         raise HTTPException(
             status_code=404,
             detail=f"No logs found for run '{dag_run_id}' in pipeline '{pipeline_id}'."
         )
- 
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1512,8 +3720,6 @@ def get_pipeline_logs_by_run(pipeline_name: str, dag_run_id: str):
     finally:
         cur.close()
         conn.close()
-
-
 
 # metrics endpoint to get historical performance data for a pipeline
 
@@ -1577,9 +3783,6 @@ def get_all_metrics_summary():
     conn.close()
 
     return {"summary": [dict(zip(cols, r)) for r in rows]}
-
-
-
 
 @app.get("/dashboard/summary")
 def dashboard_summary():
@@ -1765,7 +3968,6 @@ def dashboard_summary():
         cur.close()
         conn.close()
 
-
 @app.get("/health")
 def health_check():
     try:
@@ -1786,319 +3988,826 @@ def health_check():
 # CHATBOT ENDPOINT
 # ─────────────────────────────────────────────────────────────────────────────
 
+DEFAULT_OPENROUTER_KEY   = os.getenv("OPENROUTER_KEY", "")
+DEFAULT_OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "")
+
 class ChatMessage(BaseModel):
-    role:    str   # "user" ya "assistant"
+    role:    str   # "user" or "assistant"
     content: str
-
-
 class ChatRequest(BaseModel):
-    messages:      List[ChatMessage]
-    openrouter_key: str
-    model:         str = "mistralai/mistral-7b-instruct"
-    pipeline_name: Optional[str] = None   # specific pipeline ke logs chahiye to
+    messages:       List[ChatMessage]
+    openrouter_key: Optional[str] = None   # falls back to DEFAULT_OPENROUTER_KEY if not sent
+    model:          Optional[str] = None   # falls back to DEFAULT_OPENROUTER_MODEL if not sent
+    pipeline_name:  Optional[str] = None
 
+# class ChatRequest(BaseModel):
+#     messages:      List[ChatMessage]
+#     openrouter_key: str
+#     model:         str = "mistralai/mistral-7b-instruct"
+#     pipeline_name: Optional[str] = None   #For specific pipeline  logs
 
 # ── DB context builder ────────────────────────────────────────────────────────
 
-def _build_db_context(pipeline_name: Optional[str] = None) -> str:
+# def _build_db_context(pipeline_name: Optional[str] = None) -> str:
+#     """
+#     Create a context string by fetching relevant data from the database.
+#     This context is provided to the LLM.
+#     """
+#     parts = []
+#     conn  = get_conn()
+#     cur   = conn.cursor()
+
+#     try:
+#         # ── 1. pipeline_runs — last 20 ───────────────────────────
+#         cur.execute("""
+#             SELECT run_id, connector_name, source, start_time, end_time,
+#                    status, records_count, error
+#             FROM pipeline_runs
+#             ORDER BY start_time DESC
+#             LIMIT 20
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_runs (Last 20) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"run_id={rd['run_id']} | connector={rd['connector_name']} | "
+#                     f"status={rd['status']} | rows={rd['records_count']} | "
+#                     f"error={str(rd['error'] or '')[:100]} | "
+#                     f"start={rd['start_time']} | end={rd['end_time']}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 2. pipeline_metrics — last 30 ────────────────────────
+#         cur.execute("""
+#             SELECT pipeline_id, table_name, rows_inserted, rows_skipped,
+#                    rows_failed, duration_sec, evolved_columns, match_pct,
+#                    connector_type, option, status, error_message, logged_at
+#             FROM pipeline_metrics
+#             ORDER BY logged_at DESC
+#             LIMIT 30
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_metrics (Last 30) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"pipeline={rd['pipeline_id']} | status={rd['status']} | "
+#                     f"rows_inserted={rd['rows_inserted']} | "
+#                     f"duration={rd['duration_sec']}s | "
+#                     f"match_pct={rd['match_pct']}% | "
+#                     f"connector={rd['connector_type']} | "
+#                     f"evolved_cols={rd['evolved_columns']} | "
+#                     f"error={str(rd['error_message'] or '')[:100]} | "
+#                     f"time={rd['logged_at']}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 3. airflow_pipeline_runs — last 20 ───────────────────
+#         cur.execute("""
+#             SELECT dag_id, dag_run_id, pipeline_name, connector_type,
+#                    operation, table_name, schedule, status,
+#                    triggered_by, error_message, created_at
+#             FROM airflow_pipeline_runs
+#             ORDER BY created_at DESC
+#             LIMIT 20
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== airflow_pipeline_runs (Last 20) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"dag={rd['dag_id']} | status={rd['status']} | "
+#                     f"connector={rd['connector_type']} | "
+#                     f"schedule={rd['schedule']} | "
+#                     f"triggered_by={rd['triggered_by']} | "
+#                     f"error={str(rd['error_message'] or '')[:100]} | "
+#                     f"time={rd['created_at']}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 4. pipeline_logs — recent errors ─────────────────────
+#         cur.execute("""
+#             SELECT pl.run_id, pl.log_time, pl.level, pl.message
+#             FROM pipeline_logs pl
+#             WHERE pl.level = 'ERROR'
+#             ORDER BY pl.log_time DESC
+#             LIMIT 15
+#         """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_logs (Recent ERRORS) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 lines.append(
+#                     f"run_id={rd['run_id']} | time={rd['log_time']} | "
+#                     f"{rd['message'][:150]}"
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 5. pipeline_dag_logs — specific pipeline or latest ───
+#         if pipeline_name:
+#             pid = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+#             cur.execute("""
+#                 SELECT pipeline_id, dag_run_id, task_id, status,
+#                        log_content, log_file_path, created_at
+#                 FROM pipeline_dag_logs
+#                 WHERE pipeline_id = %s
+#                 ORDER BY created_at DESC
+#                 LIMIT 3
+#             """, (pid,))
+#         else:
+#             cur.execute("""
+#                 SELECT pipeline_id, dag_run_id, task_id, status,
+#                        log_content, log_file_path, created_at
+#                 FROM pipeline_dag_logs
+#                 ORDER BY created_at DESC
+#                 LIMIT 5
+#             """)
+#         rows = cur.fetchall()
+#         cols = [d[0] for d in cur.description]
+#         if rows:
+#             lines = ["=== pipeline_dag_logs (Latest) ==="]
+#             for r in rows:
+#                 rd = dict(zip(cols, r))
+#                 # Log content truncate karo — too long hota hai
+#                 log_snippet = str(rd['log_content'] or '')[:400]
+#                 lines.append(
+#                     f"pipeline={rd['pipeline_id']} | "
+#                     f"run={rd['dag_run_id']} | "
+#                     f"status={rd['status']} | "
+#                     f"time={rd['created_at']}\n"
+#                     f"LOG_SNIPPET: {log_snippet}..."
+#                 )
+#             parts.append("\n".join(lines))
+
+#         # ── 6. Summary stats ──────────────────────────────────────
+#         cur.execute("""
+#             SELECT
+#                 COUNT(*)                                              AS total_runs,
+#                 COUNT(*) FILTER (WHERE status = 'SUCCESS')           AS success,
+#                 COUNT(*) FILTER (WHERE status = 'FAILED')            AS failed,
+#                 COUNT(*) FILTER (WHERE status = 'SKIPPED')           AS skipped,
+#                 COALESCE(SUM(rows_inserted), 0)                      AS total_rows,
+#                 ROUND(AVG(duration_sec)::numeric, 2)                 AS avg_duration,
+#                 ROUND(
+#                     COUNT(*) FILTER (WHERE status = 'SUCCESS') * 100.0
+#                     / NULLIF(COUNT(*), 0), 1
+#                 )                                                     AS success_rate
+#             FROM pipeline_metrics
+#             WHERE logged_at >= NOW() - INTERVAL '24 hours'
+#         """)
+#         row  = cur.fetchone()
+#         cols = [d[0] for d in cur.description]
+#         if row:
+#             rd = dict(zip(cols, row))
+#             parts.insert(0, f"""=== SYSTEM SUMMARY (Last 24h) ===
+# Total Runs   : {rd['total_runs']}
+# Success      : {rd['success']}
+# Failed       : {rd['failed']}
+# Skipped      : {rd['skipped']}
+# Success Rate : {rd['success_rate']}%
+# Total Rows   : {rd['total_rows']:,}
+# Avg Duration : {rd['avg_duration']}s
+# """)
+
+#     except Exception as e:
+#         parts.append(f"=== DB FETCH ERROR: {e} ===")
+#     finally:
+#         cur.close()
+#         conn.close()
+
+#     return "\n\n".join(parts)
+
+# SYSTEM_PROMPT = """
+#         You are the Pipeline Assistant for SparkBrains Universal Data Connector.
+
+#         Your role:
+#         Help users understand, debug, and monitor their data pipelines using the live database context.
+
+#         Tone:
+#         - Conversational, friendly, and clear (like a helpful teammate)
+#         - Avoid robotic or overly formal responses
+#         - Keep it concise but natural
+
+#         Context:
+#         You have access to:
+#         - pipeline_runs: run_id, connector_name, status, records_count, error, start_time, end_time
+#         - pipeline_logs: level (INFO/ERROR), message, timestamp, run_id
+#         - pipeline_metrics: rows_inserted, duration_sec, match_pct, evolved_columns, connector_type, status, error_message
+#         - airflow_pipeline_runs: dag_id, connector_type, schedule, status, triggered_by, error_message
+#         - pipeline_dag_logs: pipeline_id, log_content, log_file_path, status, created_at
+
+#         Guidelines:
+#         - Always base answers strictly on the DB context — don't assume missing data
+#         - If no data is available, say clearly:
+#         → "I couldn't find any data for this — try running the pipeline first."
+
+#         Response Style:
+#         - Start with a short, natural explanation (1–2 lines)
+#         - Then provide structured insights if needed:
+#         - ✅ Status summary
+#         - ⚠️ Issues (if any)
+#         - 💡 Suggested fix (practical and actionable)
+#         - Use bullet points, not long paragraphs
+#         - Avoid sounding like logs or raw SQL output
+
+#         Error Handling:
+#         - Clearly explain the root cause in simple terms
+#         - Suggest a fix like you would to a teammate (practical, not generic)
+
+#         Formatting:
+#         - Use Markdown (bold, bullets, small tables)
+#         - Format numbers cleanly (e.g., 10,000 rows, 25 sec)
+
+#         Length:
+#         - Keep responses short and useful (100–250 words preferred)
+
+#         Goal:
+#         Make the user feel like they are chatting with a smart engineer, not reading a system report.
+#         """
+
+# # ── Endpoint ──────────────────────────────────────────────────────────────────
+
+# @app.post("/chatbot")
+# async def chatbot(req: ChatRequest):
+#     """
+#     Ask questions about your data pipelines and get insights.
+#     It fetches live context from the database and generates answers using OpenRouter.
+
+#     Request:
+#         messages:       Chat history
+#         openrouter_key: API key
+#         model:          OpenRouter model name
+#         pipeline_name:  Optional — For specific pipeline logs
+#     """
+#     # ── DB context fetch karo ─────────────────────────────────────
+#     try:
+#         db_context = _build_db_context(req.pipeline_name)
+#     except Exception as e:
+#         db_context = f"DB context fetch failed: {e}"
+
+#     # ── Messages build  ───────────────────────────────────────
+#     # IN Last user message inject context  
+#     messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+#     # History add  (last 8 messages)
+#     history = req.messages[-8:]
+#     for i, msg in enumerate(history):
+#         if i == len(history) - 1 and msg.role == "user":
+#             # DB context inject in the last user message
+#             messages_for_llm.append({
+#                 "role": "user",
+#                 "content": f"""User ka sawaal: {msg.content}
+
+# --- DATABASE CONTEXT (Live Data from PostgreSQL) ---
+# {db_context}
+# --- END CONTEXT ---
+# Present your answer clearly and concisely based on the live data provided above. 
+
+# If the context doesn't have the answer, say "Data not found in context" instead of making assumptions."""
+#             })
+#         else:
+#             messages_for_llm.append({
+#                 "role":    msg.role,
+#                 "content": msg.content,
+#             })
+
+#     # ── OpenRouter call ───────────────────────────────────────────
+#     try:
+#         async with httpx.AsyncClient(timeout=30) as client:
+#             response = await client.post(
+#                 "https://openrouter.ai/api/v1/chat/completions",
+#                 headers={
+#                     "Authorization": f"Bearer {req.openrouter_key}",
+#                     "Content-Type":  "application/json",
+#                     "HTTP-Referer":  "http://localhost:8000",
+#                     "X-Title":       "SparkBrains Pipeline Assistant",
+#                 },
+#                 json={
+#                     "model":       req.model,
+#                     "messages":    messages_for_llm,
+#                     "max_tokens":  1200,
+#                     "temperature": 0.3,
+#                 },
+#             )
+
+#         if response.status_code == 200:
+#             data   = response.json()
+#             answer = data["choices"][0]["message"]["content"]
+#             return {
+#                 "status":  "SUCCESS",
+#                 "answer":  answer,
+#                 "model":   req.model,
+#                 "context_length": len(db_context),
+#             }
+#         elif response.status_code == 401:
+#             raise HTTPException(status_code=401, detail="Invalid OpenRouter API key.")
+#         elif response.status_code == 429:
+#             raise HTTPException(status_code=429, detail="OpenRouter rate limit. Wait.")
+#         else:
+#             raise HTTPException(
+#                 status_code=response.status_code,
+#                 detail=f"OpenRouter error: {response.text[:300]}"
+#             )
+
+#     except httpx.TimeoutException:
+#         raise HTTPException(status_code=504, detail="OpenRouter request timeout.")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Question-type detection — simple keyword based, no LLM call needed
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+def _extract_pipeline_name_from_text(question: str) -> Optional[str]:
     """
-    Create a context string by fetching relevant data from the database.
-    This context is provided to the LLM.
+    Fallback extractor: if the user mentions a pipeline name directly in
+    their question (e.g. "pipeline_fright", "pipeline_user_csv pipeline"),
+    pull it out so _build_db_context can scope to it even when the
+    dedicated pipeline_name field wasn't set.
+    """
+    # Matches "pipeline_xxx" or "pipeline xxx" (word chars/underscores after)
+    match = re.search(r'pipeline[_\s]+([a-zA-Z0-9_]+)', question, re.IGNORECASE)
+    if match:
+        name = match.group(1).strip()
+        # avoid capturing trailing words like "pipeline_xxx pipeline runs"
+        # by stripping a trailing standalone "pipeline" if it got captured
+        return name
+    return None
+ 
+ 
+def _detect_question_type(question: str) -> set:
+    """
+    Look at the user's question text and decide which context sections are
+    actually relevant, so we skip unnecessary DB queries.
+ 
+    Returns a set of any combination of: {"counts", "errors", "general"}.
+    Defaults to {"counts", "errors", "general"} if nothing specific is
+    detected, so ambiguous questions still get full context.
+    """
+    q = question.lower()
+    types = set()
+ 
+    count_words  = ["how many", "how often", "count", "total", "success rate",
+                    "average", "avg", "sum", "rows inserted", "duration"]
+    error_words  = ["error", "fail", "failed", "failing", "why did", "wrong",
+                    "broke", "broken", "issue", "problem", "traceback", "exception"]
+    general_words = ["status", "health", "running", "active", "schedule",
+                      "recent", "latest", "overview", "summary"]
+ 
+    if any(w in q for w in count_words):
+        types.add("counts")
+    if any(w in q for w in error_words):
+        types.add("errors")
+    if any(w in q for w in general_words):
+        types.add("general")
+ 
+    if not types:
+        # ambiguous question — safer to include everything than to miss context
+        types = {"counts", "errors", "general"}
+ 
+    return types
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. _build_db_context() — full replacement, now question-aware
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+def _build_db_context(pipeline_name: Optional[str] = None, question: str = "") -> str:
+    """
+    Build context for the LLM, but only run the DB queries relevant to the
+    kind of question being asked — keeps context small and queries fast.
     """
     parts = []
     conn  = get_conn()
     cur   = conn.cursor()
-
+ 
+    qtypes = _detect_question_type(question) if question else {"counts", "errors", "general"}
+ 
     try:
-        # ── 1. pipeline_runs — last 20 ───────────────────────────
-        cur.execute("""
-            SELECT run_id, connector_name, source, start_time, end_time,
-                   status, records_count, error
-            FROM pipeline_runs
-            ORDER BY start_time DESC
-            LIMIT 20
-        """)
-        rows = cur.fetchall()
-        cols = [d[0] for d in cur.description]
-        if rows:
-            lines = ["=== pipeline_runs (Last 20) ==="]
-            for r in rows:
-                rd = dict(zip(cols, r))
-                lines.append(
-                    f"run_id={rd['run_id']} | connector={rd['connector_name']} | "
-                    f"status={rd['status']} | rows={rd['records_count']} | "
-                    f"error={str(rd['error'] or '')[:100]} | "
-                    f"start={rd['start_time']} | end={rd['end_time']}"
-                )
-            parts.append("\n".join(lines))
-
-        # ── 2. pipeline_metrics — last 30 ────────────────────────
-        cur.execute("""
-            SELECT pipeline_id, table_name, rows_inserted, rows_skipped,
-                   rows_failed, duration_sec, evolved_columns, match_pct,
-                   connector_type, option, status, error_message, logged_at
-            FROM pipeline_metrics
-            ORDER BY logged_at DESC
-            LIMIT 30
-        """)
-        rows = cur.fetchall()
-        cols = [d[0] for d in cur.description]
-        if rows:
-            lines = ["=== pipeline_metrics (Last 30) ==="]
-            for r in rows:
-                rd = dict(zip(cols, r))
-                lines.append(
-                    f"pipeline={rd['pipeline_id']} | status={rd['status']} | "
-                    f"rows_inserted={rd['rows_inserted']} | "
-                    f"duration={rd['duration_sec']}s | "
-                    f"match_pct={rd['match_pct']}% | "
-                    f"connector={rd['connector_type']} | "
-                    f"evolved_cols={rd['evolved_columns']} | "
-                    f"error={str(rd['error_message'] or '')[:100]} | "
-                    f"time={rd['logged_at']}"
-                )
-            parts.append("\n".join(lines))
-
-        # ── 3. airflow_pipeline_runs — last 20 ───────────────────
-        cur.execute("""
-            SELECT dag_id, dag_run_id, pipeline_name, connector_type,
-                   operation, table_name, schedule, status,
-                   triggered_by, error_message, created_at
-            FROM airflow_pipeline_runs
-            ORDER BY created_at DESC
-            LIMIT 20
-        """)
-        rows = cur.fetchall()
-        cols = [d[0] for d in cur.description]
-        if rows:
-            lines = ["=== airflow_pipeline_runs (Last 20) ==="]
-            for r in rows:
-                rd = dict(zip(cols, r))
-                lines.append(
-                    f"dag={rd['dag_id']} | status={rd['status']} | "
-                    f"connector={rd['connector_type']} | "
-                    f"schedule={rd['schedule']} | "
-                    f"triggered_by={rd['triggered_by']} | "
-                    f"error={str(rd['error_message'] or '')[:100]} | "
-                    f"time={rd['created_at']}"
-                )
-            parts.append("\n".join(lines))
-
-        # ── 4. pipeline_logs — recent errors ─────────────────────
-        cur.execute("""
-            SELECT pl.run_id, pl.log_time, pl.level, pl.message
-            FROM pipeline_logs pl
-            WHERE pl.level = 'ERROR'
-            ORDER BY pl.log_time DESC
-            LIMIT 15
-        """)
-        rows = cur.fetchall()
-        cols = [d[0] for d in cur.description]
-        if rows:
-            lines = ["=== pipeline_logs (Recent ERRORS) ==="]
-            for r in rows:
-                rd = dict(zip(cols, r))
-                lines.append(
-                    f"run_id={rd['run_id']} | time={rd['log_time']} | "
-                    f"{rd['message'][:150]}"
-                )
-            parts.append("\n".join(lines))
-
-        # ── 5. pipeline_dag_logs — specific pipeline ya latest ───
+        pid = None
         if pipeline_name:
             pid = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
-            cur.execute("""
-                SELECT pipeline_id, dag_run_id, task_id, status,
-                       log_content, log_file_path, created_at
-                FROM pipeline_dag_logs
-                WHERE pipeline_id = %s
-                ORDER BY created_at DESC
-                LIMIT 3
-            """, (pid,))
-        else:
-            cur.execute("""
-                SELECT pipeline_id, dag_run_id, task_id, status,
-                       log_content, log_file_path, created_at
-                FROM pipeline_dag_logs
-                ORDER BY created_at DESC
-                LIMIT 5
-            """)
-        rows = cur.fetchall()
-        cols = [d[0] for d in cur.description]
-        if rows:
-            lines = ["=== pipeline_dag_logs (Latest) ==="]
-            for r in rows:
-                rd = dict(zip(cols, r))
-                # Log content truncate karo — too long hota hai
-                log_snippet = str(rd['log_content'] or '')[:400]
-                lines.append(
-                    f"pipeline={rd['pipeline_id']} | "
-                    f"run={rd['dag_run_id']} | "
-                    f"status={rd['status']} | "
-                    f"time={rd['created_at']}\n"
-                    f"LOG_SNIPPET: {log_snippet}..."
-                )
-            parts.append("\n".join(lines))
-
-        # ── 6. Summary stats ──────────────────────────────────────
-        cur.execute("""
-            SELECT
-                COUNT(*)                                              AS total_runs,
-                COUNT(*) FILTER (WHERE status = 'SUCCESS')           AS success,
-                COUNT(*) FILTER (WHERE status = 'FAILED')            AS failed,
-                COUNT(*) FILTER (WHERE status = 'SKIPPED')           AS skipped,
-                COALESCE(SUM(rows_inserted), 0)                      AS total_rows,
-                ROUND(AVG(duration_sec)::numeric, 2)                 AS avg_duration,
-                ROUND(
-                    COUNT(*) FILTER (WHERE status = 'SUCCESS') * 100.0
-                    / NULLIF(COUNT(*), 0), 1
-                )                                                     AS success_rate
-            FROM pipeline_metrics
-            WHERE logged_at >= NOW() - INTERVAL '24 hours'
-        """)
-        row  = cur.fetchone()
-        cols = [d[0] for d in cur.description]
-        if row:
-            rd = dict(zip(cols, row))
-            parts.insert(0, f"""=== SYSTEM SUMMARY (Last 24h) ===
-Total Runs   : {rd['total_runs']}
-Success      : {rd['success']}
-Failed       : {rd['failed']}
-Skipped      : {rd['skipped']}
-Success Rate : {rd['success_rate']}%
-Total Rows   : {rd['total_rows']:,}
-Avg Duration : {rd['avg_duration']}s
-""")
-
+ 
+        # ── COUNTS: exact totals, no LIMIT truncation ──────────────────────────
+        if "counts" in qtypes:
+            if pid:
+                cur.execute("""
+                    SELECT
+                        COUNT(*)                                              AS total_runs,
+                        COUNT(*) FILTER (WHERE UPPER(status) = 'SUCCESS')    AS success_count,
+                        COUNT(*) FILTER (WHERE UPPER(status) = 'FAILED')     AS failed_count,
+                        COUNT(*) FILTER (WHERE UPPER(status) = 'RUNNING')    AS running_count,
+                        COUNT(*) FILTER (WHERE UPPER(status) = 'SKIPPED')    AS skipped_count,
+                        MIN(created_at)                                       AS first_run_at,
+                        MAX(created_at)                                       AS last_run_at
+                    FROM airflow_pipeline_runs
+                    WHERE dag_id = %s
+                """, (pid,))
+                row = cur.fetchone()
+                if row and row[0]:
+                    parts.append("\n".join([
+                        f"=== EXACT STATS for {pid} (full history, not limited) ===",
+                        f"Total runs : {row[0]}",
+                        f"Success    : {row[1]}",
+                        f"Failed     : {row[2]}",
+                        f"Running    : {row[3]}",
+                        f"Skipped    : {row[4]}",
+                        f"First run  : {row[5]}",
+                        f"Last run   : {row[6]}",
+                    ]))
+                else:
+                    parts.append(f"=== EXACT STATS for {pid} ===\nNo runs found for this pipeline yet.")
+ 
+                cur.execute("""
+                    SELECT
+                        COUNT(*)                                              AS total_runs,
+                        COALESCE(SUM(rows_inserted), 0)                       AS total_rows_inserted,
+                        ROUND(AVG(duration_sec)::numeric, 2)                  AS avg_duration_sec
+                    FROM pipeline_metrics
+                    WHERE pipeline_id = %s
+                """, (pid,))
+                row2 = cur.fetchone()
+                if row2 and row2[0]:
+                    parts.append("\n".join([
+                        f"=== EXACT METRICS for {pid} (full history, not limited) ===",
+                        f"Total runs logged   : {row2[0]}",
+                        f"Total rows inserted : {row2[1]:,}",
+                        f"Avg duration (sec)  : {row2[2]}",
+                    ]))
+            else:
+                cur.execute("""
+                    SELECT
+                        dag_id,
+                        COUNT(*)                                              AS total_runs,
+                        COUNT(*) FILTER (WHERE UPPER(status) = 'SUCCESS')    AS success_count,
+                        COUNT(*) FILTER (WHERE UPPER(status) = 'FAILED')     AS failed_count
+                    FROM airflow_pipeline_runs
+                    GROUP BY dag_id
+                    ORDER BY total_runs DESC
+                """)
+                rows = cur.fetchall()
+                if rows:
+                    lines = ["=== EXACT PER-PIPELINE RUN COUNTS (all pipelines, full history) ==="]
+                    for r in rows:
+                        lines.append(f"{r[0]}: total={r[1]} | success={r[2]} | failed={r[3]}")
+                    parts.append("\n".join(lines))
+ 
+        # ── ERRORS: full raw log content for recent failures ───────────────────
+        if "errors" in qtypes:
+            if pid:
+                cur.execute("""
+                    SELECT dag_run_id, status, log_content, created_at
+                    FROM pipeline_dag_logs
+                    WHERE pipeline_id = %s AND UPPER(status) = 'FAILED'
+                    ORDER BY created_at DESC
+                    LIMIT 3
+                """, (pid,))
+                failed_logs = cur.fetchall()
+                if failed_logs:
+                    lines = [f"=== MOST RECENT FAILED RUN LOGS for {pid} (full raw content) ==="]
+                    for dag_run_id, status, log_content, created_at in failed_logs:
+                        lines.append(f"\n--- Run: {dag_run_id} | {created_at} ---")
+                        lines.append(str(log_content or "")[:3000])
+                    parts.append("\n".join(lines))
+                else:
+                    cur.execute("""
+                        SELECT dag_run_id, error_message, created_at
+                        FROM airflow_pipeline_runs
+                        WHERE dag_id = %s AND error_message IS NOT NULL AND error_message != ''
+                        ORDER BY created_at DESC
+                        LIMIT 3
+                    """, (pid,))
+                    err_rows = cur.fetchall()
+                    if err_rows:
+                        lines = [f"=== RECENT ERROR MESSAGES for {pid} ==="]
+                        for dag_run_id, error_message, created_at in err_rows:
+                            lines.append(f"\n--- Run: {dag_run_id} | {created_at} ---")
+                            lines.append(str(error_message))
+                        parts.append("\n".join(lines))
+                    else:
+                        parts.append(f"=== ERRORS for {pid} ===\nNo failed runs or error messages found.")
+            else:
+                cur.execute("""
+                    SELECT dag_id, dag_run_id, error_message, created_at
+                    FROM airflow_pipeline_runs
+                    WHERE error_message IS NOT NULL AND error_message != ''
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                """)
+                err_rows = cur.fetchall()
+                if err_rows:
+                    lines = ["=== RECENT ERRORS ACROSS ALL PIPELINES (last 10) ==="]
+                    for dag_id, dag_run_id, error_message, created_at in err_rows:
+                        lines.append(f"\n--- {dag_id} | run={dag_run_id} | {created_at} ---")
+                        lines.append(str(error_message)[:300])
+                    parts.append("\n".join(lines))
+ 
+        # ── GENERAL: recent activity / status, only when relevant ──────────────
+        if "general" in qtypes:
+            if pid:
+                cur.execute("""
+                    SELECT dag_run_id, status, created_at
+                    FROM airflow_pipeline_runs
+                    WHERE dag_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                """, (pid,))
+                recent = cur.fetchall()
+                if recent:
+                    lines = [f"=== LAST 5 RUNS for {pid} ==="]
+                    for dag_run_id, status, created_at in recent:
+                        lines.append(f"{created_at} | {status} | run={dag_run_id}")
+                    parts.append("\n".join(lines))
+            else:
+                cur.execute("""
+                    SELECT
+                        COUNT(*)                                              AS total_runs,
+                        COUNT(*) FILTER (WHERE status = 'SUCCESS')           AS success,
+                        COUNT(*) FILTER (WHERE status = 'FAILED')            AS failed,
+                        ROUND(
+                            COUNT(*) FILTER (WHERE status = 'SUCCESS') * 100.0
+                            / NULLIF(COUNT(*), 0), 1
+                        )                                                     AS success_rate
+                    FROM pipeline_metrics
+                    WHERE logged_at >= NOW() - INTERVAL '24 hours'
+                """)
+                row = cur.fetchone()
+                if row and row[0]:
+                    parts.append("\n".join([
+                        "=== SYSTEM SUMMARY (Last 24h) ===",
+                        f"Total Runs   : {row[0]}",
+                        f"Success      : {row[1]}",
+                        f"Failed       : {row[2]}",
+                        f"Success Rate : {row[3]}%",
+                    ]))
+ 
+        if not parts:
+            parts.append("No relevant data found in the database for this question.")
+ 
     except Exception as e:
         parts.append(f"=== DB FETCH ERROR: {e} ===")
     finally:
         cur.close()
         conn.close()
-
+ 
     return "\n\n".join(parts)
-
-
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. SYSTEM_PROMPT — full replacement
+# ─────────────────────────────────────────────────────────────────────────────
+ 
 SYSTEM_PROMPT = """
         You are the Pipeline Assistant for SparkBrains Universal Data Connector.
-
+ 
         Your role:
-        Help users understand, debug, and monitor their data pipelines using the live database context.
-
+        Help users understand and debug their data pipelines using the live database context provided to you.
+        The context given to you has already been filtered to match the kind of question asked — trust it.
+ 
         Tone:
-        - Conversational, friendly, and clear (like a helpful teammate)
-        - Avoid robotic or overly formal responses
+        - Conversational, friendly, and clear, like a helpful teammate
         - Keep it concise but natural
-
-        Context:
-        You have access to:
-        - pipeline_runs: run_id, connector_name, status, records_count, error, start_time, end_time
-        - pipeline_logs: level (INFO/ERROR), message, timestamp, run_id
-        - pipeline_metrics: rows_inserted, duration_sec, match_pct, evolved_columns, connector_type, status, error_message
-        - airflow_pipeline_runs: dag_id, connector_type, schedule, status, triggered_by, error_message
-        - pipeline_dag_logs: pipeline_id, log_content, log_file_path, status, created_at
-
-        Guidelines:
-        - Always base answers strictly on the DB context — don’t assume missing data
-        - If no data is available, say clearly:
-        → "I couldn’t find any data for this — try running the pipeline first."
-
+ 
+        Context sections you may see:
+        - "EXACT STATS" / "EXACT METRICS" / "EXACT PER-PIPELINE RUN COUNTS": precomputed counts covering the
+          FULL run history with no row limit — authoritative for any counting question.
+        - "MOST RECENT FAILED RUN LOGS": full raw Airflow log text for the latest failed run(s). Quote the
+          specific error line directly when explaining what went wrong.
+        - "RECENT ERRORS" / "LAST N RUNS": recent activity samples.
+        - "SYSTEM SUMMARY": last-24h system-wide snapshot.
+ 
+        CRITICAL RULES:
+        1. For counting/totals questions: use ONLY the "EXACT STATS" / "EXACT METRICS" / "EXACT PER-PIPELINE
+           RUN COUNTS" sections if present. Never estimate from a sample.
+        2. For "why did it fail" questions: quote the specific error line from the raw log text directly, then
+           explain in plain terms what it means and how to fix it, using your own reasoning about the error.
+        3. If the context says no data was found, say so plainly: "I couldn't find any data for this — try
+           running the pipeline first." Do not guess.
+ 
         Response Style:
-        - Start with a short, natural explanation (1–2 lines)
-        - Then provide structured insights if needed:
-        - ✅ Status summary
-        - ⚠️ Issues (if any)
-        - 💡 Suggested fix (practical and actionable)
-        - Use bullet points, not long paragraphs
-        - Avoid sounding like logs or raw SQL output
-
-        Error Handling:
-        - Clearly explain the root cause in simple terms
-        - Suggest a fix like you would to a teammate (practical, not generic)
-
-        Formatting:
-        - Use Markdown (bold, bullets, small tables)
-        - Format numbers cleanly (e.g., 10,000 rows, 25 sec)
-
-        Length:
-        - Keep responses short and useful (100–250 words preferred)
-
-        Goal:
-        Make the user feel like they are chatting with a smart engineer, not reading a system report.
+        - Start with a direct answer to the question (1–2 lines)
+        - Add structure only if it helps: ✅ status, ⚠️ error (quoted), 💡 suggested fix
+        - Use bullet points over long paragraphs
+        - Format numbers cleanly (10,000 rows, 25 sec, 92.3%)
+ 
+        Length: 100–250 words, longer only if quoting a real error and explaining a fix.
+ 
+        Goal: Feel like a teammate who already looked at the exact data — not a generic chatbot guessing.
         """
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. /chatbot endpoint — small change to pass the question text through
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+# @app.post("/chatbot")
+# async def chatbot(req: ChatRequest):
+#     """
+#     Ask questions about your data pipelines and get insights.
+#     Fetches only the DB context relevant to the question type, then asks
+#     OpenRouter to answer using that context.
 
-
-# ── Endpoint ──────────────────────────────────────────────────────────────────
+#     OpenRouter key/model resolution order:
+#       1. Value sent in the request (frontend field) — always wins if present
+#       2. DEFAULT_OPENROUTER_KEY / DEFAULT_OPENROUTER_MODEL from backend .env
+#       3. If no key is available anywhere, returns a clear 400 error
+#     """
+#     # Find the latest user message to use for both question-type detection
+#     # and context injection
+#     last_user_message = ""
+#     for msg in reversed(req.messages):
+#         if msg.role == "user":
+#             last_user_message = msg.content
+#             break
+ 
+#     # Fall back to extracting a pipeline name from the question text itself
+#     # if the dedicated pipeline_name field wasn't set. First check the
+#     # latest message; if it doesn't mention one, scan recent history too —
+#     # this keeps short follow-ups like "why it fails" working after an
+#     # earlier message in the same conversation named the pipeline.
+#     effective_pipeline_name = req.pipeline_name or _extract_pipeline_name_from_text(last_user_message)
+#     if not effective_pipeline_name:
+#         for msg in reversed(req.messages[:-1]):  # skip the message already checked above
+#             if msg.role == "user":
+#                 found = _extract_pipeline_name_from_text(msg.content)
+#                 if found:
+#                     effective_pipeline_name = found
+#                     break
+ 
+#     try:
+#         db_context = _build_db_context(effective_pipeline_name, last_user_message)
+#     except Exception as e:
+#         db_context = f"DB context fetch failed: {e}"
+ 
+#     messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}]
+ 
+#     history = req.messages[-8:]
+#     for i, msg in enumerate(history):
+#         if i == len(history) - 1 and msg.role == "user":
+#             messages_for_llm.append({
+#                 "role": "user",
+#                 "content": f"""User's question: {msg.content}
+ 
+# --- DATABASE CONTEXT (Live Data from PostgreSQL) ---
+# {db_context}
+# --- END CONTEXT ---
+# Answer clearly and concisely based on the live data provided above.
+# If the context doesn't have the answer, say "Data not found in context" instead of making assumptions."""
+#             })
+#         else:
+#             messages_for_llm.append({"role": msg.role, "content": msg.content})
+ 
+#     try:
+#         async with httpx.AsyncClient(timeout=30) as client:
+#             response = await client.post(
+#                 "https://openrouter.ai/api/v1/chat/completions",
+#                 headers={
+#                     "Authorization": f"Bearer {req.openrouter_key}",
+#                     "Content-Type":  "application/json",
+#                     "HTTP-Referer":  "http://localhost:8000",
+#                     "X-Title":       "SparkBrains Pipeline Assistant",
+#                 },
+#                 json={
+#                     "model":       req.model,
+#                     "messages":    messages_for_llm,
+#                     "max_tokens":  1200,
+#                     "temperature": 0.3,
+#                 },
+#             )
+ 
+#         if response.status_code == 200:
+#             data   = response.json()
+#             answer = data["choices"][0]["message"]["content"]
+#             return {
+#                 "status":  "SUCCESS",
+#                 "answer":  answer,
+#                 "model":   req.model,
+#                 "context_length": len(db_context),
+#             }
+#         elif response.status_code == 401:
+#             raise HTTPException(status_code=401, detail="Invalid OpenRouter API key.")
+#         elif response.status_code == 429:
+#             raise HTTPException(status_code=429, detail="OpenRouter rate limit. Wait.")
+#         else:
+#             raise HTTPException(
+#                 status_code=response.status_code,
+#                 detail=f"OpenRouter error: {response.text[:300]}"
+#             )
+ 
+#     except httpx.TimeoutException:
+#         raise HTTPException(status_code=504, detail="OpenRouter request timeout.")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
 @app.post("/chatbot")
 async def chatbot(req: ChatRequest):
     """
     Ask questions about your data pipelines and get insights.
-    It fetches live context from the database and generates answers using OpenRouter.
-
-    Request:
-        messages:       Chat history
-        openrouter_key: API key
-        model:          OpenRouter model name
-        pipeline_name:  Optional — For specific pipeline logs
+    Fetches only the DB context relevant to the question type, then asks
+    OpenRouter to answer using that context.
+ 
+    OpenRouter key/model resolution order:
+      1. Value sent in the request (frontend field) — always wins if present
+      2. DEFAULT_OPENROUTER_KEY / DEFAULT_OPENROUTER_MODEL from backend .env
+      3. If no key is available anywhere, returns a clear 400 error
     """
-    # ── DB context fetch karo ─────────────────────────────────────
+    effective_key   = req.openrouter_key or DEFAULT_OPENROUTER_KEY
+    effective_model = req.model or DEFAULT_OPENROUTER_MODEL
+ 
+    if not effective_key:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No OpenRouter API key available. Provide one in the request, "
+                "or set OPENROUTER_KEY in the backend .env for a shared default."
+            )
+        )
+ 
+    # Find the latest user message to use for both question-type detection
+    # and context injection
+    last_user_message = ""
+    for msg in reversed(req.messages):
+        if msg.role == "user":
+            last_user_message = msg.content
+            break
+ 
+    # Fall back to extracting a pipeline name from the question text itself
+    # if the dedicated pipeline_name field wasn't set. First check the
+    # latest message; if it doesn't mention one, scan recent history too —
+    # this keeps short follow-ups like "why it fails" working after an
+    # earlier message in the same conversation named the pipeline.
+    effective_pipeline_name = req.pipeline_name or _extract_pipeline_name_from_text(last_user_message)
+    if not effective_pipeline_name:
+        for msg in reversed(req.messages[:-1]):  # skip the message already checked above
+            if msg.role == "user":
+                found = _extract_pipeline_name_from_text(msg.content)
+                if found:
+                    effective_pipeline_name = found
+                    break
+ 
     try:
-        db_context = _build_db_context(req.pipeline_name)
+        db_context = _build_db_context(effective_pipeline_name, last_user_message)
     except Exception as e:
         db_context = f"DB context fetch failed: {e}"
-
-    # ── Messages build  ───────────────────────────────────────
-    # IN Last user message inject context  
+ 
     messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    # History add  (last 8 messages)
+ 
     history = req.messages[-8:]
     for i, msg in enumerate(history):
         if i == len(history) - 1 and msg.role == "user":
-            # DB context inject in the last user message
             messages_for_llm.append({
                 "role": "user",
-                "content": f"""User ka sawaal: {msg.content}
-
+                "content": f"""User's question: {msg.content}
+ 
 --- DATABASE CONTEXT (Live Data from PostgreSQL) ---
 {db_context}
 --- END CONTEXT ---
-Present your answer clearly and concisely based on the live data provided above. 
+Answer clearly and concisely based on the live data provided above.
 If the context doesn't have the answer, say "Data not found in context" instead of making assumptions."""
             })
         else:
-            messages_for_llm.append({
-                "role":    msg.role,
-                "content": msg.content,
-            })
-
-    # ── OpenRouter call ───────────────────────────────────────────
+            messages_for_llm.append({"role": msg.role, "content": msg.content})
+ 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {req.openrouter_key}",
+                    "Authorization": f"Bearer {effective_key}",
                     "Content-Type":  "application/json",
                     "HTTP-Referer":  "http://localhost:8000",
                     "X-Title":       "SparkBrains Pipeline Assistant",
                 },
                 json={
-                    "model":       req.model,
+                    "model":       effective_model,
                     "messages":    messages_for_llm,
                     "max_tokens":  1200,
                     "temperature": 0.3,
                 },
             )
-
+ 
         if response.status_code == 200:
             data   = response.json()
             answer = data["choices"][0]["message"]["content"]
             return {
                 "status":  "SUCCESS",
                 "answer":  answer,
-                "model":   req.model,
+                "model":   effective_model,
                 "context_length": len(db_context),
             }
         elif response.status_code == 401:
@@ -2110,7 +4819,7 @@ If the context doesn't have the answer, say "Data not found in context" instead 
                 status_code=response.status_code,
                 detail=f"OpenRouter error: {response.text[:300]}"
             )
-
+ 
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="OpenRouter request timeout.")
     except HTTPException:
@@ -2118,8 +4827,25 @@ If the context doesn't have the answer, say "Data not found in context" instead 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# frontend can show whether a backend
+# default is configured, without exposing the actual key value.
+# Add this anywhere after the /chatbot endpoint.
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+@app.get("/chatbot/config")
+def get_chatbot_config():
+    """
+    Lets the frontend know whether a backend-side default key/model is
+    configured, WITHOUT ever exposing the actual key value.
+    """
+    return {
+        "has_backend_key": bool(DEFAULT_OPENROUTER_KEY),
+        "default_model":   DEFAULT_OPENROUTER_MODEL,
+    }
 
-# ── Simple context-only endpoint (bina LLM ke) ───────────────────────────────
+
+# ── Simple context-only endpoint (without LLM ) ───────────────────────────────
 
 @app.get("/chatbot/context")
 def get_chatbot_context(pipeline_name: Optional[str] = None):
@@ -2140,3 +4866,162 @@ def get_chatbot_context(pipeline_name: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
     
     app.include_router(agent_router)
+
+
+
+# ── Allowed tables — whitelist to prevent arbitrary table access ────────────
+LOGS_TABLE_MAP = {
+    "pipeline_logs":         {"order_by": "log_time",   "default_desc": True},
+    "pipeline_runs":         {"order_by": "start_time", "default_desc": True},
+    "airflow_pipeline_runs": {"order_by": "created_at", "default_desc": True},
+    "pipeline_dag_logs":     {"order_by": "created_at", "default_desc": True},
+    "pipeline_metrics":      {"order_by": "logged_at",  "default_desc": True},
+}
+ 
+ 
+@app.get("/logs_tables")
+def list_logs_tables():
+    """
+    List the available log/metrics tables that /logs_table/{table_name} supports.
+    Frontend dropdown should call this to populate options.
+    """
+    return {"tables": list(LOGS_TABLE_MAP.keys())}
+ 
+ 
+@app.get("/logs_table/{table_name}")
+def get_logs_table(
+    table_name: str,
+    limit:  int             = Query(50, ge=1, le=1000),
+    offset: int             = Query(0,  ge=0),
+    sort_by: Optional[str]  = Query(None),
+    order:   str            = Query("desc", pattern="^(asc|desc)$"),
+    filter_col: Optional[str] = Query(None),
+    filter_val: Optional[str] = Query(None),
+    pipeline_id: Optional[str] = Query(None),  # convenience filter, see below
+):
+    """
+    Generic, safe viewer for any of the known log/metrics tables.
+ 
+    Examples:
+        GET /logs_table/pipeline_metrics
+        GET /logs_table/airflow_pipeline_runs?limit=20&order=desc
+        GET /logs_table/pipeline_dag_logs?pipeline_id=pipeline_sales_csv
+        GET /logs_table/pipeline_runs?filter_col=status&filter_val=FAILED
+    """
+    if table_name not in LOGS_TABLE_MAP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid table '{table_name}'. Valid: {list(LOGS_TABLE_MAP.keys())}"
+        )
+ 
+    table_cfg   = LOGS_TABLE_MAP[table_name]
+    default_col = table_cfg["order_by"]
+ 
+    conn   = get_conn()
+    cursor = conn.cursor()
+ 
+    try:
+        # ── 1. Validate table actually exists in DB (defensive) ─────────────
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = %s
+            )
+        """, (table_name,))
+        if not cursor.fetchone()[0]:
+            raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found in database.")
+ 
+        # ── 2. Get valid columns for this table ─────────────────────────────
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+        """, (table_name,))
+        valid_columns = {row[0] for row in cursor.fetchall()}
+ 
+        if sort_by and sort_by not in valid_columns:
+            raise HTTPException(status_code=400, detail=f"sort_by column '{sort_by}' not found in '{table_name}'.")
+ 
+        if filter_col and filter_col not in valid_columns:
+            raise HTTPException(status_code=400, detail=f"filter_col '{filter_col}' not found in '{table_name}'.")
+ 
+        sort_col = sort_by or (default_col if default_col in valid_columns else None)
+ 
+        # ── 3. Build WHERE clause — supports generic filter + convenience pipeline_id filter ─
+        where_parts  = []
+        count_params = []
+        data_params  = []
+ 
+        if pipeline_id:
+            # pipeline_id convenience filter — works across tables that have
+            # either 'pipeline_id' or 'dag_id' as the relevant column
+            pid_col = "pipeline_id" if "pipeline_id" in valid_columns else (
+                      "dag_id" if "dag_id" in valid_columns else None)
+            if pid_col:
+                normalized_pid = pipeline_id if pipeline_id.startswith("pipeline_") else f"pipeline_{pipeline_id}"
+                where_parts.append(sql.SQL("{col} = %s").format(col=sql.Identifier(pid_col)))
+                count_params.append(normalized_pid)
+                data_params.append(normalized_pid)
+ 
+        if filter_col and filter_val is not None:
+            where_parts.append(sql.SQL("CAST({col} AS TEXT) ILIKE %s").format(col=sql.Identifier(filter_col)))
+            like_val = f"%{filter_val}%"
+            count_params.append(like_val)
+            data_params.append(like_val)
+ 
+        where_clause = sql.SQL("")
+        if where_parts:
+            where_clause = sql.SQL("WHERE ") + sql.SQL(" AND ").join(where_parts)
+ 
+        # ── 4. Total count (pagination) ──────────────────────────────────────
+        count_query = sql.SQL("SELECT COUNT(*) FROM {table} {where}").format(
+            table=sql.Identifier(table_name),
+            where=where_clause,
+        )
+        cursor.execute(count_query, count_params)
+        total = cursor.fetchone()[0]
+ 
+        # ── 5. Main data query ────────────────────────────────────────────────
+        order_clause = sql.SQL("")
+        if sort_col:
+            order_clause = sql.SQL("ORDER BY {col} {dir}").format(
+                col=sql.Identifier(sort_col),
+                dir=sql.SQL("DESC" if order == "desc" else "ASC"),
+            )
+ 
+        data_query = sql.SQL(
+            "SELECT * FROM {table} {where} {order} LIMIT %s OFFSET %s"
+        ).format(
+            table=sql.Identifier(table_name),
+            where=where_clause,
+            order=order_clause,
+        )
+        data_params.extend([limit, offset])
+        cursor.execute(data_query, data_params)
+ 
+        rows = cursor.fetchall()
+        cols = [desc[0] for desc in cursor.description]
+        data = [dict(zip(cols, row)) for row in rows]
+ 
+        return {
+            "table":      table_name,
+            "columns":    sorted(valid_columns),
+            "pagination": {
+                "total":    total,
+                "limit":    limit,
+                "offset":   offset,
+                "has_more": (offset + limit) < total,
+                "page":     (offset // limit) + 1,
+                "pages":    -(-total // limit) if total else 0,
+            },
+            "filter": {"col": filter_col, "val": filter_val, "pipeline_id": pipeline_id},
+            "sort":   {"col": sort_col, "order": order},
+            "row_count": len(data),
+            "data":      data,
+        }
+ 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
