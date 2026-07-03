@@ -1,1429 +1,1481 @@
-"""
-Data Generator Router
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+import pendulum
+import os, json, requests, shutil
 
-API endpoints for synthetic data generation with multi-database support.
-Uses saved connections from the database (like Text-to-SQL).
-"""
+# AUTO-GENERATED — multi-source pipeline: as
+# Do not manually edit. Use /create_multi_pipeline endpoint to regenerate.
 
-import os
-import sys
-import json
-import re
-import uuid
-import time
-from typing import Optional, List, Dict, Any
-from datetime import datetime
-from pathlib import Path
-import random
-import string
+PIPELINE_ID     = "pipeline_as"
+TABLE_NAME      = "as"
+SCHEDULE        = "*/5 * * * *"
+TIMEZONE        = "Asia/Kolkata"
+SYNC_MODE       = "full"
+INCREMENTAL_COLUMN = None
+OPTION          = "1"
 
-from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel, Field
-import pandas as pd
+CONNECTOR_TYPE  = "multi_source"
+FOLDER_PATH     = None
+FILE_PATH       = None
+SHEET_URL       = None
+API_URL         = None
+AFTER_FIRST_RUN = None
 
-# Load env vars from project root
-from dotenv import load_dotenv
-project_root = Path(__file__).resolve().parent.parent.parent
-load_dotenv(project_root / ".env")
+BASE_URL              = "http://backend:8000"
+CONTAINER_PATH        = "/opt/airflow/data"
+DATASET_BASE_CON      = "/opt/airflow/dataset"
+WINDOWS_PATH          = "D:/MyProject/Spark_data_connector_system/data"
+DATASET_BASE_WIN      = "D:/MyProject/Spark_data_connector_system/Dataset"
+DATASET_PIPELINE_CON  = "/opt/airflow/dataset/pipeline_as"
+PIPELINE_CON_ROOT     = "/opt/airflow/data/pipeline_as"
 
-# Create router
-router = APIRouter(prefix="/datagen", tags=["Data Generator"])
-
-# Constants
-MAX_ROWS = 1000
-
-# Determine paths
-BACKEND_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BACKEND_DIR.parent.parent
-AGENT_DIR = PROJECT_ROOT / "AGENT"
-GENERATED_DIR = AGENT_DIR / "generator" / "generated"
-GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-
-print(f"[datagen] AGENT_DIR: {AGENT_DIR}")
-print(f"[datagen] GENERATED_DIR: {GENERATED_DIR}")
-
-# Add paths to sys.path
-sys.path.insert(0, str(AGENT_DIR))
-sys.path.insert(0, str(PROJECT_ROOT / "backend"))
-
-# Import connection manager from text_sql
-CONNECTION_MANAGER_AVAILABLE = False
-DatabaseConnection = None
-DatabaseType = None
-ConnectionManager = None
-
-# Get DB config from environment (same as main.py)
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "postgres"),
-    "database": os.getenv("DB_NAME", "airflow"),
-    "user": os.getenv("DB_USER", "airflow"),
-    "password": os.getenv("DB_PASSWORD", "airflow"),
-    "port": os.getenv("DB_PORT", "5432")
+CONNECTOR_ENDPOINT = {
+    "csv":           "ingest_csv",
+    "excel":         "ingest_excel",
+    "google_sheets": "ingest_google_sheet",
+    "api":           "ingest_api",
+    "postgres":      "ingest_postgres",
+    "s3":            "ingest_s3",
+    "snowflake":     "ingest_snowflake",
 }
 
-def _get_db_conn():
-    """Get a connection to the PostgreSQL database."""
-    import psycopg2
-    return psycopg2.connect(**DB_CONFIG)
+SOURCES = [{'CONNECTOR_TYPE': 'csv', 'OPTION': '1', 'TABLE_NAME': 'as', 'SYNC_MODE': 'full', 'INCREMENTAL_COLUMN': None, 'FOLDER_PATH': '/app/data/csv', 'FILE_PATH': None}, {'CONNECTOR_TYPE': 'postgres', 'OPTION': '1', 'TABLE_NAME': 'as', 'SYNC_MODE': 'full', 'INCREMENTAL_COLUMN': None, 'SRC_PG_HOST': 'postgres', 'SRC_PG_DB': 'airflow', 'SRC_PG_USER': 'airflow', 'SRC_PG_PASSWORD': 'airflow', 'SRC_PG_PORT': '5432', 'PG_QUERY': 'select * from d1'}]
+# import hashlib
+# import json
+# import shutil
+# import os
+# import psycopg2
+# from datetime import datetime
+# from dotenv import load_dotenv
+# import smtplib, traceback
+# from email.mime.text import MIMEText
+# from email.mime.multipart import MIMEMultipart
+# from email.mime.base import MIMEBase
+# from email import encoders
 
-def _rows_to_dicts(cursor):
-    """Convert psycopg2 cursor result to list of dictionaries"""
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+# load_dotenv()
 
-# Connection management functions using data connector's saved_connections
-def get_saved_connections():
-    """Get all saved connections from the data connector."""
-    conn = _get_db_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, name, source_type, config, status, created_at, updated_at
-        FROM saved_connections
-        WHERE source_type IN ('postgres', 'snowflake')
-        ORDER BY updated_at DESC, id DESC
-    """)
-    rows = _rows_to_dicts(cur)
-    cur.close()
-    conn.close()
-    return rows
-
-def get_saved_connection(connection_id: int):
-    """Get a specific saved connection by ID."""
-    conn = _get_db_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, name, source_type, config, status, created_at, updated_at
-        FROM saved_connections WHERE id = %s
-    """, (connection_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    if not row:
-        return None
-    columns = [desc[0] for desc in cur.description]
-    return dict(zip(columns, row))
-
-try:
-    text_sql_path = str(PROJECT_ROOT / "backend" / "text_sql")
-    sys.path.insert(0, text_sql_path)
-    from text_sql.connection_manager import (
-        get_connection_manager as _get_connection_manager,
-        DatabaseConnection,
-        DatabaseType,
-        ConnectionManager
-    )
-    CONNECTION_MANAGER_AVAILABLE = True
-    print("✓ Connection manager imported successfully")
-    
-    def get_connection_manager():
-        """Get connection manager for database operations."""
-        return _get_connection_manager()
-except ImportError as e:
-    print(f"Warning: Connection manager not available: {e}")
-    CONNECTION_MANAGER_AVAILABLE = False
-    
-    def get_connection_manager():
-        """Dummy connection manager when not available."""
-        return None
+# DB_CONFIG = {
+#     "host":     os.getenv("DB_HOST",     "postgres"),
+#     "database": os.getenv("DB_NAME",     "airflow"),
+#     "user":     os.getenv("DB_USER",     "airflow"),
+#     "password": os.getenv("DB_PASSWORD", "airflow"),
+#     "port":     os.getenv("DB_PORT",     "5432"),
+# }
 
 
-# =============================================================================
-# Simple Data Generator Implementation (no external dependencies)
-# =============================================================================
+# def _normalize(path):
+#     """Convert all backslash variants to forward slash."""
+#     if not path:
+#         return path
+#     return path.replace("\\\\", "/").replace("\\", "/")
 
-def _parse_with_llm(description: str, connection_id: str = None) -> dict:
+
+# def to_container_path(path):
+#     """
+#     Translate any user-provided path → Airflow container path.
+
+#     Accepts all three formats:
+#       • Windows path  : D:/DATA_ENG/.../data/sales
+#       • Backend path  : /app/data/sales
+#       • Already correct: /opt/airflow/data/sales  (returned as-is)
+#     """
+#     if not path:
+#         return path
+
+#     n = _normalize(path)
+
+#     # 1. Windows dataset path → Airflow dataset path
+#     n_dataset_win = _normalize(DATASET_BASE_WIN)
+#     if n_dataset_win and n.startswith(n_dataset_win):
+#         return n.replace(n_dataset_win, DATASET_BASE_CON)
+
+#     # 2. Windows data path → Airflow data path
+#     n_windows = _normalize(WINDOWS_PATH)
+#     if n_windows and n.startswith(n_windows):
+#         return n.replace(n_windows, CONTAINER_PATH)
+
+#     # 3. Backend dataset path → Airflow dataset path
+#     if n.startswith("/app/dataset"):
+#         return n.replace("/app/dataset", DATASET_BASE_CON)
+
+#     # 4. Backend data path → Airflow data path
+#     if n.startswith("/app/data"):
+#         return n.replace("/app/data", CONTAINER_PATH)
+
+#     # 5. Already an Airflow container path — return as-is
+#     return n
+
+
+# def to_backend_path(path):
+#     """
+#     Translate Airflow container path → backend container path.
+#     Called just before sending file_path to the /ingest_* API.
+
+#       /opt/airflow/data/sales/file.csv    → /app/data/sales/file.csv
+#       /opt/airflow/dataset/file.xlsx      → /app/dataset/file.xlsx
+#     """
+#     if not path:
+#         return path
+
+#     n = _normalize(path)
+
+#     # Airflow dataset path → backend dataset path
+#     n_dataset_con = _normalize(DATASET_BASE_CON)
+#     if n_dataset_con and n.startswith(n_dataset_con):
+#         return n.replace(n_dataset_con, "/app/dataset")
+
+#     # Airflow data path → backend data path
+#     n_container = _normalize(CONTAINER_PATH)
+#     if n_container and n.startswith(n_container):
+#         return n.replace(n_container, "/app/data")
+
+#     # Already a backend path — return as-is
+#     return n
+
+
+# # Keep old name as alias so existing code referencing to_windows_path still works
+# to_windows_path = to_backend_path
+
+
+# def _ensure_pipeline_folders():
+#     base = DATASET_PIPELINE_CON if CONNECTOR_TYPE in ("csv", "excel") else PIPELINE_CON_ROOT
+#     processed = os.path.join(base, "processed")
+#     failed    = os.path.join(base, "failed")
+#     os.makedirs(processed, exist_ok=True)
+#     os.makedirs(failed,    exist_ok=True)
+#     print(f"Folders ready — processed: {processed} | failed: {failed}")
+#     return processed, failed
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # HASH DEDUPLICATION
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# def _get_file_hash(filepath):
+#     """MD5 hash of file content — same content = same hash."""
+#     h = hashlib.md5()
+#     with open(filepath, "rb") as f:
+#         for chunk in iter(lambda: f.read(8192), b""):
+#             h.update(chunk)
+#     return h.hexdigest()
+
+
+# def _hash_already_processed(file_hash, processed_dir):
+#     if not os.path.exists(processed_dir):
+#         return False
+#     for fname in os.listdir(processed_dir):
+#         if not fname.endswith(".json"):
+#             continue
+#         fpath = os.path.join(processed_dir, fname)
+#         try:
+#             with open(fpath, "r", encoding="utf-8") as fh:
+#                 record = json.load(fh)
+#             if record.get("file_hash") == file_hash:
+#                 print(f"Already processed (hash match): {fname} — skipping.")
+#                 return True
+#         except Exception:
+#             continue
+#     return False
+
+
+# def _save_file_record(filepath, file_hash, dest_folder):
+#     os.makedirs(dest_folder, exist_ok=True)
+#     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     name = os.path.basename(filepath)
+#     dest = os.path.join(dest_folder, f"{name}_{ts}.json")
+#     with open(dest, "w", encoding="utf-8") as fh:
+#         json.dump({
+#             "original_filename": name,
+#             "file_hash":         file_hash,
+#             "processed_at":      ts,
+#             "pipeline":          PIPELINE_ID,
+#         }, fh, indent=2)
+#     print(f"Hash record saved: {dest}")
+
+
+# def _move_file(src, dest_folder):
+#     os.makedirs(dest_folder, exist_ok=True)
+#     name, ext = os.path.splitext(os.path.basename(src))
+#     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     dest = os.path.join(dest_folder, f"{name}_{ts}{ext}")
+#     shutil.copy2(src, dest)
+#     os.remove(src)
+#     print(f"Moved: {src} -> {dest}")
+
+
+# def _url_already_handled(url, processed_dir, failed_dir):
+#     """Only check processed/ — failed/ is not checked to allow retries."""
+#     if not os.path.exists(processed_dir):
+#         return False
+#     for fname in os.listdir(processed_dir):
+#         if not fname.endswith(".json"):
+#             continue
+#         fpath = os.path.join(processed_dir, fname)
+#         try:
+#             with open(fpath, "r", encoding="utf-8") as fh:
+#                 record = json.load(fh)
+#             if record.get("url") == url:
+#                 print(f"URL already successfully processed — skipping: {url}")
+#                 return True
+#         except Exception:
+#             continue
+#     return False
+
+
+# def _save_url_record(url, dest_folder, prefix="url"):
+#     os.makedirs(dest_folder, exist_ok=True)
+#     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     dest = os.path.join(dest_folder, f"{prefix}_{ts}.json")
+#     with open(dest, "w", encoding="utf-8") as fh:
+#         json.dump({"url": url, "timestamp": ts, "pipeline": PIPELINE_ID}, fh, indent=2)
+#     print(f"URL record saved: {dest}")
+
+
+# def _ingest_file(container_file, endpoint):
+#     """
+#     Send file to backend /ingest_* API.
+#     container_file is the Airflow path — translate to backend path before sending.
+#     """
+#     backend_file = to_backend_path(container_file)
+#     print(f"Airflow path : {container_file}")
+#     print(f"Backend path : {backend_file}")
+#     payload = {
+#         "file_path":          backend_file,   # ✅ backend-readable path
+#         "option":             OPTION,
+#         "table_name":         TABLE_NAME,
+#         "sync_mode":          SYNC_MODE,
+#         "incremental_column": INCREMENTAL_COLUMN,
+#     }
+#     res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
+#     print(f"Status: {res.status_code} | Response: {res.text}")
+#     return res.status_code == 200 and res.json().get("status") == "SUCCESS"
+
+
+# def _update_option_in_dag(new_option):
+#     import re as _re
+#     with open(__file__, "r", encoding="utf-8") as fh:
+#         content = fh.read()
+#     content = _re.sub(r'OPTION\s*=\s*"3"', f'OPTION = "{new_option}"', content)
+#     with open(__file__, "w", encoding="utf-8") as fh:
+#         fh.write(content)
+#     print(f"OPTION updated to {new_option}")
+
+
+# def _send_email(status, error="", dag_run_id=None):
+#     EMAIL_SENDER   = os.getenv("EMAIL_SENDER",   "")
+#     EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+#     EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "")
+#     SMTP_HOST      = os.getenv("SMTP_HOST",      "smtp.gmail.com")
+#     SMTP_PORT      = int(os.getenv("SMTP_PORT",  "587"))
+
+#     if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
+#         print("Email config missing — skipping email alert.")
+#         return
+
+#     try:
+#         msg = MIMEMultipart()
+#         msg["From"]    = EMAIL_SENDER
+#         msg["To"]      = EMAIL_RECEIVER
+#         msg["Subject"] = f"Pipeline {status.upper()}: {PIPELINE_ID}"
+
+#         emoji      = "OK" if status == "success" else "FAILED"
+#         error_line = f"Error    : {error}" if error else ""
+#         body = (
+#             f"Pipeline {status.upper()} Alert\n"
+#             f"{emoji} Pipeline : {PIPELINE_ID}\n"
+#             f"   Connector: {CONNECTOR_TYPE}\n"
+#             f"   Table    : {TABLE_NAME}\n"
+#             f"   Status   : {status.upper()}\n"
+#             f"   {error_line}\n"
+#             f"Airflow UI: http://localhost:8081\n\n"
+#             f"Full logs attached."
+#         )
+#         msg.attach(MIMEText(body, "plain"))
+
+#         log_content, _ = _collect_logs(dag_run_id) if dag_run_id else ("No run ID provided.", None)
+#         log_bytes = log_content.encode("utf-8")
+
+#         attachment = MIMEBase("application", "octet-stream")
+#         attachment.set_payload(log_bytes)
+#         encoders.encode_base64(attachment)
+#         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+#         attachment.add_header(
+#             "Content-Disposition",
+#             f"attachment; filename={PIPELINE_ID}_{status}_{ts}.log"
+#         )
+#         msg.attach(attachment)
+
+#         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+#             server.starttls()
+#             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+#             server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+#         print(f"Email sent: {status.upper()}")
+
+#     except Exception as e:
+#         print(f"Email send failed: {e}")
+#         print(traceback.format_exc())
+
+
+# def run_connector(**context):
+#     print(f"Pipeline  : {PIPELINE_ID}")
+#     print(f"Connector : {CONNECTOR_TYPE}")
+#     print(f"Option    : {OPTION}")
+
+#     dag_run_id = _log_run_start()
+
+#     try:
+#         processed_dir, failed_dir = _ensure_pipeline_folders()
+#         endpoint = CONNECTOR_ENDPOINT.get(CONNECTOR_TYPE)
+#         if not endpoint:
+#             raise ValueError(f"Invalid CONNECTOR_TYPE: {CONNECTOR_TYPE}")
+
+#         # ── CSV / Excel ───────────────────────────────────────────────────────
+#         if CONNECTOR_TYPE in ("csv", "excel"):
+#             ext_filter = ".csv" if CONNECTOR_TYPE == "csv" else (".xlsx", ".xls")
+#             candidate_files = []
+
+#             if FOLDER_PATH:
+#                 # Translate user path → Airflow container path
+#                 container_path = to_container_path(FOLDER_PATH)
+#                 print(f"Path resolved: {container_path}")
+#                 if not os.path.exists(container_path):
+#                     print(f"Path not found: {container_path} — skipping this run.")
+#                     _log_run_end(dag_run_id, "SKIPPED", "Path not found")
+#                     return
+#                 if os.path.isfile(container_path):
+#                     candidate_files = [container_path]
+#                 elif os.path.isdir(container_path):
+#                     files_in_dir = [
+#                         f for f in os.listdir(container_path)
+#                         if f.lower().endswith(ext_filter)
+#                     ]
+#                     if not files_in_dir:
+#                         print("No matching files found — skipping.")
+#                         _log_run_end(dag_run_id, "SKIPPED", "No files found in folder")
+#                         return
+#                     candidate_files = [os.path.join(container_path, f) for f in files_in_dir]
+#                 else:
+#                     raise FileNotFoundError(
+#                         f"Path exists but is neither file nor directory: {container_path}"
+#                     )
+
+#             elif FILE_PATH:
+#                 container_file = to_container_path(FILE_PATH)
+#                 print(f"File resolved: {container_file}")
+#                 if not os.path.exists(container_file):
+#                     print(f"File not found: {container_file} — skipping.")
+#                     _log_run_end(dag_run_id, "SKIPPED", "File not found")
+#                     return
+#                 candidate_files = [container_file]
+#             else:
+#                 raise ValueError("CSV/Excel: FOLDER_PATH or FILE_PATH required.")
+
+#             any_failed = False
+#             for container_file in candidate_files:
+#                 file_hash = _get_file_hash(container_file)
+
+#                 if _hash_already_processed(file_hash, processed_dir):
+#                     print(f"SKIP: {os.path.basename(container_file)} (same content, already in DB)")
+#                     continue
+
+#                 print(f"Processing: {os.path.basename(container_file)}")
+#                 if _ingest_file(container_file, endpoint):
+#                     _save_file_record(container_file, file_hash, processed_dir)
+#                     _move_file(container_file, processed_dir)
+#                 else:
+#                     print(f"Failed: {os.path.basename(container_file)} — moving to failed/")
+#                     _move_file(container_file, failed_dir)
+#                     any_failed = True
+
+#             if any_failed:
+#                 raise Exception("One or more files failed during ingestion")
+
+#         # ── Google Sheets ─────────────────────────────────────────────────────
+#         elif CONNECTOR_TYPE == "google_sheets":
+#             if not SHEET_URL:
+#                 raise ValueError("SHEET_URL required.")
+#             if _url_already_handled(SHEET_URL, processed_dir, failed_dir):
+#                 _log_run_end(dag_run_id, "SKIPPED", "URL already processed")
+#                 return
+#             payload = {
+#                 "sheet_url":          SHEET_URL,
+#                 "option":             OPTION,
+#                 "table_name":         TABLE_NAME,
+#                 "sync_mode":          SYNC_MODE,
+#                 "incremental_column": INCREMENTAL_COLUMN,
+#             }
+#             res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
+#             if res.status_code == 200 and res.json().get("status") != "FAILED":
+#                 _save_url_record(SHEET_URL, processed_dir, prefix="sheet_processed")
+#             else:
+#                 _save_url_record(SHEET_URL, failed_dir, prefix="sheet_failed")
+#                 raise Exception(f"Google Sheets ingestion failed: {res.text}")
+
+#         # ── API ───────────────────────────────────────────────────────────────
+#         elif CONNECTOR_TYPE == "api":
+#             if not API_URL:
+#                 raise ValueError("API_URL required.")
+#             if _url_already_handled(API_URL, processed_dir, failed_dir):
+#                 _log_run_end(dag_run_id, "SKIPPED", "URL already processed")
+#                 return
+#             payload = {
+#                 "url":                API_URL,
+#                 "option":             OPTION,
+#                 "table_name":         TABLE_NAME,
+#                 "sync_mode":          SYNC_MODE,
+#                 "incremental_column": INCREMENTAL_COLUMN,
+#             }
+#             res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
+#             if res.status_code == 200 and res.json().get("status") != "FAILED":
+#                 _save_url_record(API_URL, processed_dir, prefix="api_processed")
+#             else:
+#                 _save_url_record(API_URL, failed_dir, prefix="api_failed")
+#                 raise Exception(f"API ingestion failed: {res.text}")
+
+#         # ── S3 ────────────────────────────────────────────────────────────────
+#         elif CONNECTOR_TYPE == "s3":
+#             if not S3_BUCKET or not S3_KEY:
+#                 raise ValueError("S3_BUCKET and S3_KEY required.")
+
+#             import boto3
+#             s3_client = boto3.client(
+#                 "s3",
+#                 aws_access_key_id     = os.getenv("AWS_ACCESS_KEY_ID"),
+#                 aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY"),
+#                 region_name           = os.getenv("AWS_REGION", "us-east-1"),
+#             )
+
+#             is_folder = S3_KEY.endswith("/") or "." not in S3_KEY.split("/")[-1]
+
+#             if is_folder:
+#                 ext      = f".{S3_FILE_TYPE.lower().strip('.')}"
+#                 response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=S3_KEY)
+#                 all_keys = [
+#                     obj["Key"]
+#                     for obj in response.get("Contents", [])
+#                     if obj["Key"].lower().endswith(ext)
+#                     and not obj["Key"].endswith("/")
+#                 ]
+
+#                 if not all_keys:
+#                     print(f"No .{S3_FILE_TYPE} files in s3://{S3_BUCKET}/{S3_KEY} — skipping.")
+#                     _log_run_end(dag_run_id, "SKIPPED", "No files found in S3 folder")
+#                     return
+
+#                 print(f"Found {len(all_keys)} file(s) in S3 folder")
+#                 any_failed = False
+
+#                 for s3_file_key in all_keys:
+#                     s3_url    = f"s3://{S3_BUCKET}/{s3_file_key}"
+#                     file_name = s3_file_key.split("/")[-1]
+
+#                     if _url_already_handled(s3_url, processed_dir, failed_dir):
+#                         print(f"SKIP: {file_name} (already processed)")
+#                         continue
+
+#                     print(f"Processing: {file_name}")
+#                     payload = {
+#                         "bucket":             S3_BUCKET,
+#                         "key":                s3_file_key,
+#                         "file_type":          S3_FILE_TYPE,
+#                         "option":             OPTION,
+#                         "table_name":         TABLE_NAME,
+#                         "sync_mode":          SYNC_MODE,
+#                         "incremental_column": INCREMENTAL_COLUMN,
+#                     }
+#                     res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
+
+#                     if res.status_code == 200 and res.json().get("status") != "FAILED":
+#                         _save_url_record(s3_url, processed_dir, prefix=f"s3_processed_{file_name}")
+#                         print(f"SUCCESS: {file_name} → processed/")
+#                     else:
+#                         _save_url_record(s3_url, failed_dir, prefix=f"s3_failed_{file_name}")
+#                         print(f"FAILED: {file_name} → failed/")
+#                         any_failed = True
+
+#                 if any_failed:
+#                     raise Exception("One or more S3 files failed during ingestion")
+
+#             else:
+#                 s3_url = f"s3://{S3_BUCKET}/{S3_KEY}"
+#                 if _url_already_handled(s3_url, processed_dir, failed_dir):
+#                     print(f"SKIP: {S3_KEY} (already processed)")
+#                     _log_run_end(dag_run_id, "SKIPPED", "S3 file already processed")
+#                     return
+
+#                 payload = {
+#                     "bucket":             S3_BUCKET,
+#                     "key":                S3_KEY,
+#                     "file_type":          S3_FILE_TYPE,
+#                     "option":             OPTION,
+#                     "table_name":         TABLE_NAME,
+#                     "sync_mode":          SYNC_MODE,
+#                     "incremental_column": INCREMENTAL_COLUMN,
+#                 }
+#                 res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
+#                 if res.status_code == 200 and res.json().get("status") != "FAILED":
+#                     _save_url_record(s3_url, processed_dir, prefix="s3_processed")
+#                     print(f"SUCCESS: {S3_KEY} → processed/")
+#                 else:
+#                     _save_url_record(s3_url, failed_dir, prefix="s3_failed")
+#                     print(f"FAILED: {S3_KEY} → failed/")
+#                     raise Exception(f"S3 ingestion failed: {res.text}")
+
+#         # ── Postgres ──────────────────────────────────────────────────────────
+#         elif CONNECTOR_TYPE == "postgres":
+#             if not PG_QUERY:
+#                 raise ValueError("PG_QUERY required for postgres connector.")
+#             payload = {
+#                 "host":               SRC_PG_HOST,
+#                 "database":           SRC_PG_DB,
+#                 "user":               SRC_PG_USER,
+#                 "password":           SRC_PG_PASSWORD,
+#                 "port":               SRC_PG_PORT,
+#                 "query":              PG_QUERY,
+#                 "option":             OPTION,
+#                 "table_name":         TABLE_NAME,
+#                 "sync_mode":          SYNC_MODE,
+#                 "incremental_column": INCREMENTAL_COLUMN,
+#             }
+#             res = requests.post(f"{BASE_URL}/ingest_postgres", json=payload, timeout=120)
+#             if res.status_code == 200 and res.json().get("status") != "FAILED":
+#                 _save_url_record(PG_QUERY, processed_dir, prefix="postgres_processed")
+#             else:
+#                 _save_url_record(PG_QUERY, failed_dir, prefix="postgres_failed")
+#                 raise Exception(f"Postgres ingestion failed: {res.text}")
+
+#         # ── Snowflake ─────────────────────────────────────────────────────────
+#         elif CONNECTOR_TYPE == "snowflake":
+#             if not SF_QUERY:
+#                 raise ValueError("SF_QUERY required for snowflake connector.")
+#             payload = {
+#                 "account":            SF_ACCOUNT,
+#                 "user":               SF_USER,
+#                 "password":           SF_PASSWORD,
+#                 "warehouse":          SF_WAREHOUSE,
+#                 "database":           SF_DATABASE,
+#                 "schema":             SF_SCHEMA,
+#                 "role":               SF_ROLE,
+#                 "query":              SF_QUERY,
+#                 "option":             OPTION,
+#                 "table_name":         TABLE_NAME,
+#                 "sync_mode":          SYNC_MODE,
+#                 "incremental_column": INCREMENTAL_COLUMN,
+#             }
+#             res = requests.post(f"{BASE_URL}/ingest_snowflake", json=payload, timeout=120)
+#             if res.status_code == 200 and res.json().get("status") != "FAILED":
+#                 _save_url_record(SF_QUERY, processed_dir, prefix="snowflake_processed")
+#             else:
+#                 _save_url_record(SF_QUERY, failed_dir, prefix="snowflake_failed")
+#                 raise Exception(f"Snowflake ingestion failed: {res.text}")
+
+#         if OPTION == "3" and AFTER_FIRST_RUN in ("1", "2"):
+#             _update_option_in_dag(AFTER_FIRST_RUN)
+
+#         _log_run_end(dag_run_id, "SUCCESS")
+#         print("Pipeline completed!")
+#         _send_email("success", dag_run_id=dag_run_id)
+
+#     except Exception as e:
+#         _log_run_end(dag_run_id, "FAILED", str(e))
+#         _send_email("failed", error=str(e), dag_run_id=dag_run_id)
+#         raise
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # DB helpers
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# def _get_db_conn():
+#     return psycopg2.connect(**DB_CONFIG)
+
+
+# def _collect_logs(dag_run_id):
+#     import glob
+#     pattern = (
+#         f"/opt/airflow/logs/dag_id={PIPELINE_ID}"
+#         f"/run_id=*/task_id=run_connector/attempt=*.log"
+#     )
+#     log_files = sorted(glob.glob(pattern))
+#     if not log_files:
+#         pattern_old = f"/opt/airflow/logs/{PIPELINE_ID}/run_connector/*.log"
+#         log_files   = sorted(glob.glob(pattern_old))
+#     if not log_files:
+#         print(f"No log files found for pattern: {pattern}")
+#         return "No log file found.", None
+#     latest = log_files[-1]
+#     try:
+#         with open(latest, "r", encoding="utf-8", errors="replace") as f:
+#             content = f.read()
+#         print(f"Log file read: {latest} ({len(content)} chars)")
+#         return content, latest
+#     except Exception as e:
+#         return f"Could not read log file: {e}", latest
+
+
+# def _save_log_to_db(dag_run_id, status, log_content, log_file_path):
+#     try:
+#         conn = _get_db_conn()
+#         cur  = conn.cursor()
+#         cur.execute("""
+#             INSERT INTO pipeline_dag_logs (
+#                 pipeline_id, dag_run_id, task_id,
+#                 status, log_content, log_file_path
+#             ) VALUES (%s, %s, %s, %s, %s, %s)
+#         """, (PIPELINE_ID, dag_run_id, "run_connector", status, log_content, log_file_path))
+#         conn.commit()
+#         cur.close()
+#         conn.close()
+#         print(f"Log saved to DB for run: {dag_run_id}")
+#     except Exception as e:
+#         print(f"Failed to save log to DB: {e}")
+
+
+# def _log_run_start():
+#     dag_run_id = f"run__{PIPELINE_ID}__{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+#     try:
+#         conn = _get_db_conn()
+#         cur  = conn.cursor()
+#         cur.execute("""
+#             INSERT INTO airflow_pipeline_runs (
+#                 dag_id, dag_run_id, pipeline_name,
+#                 connector_type, folder_path, file_path,
+#                 sheet_url, api_url, operation, table_name,
+#                 schedule, status, execution_date, triggered_by
+#             ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+#         """, (
+#             PIPELINE_ID, dag_run_id, PIPELINE_ID,
+#             CONNECTOR_TYPE, FOLDER_PATH, FILE_PATH,
+#             SHEET_URL, API_URL, OPTION, TABLE_NAME,
+#             SCHEDULE, "RUNNING", datetime.now().isoformat(), "scheduler",
+#         ))
+#         conn.commit()
+#         cur.close()
+#         conn.close()
+#         print(f"DB log: RUNNING — {dag_run_id}")
+#     except Exception as e:
+#         print(f"DB log failed (start): {e}")
+#     return dag_run_id
+
+
+# def _log_run_end(dag_run_id, status, error=""):
+#     try:
+#         conn = _get_db_conn()
+#         cur  = conn.cursor()
+#         cur.execute("""
+#             UPDATE airflow_pipeline_runs
+#             SET status = %s, error_message = %s
+#             WHERE dag_run_id = %s
+#         """, (status, error or None, dag_run_id))
+#         conn.commit()
+#         cur.close()
+#         conn.close()
+#         print(f"DB log: {status} — {dag_run_id}")
+#     except Exception as e:
+#         print(f"DB log failed (end): {e}")
+
+#     log_content, log_file_path = _collect_logs(dag_run_id)
+#     _save_log_to_db(dag_run_id, status, log_content, log_file_path)
+
+import hashlib
+import json
+import shutil
+import os
+import psycopg2
+from datetime import datetime
+from dotenv import load_dotenv
+import smtplib, traceback
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+
+load_dotenv()
+
+DB_CONFIG = {
+    "host":     os.getenv("DB_HOST",     "postgres"),
+    "database": os.getenv("DB_NAME",     "airflow"),
+    "user":     os.getenv("DB_USER",     "airflow"),
+    "password": os.getenv("DB_PASSWORD", "airflow"),
+    "port":     os.getenv("DB_PORT",     "5432"),
+}
+
+
+def _normalize(path):
+    """Convert all backslash variants to forward slash."""
+    if not path:
+        return path
+    return path.replace("\\\\", "/").replace("\\", "/")
+
+
+def to_container_path(path):
     """
-    Use LLM to parse the description and generate appropriate config.
-    If connection_id provided, uses live database schema.
-    If table doesn't exist, LLM will suggest schema and create it.
+    Translate any user-provided path → Airflow container path.
+
+    Accepts all three formats:
+      • Windows path  : D:/DATA_ENG/.../data/sales
+      • Backend path  : /app/data/sales
+      • Already correct: /opt/airflow/data/sales  (returned as-is)
     """
-    from groq import Groq
-    import os
-    
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-    
-    # Build schema info from connection if available
-    schema_info = ""
-    available_tables = []
-    
-    if connection_id:
+    if not path:
+        return path
+
+    n = _normalize(path)
+
+    # 1. Windows dataset path → Airflow dataset path
+    n_dataset_win = _normalize(DATASET_BASE_WIN)
+    if n_dataset_win and n.startswith(n_dataset_win):
+        return n.replace(n_dataset_win, DATASET_BASE_CON)
+
+    # 2. Windows data path → Airflow data path
+    n_windows = _normalize(WINDOWS_PATH)
+    if n_windows and n.startswith(n_windows):
+        return n.replace(n_windows, CONTAINER_PATH)
+
+    # 3. Backend dataset path → Airflow dataset path
+    if n.startswith("/app/dataset"):
+        return n.replace("/app/dataset", DATASET_BASE_CON)
+
+    # 4. Backend data path → Airflow data path
+    if n.startswith("/app/data"):
+        return n.replace("/app/data", CONTAINER_PATH)
+
+    # 5. Already an Airflow container path — return as-is
+    return n
+
+
+def to_backend_path(path):
+    """
+    Translate Airflow container path → backend container path.
+    Called just before sending file_path to the /ingest_* API.
+
+      /opt/airflow/data/sales/file.csv    → /app/data/sales/file.csv
+      /opt/airflow/dataset/file.xlsx      → /app/dataset/file.xlsx
+    """
+    if not path:
+        return path
+
+    n = _normalize(path)
+
+    # Airflow dataset path → backend dataset path
+    n_dataset_con = _normalize(DATASET_BASE_CON)
+    if n_dataset_con and n.startswith(n_dataset_con):
+        return n.replace(n_dataset_con, "/app/dataset")
+
+    # Airflow data path → backend data path
+    n_container = _normalize(CONTAINER_PATH)
+    if n_container and n.startswith(n_container):
+        return n.replace(n_container, "/app/data")
+
+    # Already a backend path — return as-is
+    return n
+
+
+# Keep old name as alias so existing code referencing to_windows_path still works
+to_windows_path = to_backend_path
+
+
+def _ensure_pipeline_folders(connector_type=None, source_label=None):
+    """
+    Create (and return) the processed/ and failed/ folders used for hash-
+    and URL-based dedup + file archiving.
+
+    connector_type : which type this call is for. Falls back to the
+                      module-level CONNECTOR_TYPE global for single-source
+                      DAGs (backward compatible).
+    source_label    : optional sub-folder name. Multi-source pipelines pass
+                      something like "source_1_csv" so each source gets its
+                      own processed/failed history and hash records never
+                      collide across sources sharing one pipeline.
+    """
+    connector_type = connector_type or CONNECTOR_TYPE
+    base = DATASET_PIPELINE_CON if connector_type in ("csv", "excel") else PIPELINE_CON_ROOT
+    if source_label:
+        base = os.path.join(base, source_label)
+    processed = os.path.join(base, "processed")
+    failed    = os.path.join(base, "failed")
+    os.makedirs(processed, exist_ok=True)
+    os.makedirs(failed,    exist_ok=True)
+    print(f"Folders ready — processed: {processed} | failed: {failed}")
+    return processed, failed
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HASH DEDUPLICATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_file_hash(filepath):
+    """MD5 hash of file content — same content = same hash."""
+    h = hashlib.md5()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _hash_already_processed(file_hash, processed_dir):
+    if not os.path.exists(processed_dir):
+        return False
+    for fname in os.listdir(processed_dir):
+        if not fname.endswith(".json"):
+            continue
+        fpath = os.path.join(processed_dir, fname)
         try:
-            conn = get_connection(connection_id)
-            available_tables = list_connection_tables(conn)
-            schema_info = f"\n\nAvailable tables in database: {available_tables}"
-        except Exception as e:
-            print(f"[datagen] Error getting schema info: {e}")
-    
-    system_prompt = f"""You are a data generation assistant. 
-Parse the user's request and return ONLY valid JSON.
+            with open(fpath, "r", encoding="utf-8") as fh:
+                record = json.load(fh)
+            if record.get("file_hash") == file_hash:
+                print(f"Already processed (hash match): {fname} — skipping.")
+                return True
+        except Exception:
+            continue
+    return False
 
-IMPORTANT: The user wants to generate data. Analyze what entity they're referring to and create an appropriate table schema.
 
-The JSON should have these fields:
-- "table": table name (uppercase, e.g., CUSTOMERS, SUPPORT_TICKETS, PRODUCTS)
-- "rows": number of rows (integer, max 1000)
-- "locale": Faker locale (e.g., "en_US", "en_IN")  
-- "columns": list of column names appropriate for the entity
-- "hints": dict of column -> description for data generation
-- "create_table": (required if table doesn't exist) SQL CREATE TABLE statement
+def _save_file_record(filepath, file_hash, dest_folder):
+    os.makedirs(dest_folder, exist_ok=True)
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name = os.path.basename(filepath)
+    dest = os.path.join(dest_folder, f"{name}_{ts}.json")
+    with open(dest, "w", encoding="utf-8") as fh:
+        json.dump({
+            "original_filename": name,
+            "file_hash":         file_hash,
+            "processed_at":      ts,
+            "pipeline":          PIPELINE_ID,
+        }, fh, indent=2)
+    print(f"Hash record saved: {dest}")
 
-{schema_info}
 
-Entity mapping examples:
-- "customer" → CUSTOMERS table with ID, NAME, EMAIL, PHONE, ADDRESS, CITY, COUNTRY
-- "support ticket" → SUPPORT_TICKETS with TICKET_ID, CUSTOMER_NAME, ISSUE, STATUS, PRIORITY, CREATED_DATE
-- "product" → PRODUCTS with PRODUCT_ID, NAME, DESCRIPTION, PRICE, CATEGORY, STOCK
-- "employee" → EMPLOYEES with EMP_ID, NAME, DEPARTMENT, SALARY, HIRE_DATE
-- "order" → ORDERS with ORDER_ID, CUSTOMER_ID, ORDER_DATE, TOTAL_AMOUNT, STATUS
+def _move_file(src, dest_folder):
+    os.makedirs(dest_folder, exist_ok=True)
+    name, ext = os.path.splitext(os.path.basename(src))
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(dest_folder, f"{name}_{ts}{ext}")
+    shutil.copy2(src, dest)
+    os.remove(src)
+    print(f"Moved: {src} -> {dest}")
 
-If the table doesn't exist in the database:
-1. Determine appropriate table name from the entity
-2. Create suitable columns based on what makes sense for that entity
-3. Include the "create_table" DDL
 
-Rules:
-- Return ONLY valid JSON, no explanation, no markdown, no code fences
-- If table exists in the list above, use its exact column names
-- If creating new table, use appropriate data types (INTEGER for IDs, VARCHAR for text, DATE for dates, DECIMAL for money)
-- Always extract the row count from the prompt (e.g., "50 tickets" = 50 rows)
-- Max 1000 rows
+def _url_already_handled(url, processed_dir, failed_dir):
+    """Only check processed/ — failed/ is not checked to allow retries."""
+    if not os.path.exists(processed_dir):
+        return False
+    for fname in os.listdir(processed_dir):
+        if not fname.endswith(".json"):
+            continue
+        fpath = os.path.join(processed_dir, fname)
+        try:
+            with open(fpath, "r", encoding="utf-8") as fh:
+                record = json.load(fh)
+            if record.get("url") == url:
+                print(f"URL already successfully processed — skipping: {url}")
+                return True
+        except Exception:
+            continue
+    return False
 
-Example for new table:
-{{"table": "SUPPORT_TICKETS", "rows": 50, "locale": "en_US", "columns": ["TICKET_ID", "CUSTOMER_NAME", "ISSUE", "STATUS", "PRIORITY", "CREATED_DATE"], "hints": {{"TICKET_ID": "unique sequential integer starting from 1", "CUSTOMER_NAME": "customer full name", "ISSUE": "description of the support issue", "STATUS": "open, in_progress, resolved, closed", "PRIORITY": "low, medium, high, critical", "CREATED_DATE": "recent date within last 30 days"}}, "create_table": "CREATE OR REPLACE TABLE SUPPORT_TICKETS (TICKET_ID INTEGER, CUSTOMER_NAME VARCHAR(100), ISSUE TEXT, STATUS VARCHAR(20), PRIORITY VARCHAR(20), CREATED_DATE DATE)"}}"""
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": description}
-        ],
-        temperature=0
-    )
-    
-    raw = response.choices[0].message.content.strip()
-    raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-    
+def _save_url_record(url, dest_folder, prefix="url"):
+    os.makedirs(dest_folder, exist_ok=True)
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(dest_folder, f"{prefix}_{ts}.json")
+    with open(dest, "w", encoding="utf-8") as fh:
+        json.dump({"url": url, "timestamp": ts, "pipeline": PIPELINE_ID}, fh, indent=2)
+    print(f"URL record saved: {dest}")
+
+
+def _ingest_file(container_file, endpoint, option, table_name, sync_mode, incremental_column):
+    """
+    Send file to backend /ingest_* API.
+    container_file is the Airflow path — translate to backend path before sending.
+
+    option/table_name/sync_mode/incremental_column are now explicit params
+    (rather than module globals) so this works for both single-source DAGs
+    and multi-source DAGs where each source can carry its own option.
+    """
+    backend_file = to_backend_path(container_file)
+    print(f"Airflow path : {container_file}")
+    print(f"Backend path : {backend_file}")
+    payload = {
+        "file_path":          backend_file,   # ✅ backend-readable path
+        "option":             option,
+        "table_name":         table_name,
+        "sync_mode":          sync_mode,
+        "incremental_column": incremental_column,
+    }
+    res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
+    print(f"Status: {res.status_code} | Response: {res.text}")
+    return res.status_code == 200 and res.json().get("status") == "SUCCESS"
+
+
+def _update_option_in_dag(new_option):
+    import re as _re
+    with open(__file__, "r", encoding="utf-8") as fh:
+        content = fh.read()
+    content = _re.sub(r'OPTION\s*=\s*"3"', f'OPTION = "{new_option}"', content)
+    with open(__file__, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    print(f"OPTION updated to {new_option}")
+
+
+def _send_email(status, error="", dag_run_id=None):
+    EMAIL_SENDER   = os.getenv("EMAIL_SENDER",   "")
+    EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+    EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "")
+    SMTP_HOST      = os.getenv("SMTP_HOST",      "smtp.gmail.com")
+    SMTP_PORT      = int(os.getenv("SMTP_PORT",  "587"))
+
+    if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
+        print("Email config missing — skipping email alert.")
+        return
+
     try:
-        config = json.loads(raw)
-        
-        # Ensure required fields
-        config.setdefault("table", "GENERATED_DATA")
-        config.setdefault("rows", 10)
-        config.setdefault("locale", "en_US")
-        config.setdefault("columns", [])
-        config.setdefault("hints", {})
-        
-        # Cap rows
-        config["rows"] = min(max(1, config.get("rows", 10)), MAX_ROWS)
-        
-        print(f"[datagen] LLM parsed config: {config}")
-        return config
-    except json.JSONDecodeError as e:
-        print(f"[datagen] LLM JSON parse error: {e}\nRaw:\n{raw}")
-        # Fallback - extract what we can
-        desc_lower = description.lower()
-        rows = 10
-        match = re.search(r'(\d+)', description)
-        if match:
-            rows = int(match.group(1))
-        
-        table = "GENERATED_DATA"
-        entity_map = {
-            'support ticket': 'SUPPORT_TICKETS',
-            'customer': 'CUSTOMERS',
-            'product': 'PRODUCTS',
-            'order': 'ORDERS',
-            'employee': 'EMPLOYEES',
-            'user': 'USERS',
-        }
-        for key, tbl in entity_map.items():
-            if key in desc_lower:
-                table = tbl
-                break
-        
-        return {
-            "table": table,
-            "rows": min(rows, MAX_ROWS),
-            "locale": "en_US",
-            "columns": ["ID", "NAME", "VALUE"],
-            "hints": {"ID": "integer", "NAME": "text", "VALUE": "text"}
-        }
+        msg = MIMEMultipart()
+        msg["From"]    = EMAIL_SENDER
+        msg["To"]      = EMAIL_RECEIVER
+        msg["Subject"] = f"Pipeline {status.upper()}: {PIPELINE_ID}"
+
+        emoji      = "OK" if status == "success" else "FAILED"
+        error_line = f"Error    : {error}" if error else ""
+        body = (
+            f"Pipeline {status.upper()} Alert\n"
+            f"{emoji} Pipeline : {PIPELINE_ID}\n"
+            f"   Connector: {CONNECTOR_TYPE}\n"
+            f"   Table    : {TABLE_NAME}\n"
+            f"   Status   : {status.upper()}\n"
+            f"   {error_line}\n"
+            f"Airflow UI: http://localhost:8081\n\n"
+            f"Full logs attached."
+        )
+        msg.attach(MIMEText(body, "plain"))
+
+        log_content, _ = _collect_logs(dag_run_id) if dag_run_id else ("No run ID provided.", None)
+        log_bytes = log_content.encode("utf-8")
+
+        attachment = MIMEBase("application", "octet-stream")
+        attachment.set_payload(log_bytes)
+        encoders.encode_base64(attachment)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        attachment.add_header(
+            "Content-Disposition",
+            f"attachment; filename={PIPELINE_ID}_{status}_{ts}.log"
+        )
+        msg.attach(attachment)
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+        print(f"Email sent: {status.upper()}")
+
+    except Exception as e:
+        print(f"Email send failed: {e}")
+        print(traceback.format_exc())
 
 
-def _parse_description(description: str) -> dict:
-    """Fallback simple parser if LLM not available."""
-    if not description or not description.strip():
-        return {
-            "table": "GENERATED_DATA",
-            "rows": 10,
-            "locale": "en_US",
-            "columns": ["ID", "NAME", "EMAIL"],
-            "hints": {"ID": "sequential_integer", "NAME": "full_name", "EMAIL": "email"}
-        }
-    
-    desc_lower = description.lower()
-    
-    # Extract row count
-    rows = 10
-    match = re.search(r'(\d+)', desc_lower)
-    if match:
-        rows = int(match.group(1))
-    rows = min(max(1, rows), MAX_ROWS)
-    
-    # Extract table name
-    table = "GENERATED_DATA"
-    entity_map = {
-        'customer': 'CUSTOMERS', 'customers': 'CUSTOMERS',
-        'user': 'USERS', 'users': 'USERS',
-        'employee': 'EMPLOYEES', 'employees': 'EMPLOYEES',
-        'product': 'PRODUCTS', 'products': 'PRODUCTS',
-        'order': 'ORDERS', 'orders': 'ORDERS',
-        'category': 'CATEGORIES', 'categories': 'CATEGORIES',
-    }
-    for key, tbl in entity_map.items():
-        if key in desc_lower:
-            table = tbl
-            break
-    
-    return {
-        "table": table,
-        "rows": rows,
-        "locale": "en_US",
-        "columns": [],
-        "hints": {}
-    }
+# ─────────────────────────────────────────────────────────────────────────────
+# CORE PER-SOURCE PROCESSING
+# Shared by single-source run_connector() AND multi-source run_multi_source().
+# All the hash dedup / URL dedup / folder listing / file moving / path
+# translation logic lives here exactly once.
+# ─────────────────────────────────────────────────────────────────────────────
 
+def _process_one_source(cfg, source_label=None):
+    """
+    Process exactly one source described by `cfg` (a dict with uppercase
+    keys — CONNECTOR_TYPE, OPTION, TABLE_NAME, SYNC_MODE, INCREMENTAL_COLUMN,
+    plus whichever of FOLDER_PATH/FILE_PATH/SHEET_URL/API_URL/S3_*/SRC_PG_*/
+    SF_* apply to that connector type).
 
-def _generate_simple_data(config: dict) -> pd.DataFrame:
-    """Generate simple fake data without LLM."""
-    rows = config.get("rows", 10)
-    columns = config.get("columns", ["ID", "NAME"])
-    hints = config.get("hints", {})
-    
-    data = {}
-    
-    # Sample data pools for realistic generation
-    first_names = ["John", "Jane", "Michael", "Sarah", "David", "Emily", "Robert", "Lisa", "James", "Mary"]
-    last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Wilson", "Taylor"]
-    cities = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego"]
-    countries = ["USA", "UK", "Canada", "Australia", "Germany", "France", "Japan", "India"]
-    departments = ["Engineering", "Sales", "Marketing", "HR", "Finance", "Operations", "IT", "Support"]
-    statuses = ["active", "inactive", "pending", "completed", "cancelled"]
-    products = ["Laptop", "Phone", "Tablet", "Headphones", "Camera", "Watch", "Speaker", "Monitor"]
-    priorities = ["low", "medium", "high", "critical"]
-    
-    # India-specific data
-    indian_cities = ["Delhi", "Mumbai", "Bangalore", "Chennai", "Kolkata", "Hyderabad", "Pune", "Jaipur", "Lucknow", "Chandigarh"]
-    indian_ranges = ["Himalayas", "Karakoram", "Pir Panjal", "Aravalli", "Western Ghats", "Eastern Ghats", "Satpura", "Vindhya"]
-    mountain_names = ["Kangchenjunga", "Nanda Devi", "Kamet", "Saltoro Ri", "Saser Kangri", "K12", "Kangchenjunga South", "Mansarovar", "Teram Kangri", "Chorten Nyima"]
-    
-    for col in columns:
-        col_lower = col.lower()
-        hint = hints.get(col, "").lower() if hints.get(col) else ""
-        
-        # Auto-infer hint from column name patterns if not provided
-        if not hint:
-            # ID columns
-            if "id" in col_lower or "_id" in col_lower or "no" in col_lower or "num" in col_lower:
-                hint = "sequential integer starting from 1"
-            # Code/Coupon/Reference
-            elif "code" in col_lower or "coupon" in col_lower or "ref" in col_lower or "sku" in col_lower:
-                hint = "alphanumeric code like COUPON10, SAVE20"
-            # Discount/Amount/Price/Cost
-            elif "discount" in col_lower or "percent" in col_lower or "amount" in col_lower or "price" in col_lower or "cost" in col_lower or "salary" in col_lower:
-                hint = "decimal number"
-            # Date/Time columns
-            elif "date" in col_lower or "time" in col_lower or "created" in col_lower or "updated" in col_lower or "expired" in col_lower or "dob" in col_lower:
-                hint = "recent date in YYYY-MM-DD format"
-            # Count/Quantity/Uses
-            elif "count" in col_lower or "qty" in col_lower or "quantity" in col_lower or "uses" in col_lower or "limit" in col_lower:
-                hint = "integer number"
-            # Name
-            elif "name" in col_lower:
-                hint = "full name"
-            # Email
-            elif "email" in col_lower:
-                hint = "email address"
-            # Phone
-            elif "phone" in col_lower or "mobile" in col_lower:
-                hint = "phone number"
-            # Description
-            elif "description" in col_lower or "desc" in col_lower or "note" in col_lower:
-                hint = "text description"
-            # Status
-            elif "status" in col_lower:
-                hint = "status value like active, inactive"
-            # Boolean
-            elif "is_" in col_lower or "has_" in col_lower or "active" in col_lower:
-                hint = "true or false"
-        
-        # Check hint FIRST - this is most important
-        if hint:
-            if "sequential" in hint and "integer" in hint:
-                data[col] = list(range(1, rows + 1))
-            elif "sequential" in hint or "starting from" in hint:
-                data[col] = list(range(1, rows + 1))
-            elif "alphanumeric" in hint or "code like" in hint or "coupon" in hint:
-                data[col] = [f"CPN{1000+i:04d}" for i in range(rows)]
-            elif "discount" in hint and "percent" in hint:
-                data[col] = [round(random.uniform(5, 50), 2) for _ in range(rows)]
-            elif "discount" in hint or "amount" in hint or "price" in hint or "cost" in hint or "salary" in hint or "monetary" in hint:
-                data[col] = [round(random.uniform(10, 500), 2) for _ in range(rows)]
-            elif "decimal" in hint:
-                data[col] = [round(random.uniform(1, 1000), 2) for _ in range(rows)]
-            elif "integer" in hint or "number" in hint or ("uses" in hint or "count" in hint or "limit" in hint):
-                data[col] = [random.randint(1, 100) for _ in range(rows)]
-            elif "name" in hint or "full name" in hint:
-                data[col] = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
-            elif "email" in hint:
-                data[col] = [f"user{i+1}@example.com" for i in range(rows)]
-            elif "phone" in hint or "mobile" in hint:
-                data[col] = [f"+1-555-{1000+i:04d}" for i in range(rows)]
-            elif "city" in hint or "location" in hint:
-                if "india" in hint:
-                    data[col] = [random.choice(indian_cities) for _ in range(rows)]
-                else:
-                    data[col] = [random.choice(cities) for _ in range(rows)]
-            elif "range" in hint:
-                if "india" in hint:
-                    data[col] = [random.choice(indian_ranges) for _ in range(rows)]
-                else:
-                    data[col] = [random.choice(indian_ranges) for _ in range(rows)]
-            elif "mountain" in hint and "name" in hint:
-                data[col] = [f"{mountain_names[i % len(mountain_names)]}" for i in range(rows)]
-            elif "height" in hint or "meter" in hint or "elevation" in hint:
-                data[col] = [round(random.uniform(1000, 8000), 2) for _ in range(rows)]
-            elif "country" in hint:
-                data[col] = [random.choice(countries) for _ in range(rows)]
-            elif "address" in hint:
-                data[col] = [f"{i+1} Main Street, City" for i in range(rows)]
-            elif "date" in hint:
-                data[col] = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d}" for _ in range(rows)]
-            elif "amount" in hint or "price" in hint or "cost" in hint or "salary" in hint or "monetary" in hint:
-                data[col] = [round(random.uniform(100, 10000), 2) for _ in range(rows)]
-            elif "quantity" in hint or "qty" in hint or "count" in hint:
-                data[col] = [random.randint(1, 100) for _ in range(rows)]
-            elif "product" in hint or "item" in hint:
-                data[col] = [random.choice(products) for _ in range(rows)]
-            elif "company" in hint or "organization" in hint or "org" in hint:
-                data[col] = [f"Company {chr(65+i%26)}" for i in range(rows)]
-            elif "department" in hint or "dept" in hint:
-                data[col] = [random.choice(departments) for _ in range(rows)]
-            elif "description" in hint or "comment" in hint or "note" in hint or "text" in hint or "issue" in hint:
-                data[col] = [f"Sample description {i+1}" for i in range(rows)]
-            elif "status" in hint:
-                data[col] = [random.choice(statuses) for _ in range(rows)]
-            elif "priority" in hint:
-                data[col] = [random.choice(priorities) for _ in range(rows)]
-            elif "boolean" in hint or "true/false" in hint or "yes/no" in hint:
-                data[col] = [random.choice([True, False]) for _ in range(rows)]
-            elif "integer" in hint or "number" in hint:
-                data[col] = [random.randint(1, 1000) for _ in range(rows)]
-            elif "decimal" in hint or "float" in hint:
-                data[col] = [round(random.uniform(1, 1000), 2) for _ in range(rows)]
+    source_label is used to namespace the processed/failed folders (so
+    multiple sources in one multi-source pipeline never share hash/URL
+    dedup history) and for clearer log lines. It's None for single-source
+    pipelines, which keeps their processed/failed folder layout unchanged.
+
+    Returns "SUCCESS" or "SKIPPED". Raises Exception on failure.
+    """
+    connector_type      = cfg["CONNECTOR_TYPE"]
+    option              = cfg["OPTION"]
+    table_name          = cfg["TABLE_NAME"]
+    sync_mode           = cfg.get("SYNC_MODE", "full")
+    incremental_column  = cfg.get("INCREMENTAL_COLUMN")
+
+    folder_path  = cfg.get("FOLDER_PATH")
+    file_path    = cfg.get("FILE_PATH")
+    sheet_url    = cfg.get("SHEET_URL")
+    api_url      = cfg.get("API_URL")
+
+    s3_bucket    = cfg.get("S3_BUCKET")
+    s3_key       = cfg.get("S3_KEY")
+    s3_file_type = cfg.get("S3_FILE_TYPE", "csv")
+
+    src_pg_host     = cfg.get("SRC_PG_HOST")
+    src_pg_db       = cfg.get("SRC_PG_DB")
+    src_pg_user     = cfg.get("SRC_PG_USER")
+    src_pg_password = cfg.get("SRC_PG_PASSWORD")
+    src_pg_port     = cfg.get("SRC_PG_PORT", "5432")
+    pg_query        = cfg.get("PG_QUERY")
+
+    sf_account   = cfg.get("SF_ACCOUNT")
+    sf_user      = cfg.get("SF_USER")
+    sf_password  = cfg.get("SF_PASSWORD")
+    sf_warehouse = cfg.get("SF_WAREHOUSE")
+    sf_database  = cfg.get("SF_DATABASE")
+    sf_schema    = cfg.get("SF_SCHEMA", "PUBLIC")
+    sf_role      = cfg.get("SF_ROLE")
+    sf_query     = cfg.get("SF_QUERY")
+
+    label = source_label or PIPELINE_ID
+    print(f"\n{'='*60}\nProcessing: {label} ({connector_type})\n{'='*60}")
+
+    processed_dir, failed_dir = _ensure_pipeline_folders(connector_type, source_label)
+    endpoint = CONNECTOR_ENDPOINT.get(connector_type)
+    if not endpoint:
+        raise ValueError(f"[{label}] Invalid CONNECTOR_TYPE: {connector_type}")
+
+    # ── CSV / Excel ───────────────────────────────────────────────────────
+    if connector_type in ("csv", "excel"):
+        ext_filter = ".csv" if connector_type == "csv" else (".xlsx", ".xls")
+        candidate_files = []
+
+        if folder_path:
+            container_path = to_container_path(folder_path)
+            print(f"Path resolved: {container_path}")
+            if not os.path.exists(container_path):
+                print(f"Path not found: {container_path} — skipping.")
+                return "SKIPPED"
+            if os.path.isfile(container_path):
+                candidate_files = [container_path]
+            elif os.path.isdir(container_path):
+                files_in_dir = [
+                    f for f in os.listdir(container_path)
+                    if f.lower().endswith(ext_filter)
+                ]
+                if not files_in_dir:
+                    print("No matching files found — skipping.")
+                    return "SKIPPED"
+                candidate_files = [os.path.join(container_path, f) for f in files_in_dir]
             else:
-                # Use column name pattern as fallback
-                if "id" in col_lower or "_id" in col_lower:
-                    data[col] = list(range(1, rows + 1))
-                elif "name" in col_lower:
-                    data[col] = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
-                else:
-                    data[col] = [f"Value_{i+1}" for i in range(rows)]
-        # Check column name pattern if no hint or fallback
-        elif "id" in col_lower or "_id" in col_lower or "no" in col_lower:
-            data[col] = list(range(1, rows + 1))
-        elif "name" in col_lower:
-            data[col] = [f"{random.choice(first_names)} {random.choice(last_names)}" for _ in range(rows)]
-        elif "first_name" in col_lower:
-            data[col] = [random.choice(first_names) for _ in range(rows)]
-        elif "last_name" in col_lower:
-            data[col] = [random.choice(last_names) for _ in range(rows)]
-        elif "email" in col_lower:
-            data[col] = [f"user{i+1}@example.com" for i in range(rows)]
-        elif "phone" in col_lower or "mobile" in col_lower:
-            data[col] = [f"+1-555-{1000+i:04d}" for i in range(rows)]
-        elif "city" in col_lower or "location" in col_lower:
-            data[col] = [random.choice(cities) for _ in range(rows)]
-        elif "country" in col_lower:
-            data[col] = [random.choice(countries) for _ in range(rows)]
-        elif "address" in col_lower:
-            data[col] = [f"{i+1} Main Street, City" for i in range(rows)]
-        elif "state" in col_lower or "province" in col_lower:
-            data[col] = ["California", "Texas", "New York", "Florida", "Illinois"][:rows]
-            while len(data[col]) < rows:
-                data[col].append(random.choice(["California", "Texas", "New York"]))
-        elif "zip" in col_lower or "postal" in col_lower or "pincode" in col_lower:
-            data[col] = [f"{10000 + i}" for i in range(rows)]
-        elif "age" in col_lower:
-            data[col] = [random.randint(18, 65) for _ in range(rows)]
-        elif "date" in col_lower or "dob" in col_lower or "birthday" in col_lower or "created" in col_lower or "updated" in col_lower:
-            data[col] = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d}" for _ in range(rows)]
-        elif "time" in col_lower or "timestamp" in hint:
-            data[col] = [f"2024-{random.randint(1,12):02d}-{random.randint(1,28):02d} {random.randint(0,23):02d}:{random.randint(0,59):02d}:00" for _ in range(rows)]
-        elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower or "salary" in col_lower:
-            data[col] = [round(random.uniform(100, 10000), 2) for _ in range(rows)]
-        elif "quantity" in col_lower or "qty" in col_lower or "count" in col_lower:
-            data[col] = [random.randint(1, 100) for _ in range(rows)]
-        elif "product" in col_lower or "item" in col_lower:
-            data[col] = [random.choice(products) for _ in range(rows)]
-        elif "company" in col_lower or "organization" in col_lower or "org" in col_lower:
-            data[col] = [f"Company {chr(65+i%26)}" for i in range(rows)]
-        elif "department" in col_lower or "dept" in col_lower:
-            data[col] = [random.choice(departments) for _ in range(rows)]
-        elif "description" in col_lower or "comment" in col_lower or "note" in col_lower:
-            data[col] = [f"Sample description {i+1}" for i in range(rows)]
-        elif "status" in col_lower:
-            data[col] = [random.choice(statuses) for _ in range(rows)]
-        elif "priority" in col_lower:
-            data[col] = [random.choice(priorities) for _ in range(rows)]
-        elif "is_" in col_lower or "has_" in col_lower or "active" in col_lower:
-            data[col] = [random.choice([True, False]) for _ in range(rows)]
-        # Default
+                raise FileNotFoundError(
+                    f"[{label}] Path exists but is neither file nor directory: {container_path}"
+                )
+
+        elif file_path:
+            container_file = to_container_path(file_path)
+            print(f"File resolved: {container_file}")
+            if not os.path.exists(container_file):
+                print(f"File not found: {container_file} — skipping.")
+                return "SKIPPED"
+            candidate_files = [container_file]
         else:
-            data[col] = [f"Value_{i+1}" for i in range(rows)]
-    
-    return pd.DataFrame(data)
+            raise ValueError(f"[{label}] CSV/Excel: FOLDER_PATH or FILE_PATH required.")
 
+        any_failed    = False
+        any_processed = False
+        for container_file in candidate_files:
+            file_hash = _get_file_hash(container_file)
 
-def _save_csv(df: pd.DataFrame, config: dict) -> str:
-    """Save DataFrame to CSV."""
-    import datetime
-    
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    table = config.get("table", "output").lower()
-    filename = f"{table}_{timestamp}.csv"
-    filepath = os.path.join(GENERATED_DIR, filename)
-    
-    os.makedirs(GENERATED_DIR, exist_ok=True)
-    df.to_csv(filepath, index=False)
-    
-    print(f"[datagen] Saved {len(df)} rows → {filepath}")
-    
-    # Upload to S3 if configured
-    _upload_to_s3(filepath)
-    
-    return filepath
+            if _hash_already_processed(file_hash, processed_dir):
+                print(f"SKIP: {os.path.basename(container_file)} (same content, already in DB)")
+                continue
 
+            print(f"Processing: {os.path.basename(container_file)}")
+            if _ingest_file(container_file, endpoint, option, table_name, sync_mode, incremental_column):
+                _save_file_record(container_file, file_hash, processed_dir)
+                _move_file(container_file, processed_dir)
+                any_processed = True
+            else:
+                print(f"Failed: {os.path.basename(container_file)} — moving to failed/")
+                _move_file(container_file, failed_dir)
+                any_failed = True
 
-def _upload_to_s3(filepath: str) -> Optional[str]:
-    """Upload CSV file to S3 if AWS credentials are configured."""
-    import boto3
-    
-    s3_bucket = os.getenv("S3_BUCKET")
-    if not s3_bucket:
-        return None
-    
-    try:
-        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-        aws_region = os.getenv("AWS_REGION", "us-east-1")
-        s3_path_prefix = os.getenv("S3_PATH_PREFIX", "generated/")
-        
-        if not aws_access_key or not aws_secret_key:
-            print(f"[datagen] S3_BUCKET set but AWS credentials missing, skipping upload")
-            return None
-        
+        if any_failed:
+            raise Exception(f"[{label}] One or more files failed during ingestion")
+        return "SUCCESS" if any_processed else "SKIPPED"
+
+    # ── Google Sheets ─────────────────────────────────────────────────────
+    elif connector_type == "google_sheets":
+        if not sheet_url:
+            raise ValueError(f"[{label}] SHEET_URL required.")
+        if _url_already_handled(sheet_url, processed_dir, failed_dir):
+            return "SKIPPED"
+        payload = {
+            "sheet_url":          sheet_url,
+            "option":             option,
+            "table_name":         table_name,
+            "sync_mode":          sync_mode,
+            "incremental_column": incremental_column,
+        }
+        res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
+        if res.status_code == 200 and res.json().get("status") != "FAILED":
+            _save_url_record(sheet_url, processed_dir, prefix="sheet_processed")
+        else:
+            _save_url_record(sheet_url, failed_dir, prefix="sheet_failed")
+            raise Exception(f"[{label}] Google Sheets ingestion failed: {res.text}")
+        return "SUCCESS"
+
+    # ── API ───────────────────────────────────────────────────────────────
+    elif connector_type == "api":
+        if not api_url:
+            raise ValueError(f"[{label}] API_URL required.")
+        if _url_already_handled(api_url, processed_dir, failed_dir):
+            return "SKIPPED"
+        payload = {
+            "url":                api_url,
+            "option":             option,
+            "table_name":         table_name,
+            "sync_mode":          sync_mode,
+            "incremental_column": incremental_column,
+        }
+        res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
+        if res.status_code == 200 and res.json().get("status") != "FAILED":
+            _save_url_record(api_url, processed_dir, prefix="api_processed")
+        else:
+            _save_url_record(api_url, failed_dir, prefix="api_failed")
+            raise Exception(f"[{label}] API ingestion failed: {res.text}")
+        return "SUCCESS"
+
+    # ── S3 ────────────────────────────────────────────────────────────────
+    elif connector_type == "s3":
+        if not s3_bucket or not s3_key:
+            raise ValueError(f"[{label}] S3_BUCKET and S3_KEY required.")
+
+        import boto3
         s3_client = boto3.client(
             "s3",
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-            region_name=aws_region,
+            aws_access_key_id     = os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name           = os.getenv("AWS_REGION", "us-east-1"),
         )
-        
-        filename = os.path.basename(filepath)
-        s3_key = f"{s3_path_prefix.rstrip('/')}/{filename}"
-        
-        with open(filepath, "rb") as f:
-            s3_client.put_object(Bucket=s3_bucket, Key=s3_key, Body=f)
-        
-        s3_path = f"s3://{s3_bucket}/{s3_key}"
-        print(f"[datagen] Uploaded to S3: {s3_path}")
-        return s3_path
-        
-    except Exception as e:
-        print(f"[datagen] S3 upload failed: {e}")
-        return None
 
+        is_folder = s3_key.endswith("/") or "." not in s3_key.split("/")[-1]
 
-# Try to import better generator, fall back to simple
-GENERATOR_AVAILABLE = False
-
-try:
-    sys.path.insert(0, str(AGENT_DIR / "generator"))
-    sys.path.insert(0, str(AGENT_DIR / "metadata"))
-    
-    from generator.prompt_parser import parse_prompt as _parse_prompt_llm
-    from generator.fake_generator import generate_data as _generate_data_llm
-    import generator.csv_writer as _csv_writer_module
-    
-    # Test if they work
-    test_config = _parse_prompt_llm("Generate 5 users with name email")
-    _test_df = _generate_data_llm(test_config)
-    
-    def parse_generation_prompt(description: str) -> dict:
-        """Parse using LLM."""
-        return _parse_prompt_llm(description)
-    
-    def generate_data(config: dict) -> pd.DataFrame:
-        """Generate using LLM-powered faker."""
-        return _generate_data_llm(config)
-    
-    def save_csv(df: pd.DataFrame, config: dict) -> str:
-        """Save CSV."""
-        if _csv_writer_module:
-            _csv_writer_module.GENERATED_DIR = str(GENERATED_DIR)
-            from generator.csv_writer import save_csv as _save_csv_orig
-            filepath = _save_csv_orig(df, config)
-        else:
-            filepath = _save_csv(df, config)
-        
-        _upload_to_s3(filepath)
-        return filepath
-    
-    GENERATOR_AVAILABLE = True
-    print("✓ Data generator (LLM) imported successfully")
-    
-except Exception as e:
-    print(f"Warning: LLM generator not available: {e}")
-    print("Using simple fallback generator")
-    
-    def parse_generation_prompt(description: str) -> dict:
-        """Parse using simple rules."""
-        return _parse_description(description)
-    
-    def generate_data(config: dict) -> pd.DataFrame:
-        """Generate using simple fallback."""
-        return _generate_simple_data(config)
-    
-    def save_csv(df: pd.DataFrame, config: dict) -> str:
-        """Save CSV."""
-        filepath = _save_csv(df, config)
-        
-        _upload_to_s3(filepath)
-        return filepath
-    
-    GENERATOR_AVAILABLE = True
-    print("✓ Data generator (simple) available")
-
-
-# =============================================================================
-# Request/Response Models
-# =============================================================================
-
-class DataGenRequest(BaseModel):
-    """Request to generate synthetic data."""
-    description: str = Field(..., description="Natural language description of data to generate")
-    connection_id: Optional[str] = Field(None, description="Connection ID from saved_connections")
-    load_to_db: bool = Field(True, description="Whether to load generated data to the database")
-
-
-class DataGenResponse(BaseModel):
-    """Response from data generation."""
-    success: bool
-    table: str
-    rows: int
-    columns: List[str]
-    preview: List[Dict[str, Any]]
-    csv_path: str
-    loaded_to_db: bool = False
-    db_table: Optional[str] = None
-    connection_id: Optional[str] = None
-    connection_name: Optional[str] = None
-    error: Optional[str] = None
-    generation_config: Optional[Dict[str, Any]] = None
-    s3_path: Optional[str] = None
-
-
-class LoadToDbRequest(BaseModel):
-    """Request to load generated CSV to database."""
-    csv_path: str = Field(..., description="Path to the CSV file")
-    table: str = Field(..., description="Target table name in database")
-    connection_id: str = Field(..., description="Connection ID from saved_connections")
-
-
-class LoadToDbResponse(BaseModel):
-    """Response from loading data to database."""
-    success: bool
-    table: str
-    rows_loaded: int
-    total_rows_in_table: int
-    connection_id: str
-    connection_name: str
-    error: Optional[str] = None
-
-
-class CatalogResponse(BaseModel):
-    """Response with schema catalog for a connection."""
-    connection_id: str
-    connection_name: str
-    db_type: str
-    tables: List[str]
-    catalog_json: Dict[str, Any]
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-def get_connection(connection_id: str):
-    """Get a database connection by ID from saved_connections."""
-    if not CONNECTION_MANAGER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="Connection manager not available")
-    
-    # Parse connection_id (can be string like "11" or UUID)
-    conn_id_int = None
-    try:
-        conn_id_int = int(connection_id)
-    except (ValueError, TypeError):
-        pass
-    
-    # Load from saved_connections table if it's an integer
-    saved_conn = None
-    if conn_id_int is not None:
-        saved_conn = get_saved_connection(conn_id_int)
-    
-    # If integer ID and found in saved_connections
-    if conn_id_int is not None and saved_conn:
-        config = saved_conn.get("config", {})
-        source_type = saved_conn.get("source_type", "")
-        
-        # Create a DatabaseConnection from saved config
-        manager = get_connection_manager()
-        
-        # Map source_type to DatabaseType
-        if source_type == "postgres":
-            db_type = DatabaseType.POSTGRESQL
-            norm_config = {
-                "host": config.get("host", "localhost"),
-                "port": int(config.get("port", "5432")),
-                "database": config.get("database", ""),
-                "user": config.get("user", ""),
-                "password": config.get("password", ""),
-            }
-        elif source_type == "snowflake":
-            db_type = DatabaseType.SNOWFLAKE
-            norm_config = {
-                "account": config.get("account", ""),
-                "user": config.get("user", ""),
-                "password": config.get("password", ""),
-                "warehouse": config.get("warehouse", ""),
-                "database": config.get("database", ""),
-                "schema": config.get("schema", "PUBLIC"),
-                "role": config.get("role", ""),
-            }
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported source_type: {source_type}")
-        
-        # Add connection to manager and return
-        conn_uuid = manager.add_connection(saved_conn["name"], db_type, norm_config)
-        return manager.get_connection(conn_uuid)
-    
-    # Fallback: try UUID-based lookup from text2sql connections
-    manager = get_connection_manager()
-    manager._load_saved_connections_from_db()
-    
-    conn = manager.get_connection(connection_id)
-    if not conn:
-        raise HTTPException(status_code=404, detail=f"Connection '{connection_id}' not found")
-    return conn
-
-
-def load_to_db(filepath: str, config: dict, connection, s3_path: str = None) -> int:
-    """Load CSV data to database based on connection type."""
-    table = config["table"].upper()
-    columns = [c.upper() for c in config["columns"]]
-    
-    df = pd.read_csv(filepath)
-    
-    if connection.db_type == DatabaseType.SNOWFLAKE:
-        return _load_to_snowflake(filepath, table, columns, connection, s3_path)
-    elif connection.db_type == DatabaseType.POSTGRESQL:
-        return _load_to_postgres(df, table, connection)
-    elif connection.db_type == DatabaseType.MYSQL:
-        return _load_to_mysql(df, table, connection)
-    elif connection.db_type == DatabaseType.SQLITE:
-        return _load_to_sqlite(df, table, connection)
-    else:
-        raise ValueError(f"Unsupported database type: {connection.db_type}")
-
-
-def get_table_schema(connection, table_name: str) -> dict:
-    """Get schema info (columns, types) for a table from the database."""
-    if not connection._connection:
-        connection.connect()
-    
-    schema = {"columns": {}, "sample_data": []}
-    
-    if connection.db_type == DatabaseType.SNOWFLAKE:
-        cursor = connection._cursor
-        try:
-            # Get column definitions
-            cursor.execute(f"""
-                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = '{table_name.upper()}'
-                ORDER BY ORDINAL_POSITION
-            """)
-            for row in cursor.fetchall():
-                col_name = row[0]
-                schema["columns"][col_name] = {
-                    "data_type": row[1],
-                    "nullable": row[2] == "YES"
-                }
-            
-            # Get sample data
-            cursor.execute(f"SELECT * FROM {table_name.upper()} LIMIT 5")
-            rows = cursor.fetchall()
-            cols = [desc[0] for desc in cursor.description]
-            schema["sample_data"] = [dict(zip(cols, row)) for row in rows]
-        except Exception as e:
-            print(f"[datagen] Error fetching Snowflake schema: {e}")
-            
-    elif connection.db_type == DatabaseType.POSTGRESQL:
-        cursor = connection._cursor
-        try:
-            cursor.execute(f"""
-                SELECT column_name, data_type, is_nullable
-                FROM information_schema.columns
-                WHERE table_name = %s
-                ORDER BY ordinal_position
-            """, (table_name.lower(),))
-            for row in cursor.fetchall():
-                schema["columns"][row[0]] = {
-                    "data_type": row[1],
-                    "nullable": row[2] == "YES"
-                }
-            
-            cursor.execute(f'SELECT * FROM "{table_name.lower()}" LIMIT 5')
-            rows = cursor.fetchall()
-            cols = [desc[0] for desc in cursor.description]
-            schema["sample_data"] = [dict(zip(cols, row)) for row in rows]
-        except Exception as e:
-            print(f"[datagen] Error fetching PostgreSQL schema: {e}")
-    
-    return schema
-
-def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> dict:
-    """Build hints from database schema for data generation."""
-    hints = {}
-    columns = schema.get("columns", {})
-
-    # Build a case-insensitive lookup so column name casing differences
-    # between INFORMATION_SCHEMA results and our config don't cause
-    # every hint to silently fall back to "realistic value".
-    columns_ci = {k.upper(): v for k, v in columns.items()}
-
-    type_hints = {
-        "VARCHAR": "text value",
-        "TEXT": "text value",
-        "CHAR": "text value",
-        "INTEGER": "integer",
-        "INT": "integer",
-        "BIGINT": "integer",
-        "SMALLINT": "integer",
-        "NUMERIC": "decimal number",
-        "NUMBER": "decimal number",
-        "DECIMAL": "decimal number",
-        "FLOAT": "decimal number",
-        "DOUBLE": "decimal number",
-        "REAL": "decimal number",
-        "BOOLEAN": "true or false",
-        "DATE": "date",
-        "TIMESTAMP": "timestamp",
-        "TIMESTAMP_NTZ": "timestamp",
-        "TIMESTAMP_LTZ": "timestamp",
-        "TIMESTAMP_TZ": "timestamp",
-        "DATETIME": "datetime",
-    }
-
-    col_names = user_columns if user_columns else list(columns.keys())
-
-    for col in col_names:
-        col_upper = col.upper()
-        col_lower = col.lower()
-
-        if col_upper in columns_ci:
-            data_type = columns_ci[col_upper].get("data_type", "VARCHAR").upper()
-            hint = type_hints.get(data_type, "text value")
-
-            # Type-based hints take priority for date/timestamp/boolean —
-            # a column named "manager_id" that is actually a DATE should
-            # still get a date hint, not an integer hint.
-            if data_type in ("DATE", "TIMESTAMP", "TIMESTAMP_NTZ", "TIMESTAMP_LTZ", "TIMESTAMP_TZ", "DATETIME"):
-                hint = "recent date in YYYY-MM-DD format" if data_type == "DATE" else "recent timestamp"
-            elif data_type == "BOOLEAN":
-                hint = "true or false"
-            elif "id" in col_lower or "_id" in col_lower or "no" in col_lower or "num" in col_lower:
-                hint = "sequential integer starting from 1"
-            elif "code" in col_lower or "coupon" in col_lower or "ref" in col_lower or "sku" in col_lower:
-                hint = "alphanumeric code like COUPON10, SAVE20"
-            elif "name" in col_lower:
-                hint = "realistic name"
-            elif "email" in col_lower:
-                hint = "email address"
-            elif "phone" in col_lower or "mobile" in col_lower:
-                hint = "phone number"
-            elif "address" in col_lower:
-                hint = "full address"
-            elif "city" in col_lower:
-                hint = "city name"
-            elif "country" in col_lower:
-                hint = "country name"
-            elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower:
-                hint = "monetary amount"
-            elif "status" in col_lower:
-                hint = "status value like active, inactive, pending"
-            elif "description" in col_lower or "comment" in col_lower:
-                hint = "short text description"
-            elif "discount" in col_lower or "percent" in col_lower:
-                hint = "decimal number for discount percentage"
-            elif "count" in col_lower or "qty" in col_lower or "quantity" in col_lower or "uses" in col_lower or "limit" in col_lower:
-                hint = "integer number"
-
-            hints[col] = hint
-        else:
-            # Genuinely unknown column (not in schema) — safe text fallback
-            hints[col] = "text value"
-
-    return hints
-# def _build_hints_from_schema(schema: dict, user_columns: List[str] = None) -> dict:
-#     """Build hints from database schema for data generation."""
-#     hints = {}
-#     columns = schema.get("columns", {})
-#     sample_data = schema.get("sample_data", [])
-    
-#     # Get data type mappings to hints
-#     type_hints = {
-#         "VARCHAR": "text value",
-#         "TEXT": "text value",
-#         "CHAR": "text value",
-#         "INTEGER": "integer",
-#         "INT": "integer",
-#         "BIGINT": "integer",
-#         "SMALLINT": "integer",
-#         "NUMERIC": "decimal number",
-#         "DECIMAL": "decimal number",
-#         "FLOAT": "decimal number",
-#         "DOUBLE": "decimal number",
-#         "REAL": "decimal number",
-#         "BOOLEAN": "true or false",
-#         "DATE": "date",
-#         "TIMESTAMP": "timestamp",
-#         "DATETIME": "datetime",
-#     }
-    
-#     col_names = user_columns if user_columns else list(columns.keys())
-    
-#     for col in col_names:
-#         col_upper = col.upper()
-#         col_lower = col.lower()
-        
-#         if col_upper in columns:
-#             data_type = columns[col_upper].get("data_type", "VARCHAR").upper()
-#             hint = type_hints.get(data_type, "realistic value")
-            
-#             # Add column-specific hints based on name patterns
-#             if "id" in col_lower or "_id" in col_lower or "no" in col_lower or "num" in col_lower:
-#                 hint = "sequential integer starting from 1"
-#             elif "code" in col_lower or "coupon" in col_lower or "ref" in col_lower or "sku" in col_lower:
-#                 hint = "alphanumeric code like COUPON10, SAVE20"
-#             elif "name" in col_lower:
-#                 hint = "realistic name"
-#             elif "email" in col_lower:
-#                 hint = "email address"
-#             elif "phone" in col_lower or "mobile" in col_lower:
-#                 hint = "phone number"
-#             elif "address" in col_lower:
-#                 hint = "full address"
-#             elif "city" in col_lower:
-#                 hint = "city name"
-#             elif "country" in col_lower:
-#                 hint = "country name"
-#             elif "date" in col_lower or "created" in col_lower or "updated" in col_lower:
-#                 hint = "recent date"
-#             elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower:
-#                 hint = "monetary amount"
-#             elif "id" in col_lower or "_id" in col_lower:
-#                 hint = "unique sequential integer"
-#             elif "status" in col_lower:
-#                 hint = "status value like active, inactive, pending"
-#             elif "description" in col_lower or "comment" in col_lower:
-#                 hint = "short text description"
-#             elif "discount" in col_lower or "percent" in col_lower:
-#                 hint = "decimal number for discount percentage"
-#             elif "amount" in col_lower or "price" in col_lower or "cost" in col_lower:
-#                 hint = "monetary amount"
-#             elif "count" in col_lower or "qty" in col_lower or "quantity" in col_lower or "uses" in col_lower or "limit" in col_lower:
-#                 hint = "integer number"
-            
-#             hints[col] = hint
-#         else:
-#             # Default hint for unknown columns
-#             hints[col] = "realistic value"
-    
-#     return hints
-
-
-def _load_to_snowflake(filepath: str, table: str, columns: List[str], connection, s3_path: str = None) -> int:
-    """Load CSV to Snowflake using stored procedure."""
-    if not connection._connection:
-        connection.connect()
-    
-    cursor = connection._cursor
-    
-    try:
-        # Create table if it doesn't exist
-        col_defs = []
-        for col in columns:
-            col_upper = col.upper()
-            col_lower = col.lower()
-            if "id" in col_lower or "date" in col_lower:
-                col_defs.append(f'"{col_upper}" INTEGER')
-            elif "amount" in col_lower or "price" in col_lower:
-                col_defs.append(f'"{col_upper}" DECIMAL(10,2)')
-            else:
-                col_defs.append(f'"{col_upper}" VARCHAR(255)')
-        
-        create_sql = f'CREATE TABLE IF NOT EXISTS {table} ({", ".join(col_defs)})'
-        cursor.execute(create_sql)
-        
-        # Call stored procedure
-        # call_sql = """CALL agent_db.agents.load_stage_files_to_tables_v3(
-        #     'agent_db.agents.agents_ext_s3_stage',
-        #     'agent_db.agents',
-        #     FALSE,
-        #     'agent_db.agents.load_stage_audit'
-        # )"""
-        call_sql = """CALL orbit_fivetran.raw.load_stage_files_to_tables_v3(
-            'orbit_fivetran.raw.external_stage',
-            'orbit_fivetran.raw',
-            FALSE,
-            'orbit_fivetran.raw.load_stage_audit'
-        )"""
-        cursor.execute(call_sql)
-        
-        cursor.execute(f"SELECT COUNT(*) FROM {table}")
-        total_rows = cursor.fetchone()[0]
-        
-        return total_rows
-        
-    except Exception as e:
-        raise Exception(f"Snowflake load failed: {e}")
-
-
-def _load_to_postgres(df, table: str, connection) -> int:
-    """Load DataFrame to PostgreSQL."""
-    if not connection._connection:
-        connection.connect()
-    
-    try:
-        columns_def = []
-        for col in df.columns:
-            pd_dtype = str(df[col].dtype)
-            if 'int' in pd_dtype:
-                pg_type = 'INTEGER'
-            elif 'float' in pd_dtype:
-                pg_type = 'DECIMAL(10,2)'
-            else:
-                pg_type = 'VARCHAR(255)'
-            columns_def.append(f'"{col}" {pg_type}')
-        
-        create_sql = f'CREATE TABLE IF NOT EXISTS "{table}" ({", ".join(columns_def)})'
-        connection._cursor.execute(create_sql)
-        connection._connection.commit()
-        
-        # Use copy_expert for proper PostgreSQL bulk loading
-        import io
-        buffer = io.StringIO()
-        df.to_csv(buffer, index=False, header=False)
-        buffer.seek(0)
-        
-        columns_list = ", ".join([f'"{c}"' for c in df.columns])
-        copy_sql = f'COPY "{table}" ({columns_list}) FROM STDIN WITH CSV'
-        connection._cursor.copy_expert(copy_sql, buffer)
-        connection._connection.commit()
-        
-        connection._cursor.execute(f'SELECT COUNT(*) FROM "{table}"')
-        total_rows = connection._cursor.fetchone()[0]
-        
-        return total_rows
-        
-    except Exception as e:
-        raise Exception(f"PostgreSQL load failed: {e}")
-
-
-def _load_to_mysql(df, table: str, connection) -> int:
-    """Load DataFrame to MySQL."""
-    if not connection._connection:
-        connection.connect()
-    
-    try:
-        columns_def = []
-        for col in df.columns:
-            pd_dtype = str(df[col].dtype)
-            if 'int' in pd_dtype:
-                my_type = 'INT'
-            elif 'float' in pd_dtype:
-                my_type = 'DECIMAL(10,2)'
-            else:
-                my_type = 'VARCHAR(255)'
-            columns_def.append(f"`{col}` {my_type}")
-        
-        create_sql = f"CREATE TABLE IF NOT EXISTS {table} ({', '.join(columns_def)})"
-        connection._cursor.execute(create_sql)
-        connection._connection.commit()
-        
-        df.to_sql(
-            table,
-            connection._connection,
-            if_exists='append',
-            index=False,
-            method='multi',
-            chunksize=100
-        )
-        
-        connection._cursor.execute(f"SELECT COUNT(*) FROM {table}")
-        total_rows = connection._cursor.fetchone()[0]
-        
-        return total_rows
-        
-    except Exception as e:
-        raise Exception(f"MySQL load failed: {e}")
-
-
-def _load_to_sqlite(df, table: str, connection) -> int:
-    """Load DataFrame to SQLite."""
-    if not connection._connection:
-        connection.connect()
-    
-    try:
-        df.to_sql(
-            table,
-            connection._connection,
-            if_exists='append',
-            index=False
-        )
-        
-        connection._cursor.execute(f"SELECT COUNT(*) FROM {table}")
-        total_rows = connection._cursor.fetchone()[0]
-        
-        return total_rows
-        
-    except Exception as e:
-        raise Exception(f"SQLite load failed: {e}")
-
-
-def list_connection_tables(connection) -> List[str]:
-    """List all tables in the database."""
-    if not connection._connection:
-        connection.connect()
-    
-    tables = []
-    
-    if connection.db_type == DatabaseType.SNOWFLAKE:
-        cursor = connection._cursor
-        try:
-            cursor.execute("""
-                SELECT TABLE_NAME 
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_SCHEMA = current_schema()
-                ORDER BY TABLE_NAME
-            """)
-            tables = [row[0] for row in cursor.fetchall()]
-        except Exception as e:
-            print(f"[datagen] Error listing Snowflake tables: {e}")
-            
-    elif connection.db_type == DatabaseType.POSTGRESQL:
-        cursor = connection._cursor
-        try:
-            cursor.execute("""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public'
-                ORDER BY table_name
-            """)
-            tables = [row[0] for row in cursor.fetchall()]
-        except Exception as e:
-            print(f"[datagen] Error listing PostgreSQL tables: {e}")
-    
-    return tables
-
-
-# =============================================================================
-# API Endpoints
-# =============================================================================
-
-@router.get("/connections")
-async def list_connections_for_datagen():
-    """List available database connections for data generator."""
-    try:
-        connections = get_saved_connections()
-        # Return in format compatible with frontend
-        return {
-            "connections": [
-                {
-                    "id": str(c["id"]),
-                    "name": c["name"],
-                    "type": c["source_type"],
-                    "config": c.get("config", {})
-                }
-                for c in connections
+        if is_folder:
+            ext      = f".{s3_file_type.lower().strip('.')}"
+            response = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_key)
+            all_keys = [
+                obj["Key"]
+                for obj in response.get("Contents", [])
+                if obj["Key"].lower().endswith(ext)
+                and not obj["Key"].endswith("/")
             ]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
+            if not all_keys:
+                print(f"No .{s3_file_type} files in s3://{s3_bucket}/{s3_key} — skipping.")
+                return "SKIPPED"
 
-@router.get("/connections/{connection_id}/tables")
-async def list_tables_for_connection(connection_id: str):
-    """List available tables for a given connection."""
-    try:
-        print(f"[datagen] Listing tables for connection_id: {connection_id}")
-        conn = get_connection(connection_id)
-        print(f"[datagen] Got connection: {conn.name}, db_type: {conn.db_type}")
-        tables = list_connection_tables(conn)
-        print(f"[datagen] Found tables: {tables}")
-        return {"connection_id": connection_id, "tables": tables}
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        print(f"[datagen] Error listing tables: {e}")
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+            print(f"Found {len(all_keys)} file(s) in S3 folder")
+            any_failed = False
 
+            for s3_file_key in all_keys:
+                s3_url    = f"s3://{s3_bucket}/{s3_file_key}"
+                file_name = s3_file_key.split("/")[-1]
 
-@router.get("/connections/{connection_id}/schema/{table_name}")
-async def get_table_schema_endpoint(connection_id: str, table_name: str):
-    """Get schema info for a specific table."""
-    try:
-        conn = get_connection(connection_id)
-        schema = get_table_schema(conn, table_name)
-        return {"table": table_name, "schema": schema}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+                if _url_already_handled(s3_url, processed_dir, failed_dir):
+                    print(f"SKIP: {file_name} (already processed)")
+                    continue
 
-
-@router.get("/health")
-async def health_check():
-    """Health check endpoint for data generator."""
-    return {
-        "status": "healthy",
-        "generator_available": GENERATOR_AVAILABLE,
-        "connection_manager_available": CONNECTION_MANAGER_AVAILABLE,
-        "generated_dir": str(GENERATED_DIR)
-    }
-
-
-@router.post("/generate", response_model=DataGenResponse)
-async def generate_data_endpoint(request: DataGenRequest):
-    """Generate synthetic data from natural language description."""
-    try:
-        print(f"[datagen] Parsing description: {request.description}")
-        
-        # Use LLM to parse the description (pass connection_id for schema context)
-        try:
-            config = _parse_with_llm(request.description, request.connection_id)
-        except Exception as llm_err:
-            print(f"[datagen] LLM parsing failed, using fallback: {llm_err}")
-            config = parse_generation_prompt(request.description)
-        
-        if config.get("rows", 0) > MAX_ROWS:
-            config["rows"] = MAX_ROWS
-        
-        print(f"[datagen] Config from LLM: {config}")
-        
-        # Handle table creation if needed
-        table_created = False
-        if request.connection_id and config.get("table"):
-            try:
-                conn = get_connection(request.connection_id)
-                print(f"[datagen] Got connection: {conn.name}, type: {conn.db_type}")
-                
-                # Check if table exists
-                tables = list_connection_tables(conn)
-                table_name = config.get("table", "").upper()
-                print(f"[datagen] Available tables: {tables}")
-                
-                if table_name not in tables:
-                    # Table doesn't exist - check if we have create_table DDL
-                    if config.get("create_table"):
-                        print(f"[datagen] Creating table: {table_name}")
-                        ddl = config["create_table"]
-                        
-                        # Adjust DDL for the specific database type
-                        if conn.db_type == DatabaseType.POSTGRESQL:
-                            conn._cursor.execute(ddl)
-                            conn._connection.commit()
-                            print(f"[datagen] Table {table_name} created in PostgreSQL")
-                            table_created = True
-                        elif conn.db_type == DatabaseType.SNOWFLAKE:
-                            conn._cursor.execute(ddl)
-                            print(f"[datagen] Table {table_name} created in Snowflake")
-                            table_created = True
-                    else:
-                        print(f"[datagen] Table {table_name} doesn't exist and no DDL provided")
-                        # Use parsed columns from LLM
-                        if not config.get("columns"):
-                            config["columns"] = ["ID", "NAME", "VALUE"]
-                            config["hints"] = {"ID": "sequential integer", "NAME": "text", "VALUE": "text"}
-                else:
-                    # Table exists - get actual schema
-                    schema = get_table_schema(conn, table_name)
-                    if schema.get("columns"):
-                        config["columns"] = list(schema["columns"].keys())
-                        config["hints"] = _build_hints_from_schema(schema, config["columns"])
-                        print(f"[datagen] Using existing table columns: {config['columns']}")
-                        
-            except Exception as e:
-                import traceback
-                print(f"[datagen] Schema/table creation error: {e}")
-                print(traceback.format_exc())
-        
-        # Generate the data
-        print(f"[datagen] Final config for generation: {config}")
-        df = generate_data(config)
-        
-        # Save to CSV
-        csv_path = save_csv(df, config)
-        
-        # Get S3 path if uploaded
-        s3_bucket = os.getenv("S3_BUCKET")
-        s3_path_prefix = os.getenv("S3_PATH_PREFIX", "generated/")
-        s3_path = f"s3://{s3_bucket}/{s3_path_prefix.rstrip('/')}/{os.path.basename(csv_path)}" if s3_bucket else None
-        
-        # Get preview (first 5 rows)
-        preview = df.head(5).to_dict(orient='records')
-        
-        result = DataGenResponse(
-            success=True,
-            table=config.get("table", "unknown"),
-            rows=len(df),
-            columns=list(df.columns),
-            preview=preview,
-            csv_path=csv_path,
-            generation_config=config,
-            s3_path=s3_path
-        )
-        
-        # Load to database if requested
-        if request.load_to_db and request.connection_id:
-            try:
-                conn = get_connection(request.connection_id)
-                
-                load_config = {
-                    "table": config["table"],
-                    "columns": config["columns"]
+                print(f"Processing: {file_name}")
+                payload = {
+                    "bucket":             s3_bucket,
+                    "key":                s3_file_key,
+                    "file_type":          s3_file_type,
+                    "option":             option,
+                    "table_name":         table_name,
+                    "sync_mode":          sync_mode,
+                    "incremental_column": incremental_column,
                 }
-                
-                total_rows = load_to_db(csv_path, load_config, conn, s3_path)
-                
-                result.loaded_to_db = True
-                result.db_table = config["table"]
-                result.connection_id = request.connection_id
-                result.connection_name = conn.name
-                
-                print(f"[datagen] Loaded {total_rows} rows to {conn.name}")
-                
-            except Exception as load_error:
-                result.error = f"Generation successful but load failed: {str(load_error)}"
-                print(f"[datagen] Load error: {load_error}")
-        
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        error_msg = f"{str(e)}\n{traceback.format_exc()[:500]}"
-        print(f"[datagen] Error: {error_msg}")
-        raise HTTPException(status_code=500, detail=str(e))
+                res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
 
+                if res.status_code == 200 and res.json().get("status") != "FAILED":
+                    _save_url_record(s3_url, processed_dir, prefix=f"s3_processed_{file_name}")
+                    print(f"SUCCESS: {file_name} → processed/")
+                else:
+                    _save_url_record(s3_url, failed_dir, prefix=f"s3_failed_{file_name}")
+                    print(f"FAILED: {file_name} → failed/")
+                    any_failed = True
 
-@router.post("/preview", response_model=DataGenResponse)
-async def preview_data(request: DataGenRequest):
-    """Generate and preview data without loading to database."""
-    try:
-        config = parse_generation_prompt(request.description)
-        
-        if config.get("rows", 0) > MAX_ROWS:
-            config["rows"] = MAX_ROWS
-        
-        df = generate_data(config)
-        
-        csv_path = save_csv(df, config)
-        
-        s3_bucket = os.getenv("S3_BUCKET")
-        s3_path_prefix = os.getenv("S3_PATH_PREFIX", "generated/")
-        s3_path = f"s3://{s3_bucket}/{s3_path_prefix.rstrip('/')}/{os.path.basename(csv_path)}" if s3_bucket else None
-        
-        preview = df.head(5).to_dict(orient='records')
-        
-        return DataGenResponse(
-            success=True,
-            table=config.get("table", "unknown"),
-            rows=len(df),
-            columns=list(df.columns),
-            preview=preview,
-            csv_path=csv_path,
-            generation_config=config,
-            s3_path=s3_path
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            if any_failed:
+                raise Exception(f"[{label}] One or more S3 files failed during ingestion")
+            return "SUCCESS"
 
+        else:
+            s3_url = f"s3://{s3_bucket}/{s3_key}"
+            if _url_already_handled(s3_url, processed_dir, failed_dir):
+                print(f"SKIP: {s3_key} (already processed)")
+                return "SKIPPED"
 
-@router.post("/load", response_model=LoadToDbResponse)
-async def load_to_database(request: LoadToDbRequest):
-    """Load a previously generated CSV file to a database table."""
-    if not os.path.exists(request.csv_path):
-        raise HTTPException(status_code=404, detail=f"CSV file not found: {request.csv_path}")
-    
-    try:
-        conn = get_connection(request.connection_id)
-        
-        df = pd.read_csv(request.csv_path)
-        columns = list(df.columns)
-        
-        load_config = {
-            "table": request.table,
-            "columns": columns
+            payload = {
+                "bucket":             s3_bucket,
+                "key":                s3_key,
+                "file_type":          s3_file_type,
+                "option":             option,
+                "table_name":         table_name,
+                "sync_mode":          sync_mode,
+                "incremental_column": incremental_column,
+            }
+            res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
+            if res.status_code == 200 and res.json().get("status") != "FAILED":
+                _save_url_record(s3_url, processed_dir, prefix="s3_processed")
+                print(f"SUCCESS: {s3_key} → processed/")
+            else:
+                _save_url_record(s3_url, failed_dir, prefix="s3_failed")
+                print(f"FAILED: {s3_key} → failed/")
+                raise Exception(f"[{label}] S3 ingestion failed: {res.text}")
+            return "SUCCESS"
+
+    # ── Postgres ──────────────────────────────────────────────────────────
+    elif connector_type == "postgres":
+        if not pg_query:
+            raise ValueError(f"[{label}] PG_QUERY required for postgres connector.")
+        payload = {
+            "host":               src_pg_host,
+            "database":           src_pg_db,
+            "user":               src_pg_user,
+            "password":           src_pg_password,
+            "port":               src_pg_port,
+            "query":              pg_query,
+            "option":             option,
+            "table_name":         table_name,
+            "sync_mode":          sync_mode,
+            "incremental_column": incremental_column,
         }
-        
-        total_rows = load_to_db(request.csv_path, load_config, conn)
-        
-        return LoadToDbResponse(
-            success=True,
-            table=request.table,
-            rows_loaded=len(df),
-            total_rows_in_table=total_rows,
-            connection_id=request.connection_id,
-            connection_name=conn.name
-        )
-        
-    except HTTPException:
-        raise
+        res = requests.post(f"{BASE_URL}/ingest_postgres", json=payload, timeout=120)
+        if res.status_code == 200 and res.json().get("status") != "FAILED":
+            _save_url_record(pg_query, processed_dir, prefix="postgres_processed")
+        else:
+            _save_url_record(pg_query, failed_dir, prefix="postgres_failed")
+            raise Exception(f"[{label}] Postgres ingestion failed: {res.text}")
+        return "SUCCESS"
+
+    # ── Snowflake ─────────────────────────────────────────────────────────
+    elif connector_type == "snowflake":
+        if not sf_query:
+            raise ValueError(f"[{label}] SF_QUERY required for snowflake connector.")
+        payload = {
+            "account":            sf_account,
+            "user":               sf_user,
+            "password":           sf_password,
+            "warehouse":          sf_warehouse,
+            "database":           sf_database,
+            "schema":             sf_schema,
+            "role":               sf_role,
+            "query":              sf_query,
+            "option":             option,
+            "table_name":         table_name,
+            "sync_mode":          sync_mode,
+            "incremental_column": incremental_column,
+        }
+        res = requests.post(f"{BASE_URL}/ingest_snowflake", json=payload, timeout=120)
+        if res.status_code == 200 and res.json().get("status") != "FAILED":
+            _save_url_record(sf_query, processed_dir, prefix="snowflake_processed")
+        else:
+            _save_url_record(sf_query, failed_dir, prefix="snowflake_failed")
+            raise Exception(f"[{label}] Snowflake ingestion failed: {res.text}")
+        return "SUCCESS"
+
+    else:
+        raise ValueError(f"[{label}] Unsupported connector_type: {connector_type}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SINGLE-SOURCE ENTRYPOINT — unchanged behavior, now backed by _process_one_source
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_connector(**context):
+    print(f"Pipeline  : {PIPELINE_ID}")
+    print(f"Connector : {CONNECTOR_TYPE}")
+    print(f"Option    : {OPTION}")
+
+    dag_run_id = _log_run_start()
+
+    try:
+        cfg = {
+            "CONNECTOR_TYPE":     CONNECTOR_TYPE,
+            "OPTION":             OPTION,
+            "TABLE_NAME":         TABLE_NAME,
+            "SYNC_MODE":          SYNC_MODE,
+            "INCREMENTAL_COLUMN": INCREMENTAL_COLUMN,
+            "FOLDER_PATH":        FOLDER_PATH,
+            "FILE_PATH":          FILE_PATH,
+            "SHEET_URL":          SHEET_URL,
+            "API_URL":            API_URL,
+            "S3_BUCKET":          S3_BUCKET,
+            "S3_KEY":             S3_KEY,
+            "S3_FILE_TYPE":       S3_FILE_TYPE,
+            "SRC_PG_HOST":        SRC_PG_HOST,
+            "SRC_PG_DB":          SRC_PG_DB,
+            "SRC_PG_USER":        SRC_PG_USER,
+            "SRC_PG_PASSWORD":    SRC_PG_PASSWORD,
+            "SRC_PG_PORT":        SRC_PG_PORT,
+            "PG_QUERY":           PG_QUERY,
+            "SF_ACCOUNT":         SF_ACCOUNT,
+            "SF_USER":            SF_USER,
+            "SF_PASSWORD":        SF_PASSWORD,
+            "SF_WAREHOUSE":       SF_WAREHOUSE,
+            "SF_DATABASE":        SF_DATABASE,
+            "SF_SCHEMA":          SF_SCHEMA,
+            "SF_ROLE":            SF_ROLE,
+            "SF_QUERY":           SF_QUERY,
+        }
+
+        _process_one_source(cfg)
+
+        if OPTION == "3" and AFTER_FIRST_RUN in ("1", "2"):
+            _update_option_in_dag(AFTER_FIRST_RUN)
+
+        _log_run_end(dag_run_id, "SUCCESS")
+        print("Pipeline completed!")
+        _send_email("success", dag_run_id=dag_run_id)
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log_run_end(dag_run_id, "FAILED", str(e))
+        _send_email("failed", error=str(e), dag_run_id=dag_run_id)
+        raise
 
 
-@router.post("/full", response_model=DataGenResponse)
-async def generate_and_load(request: DataGenRequest):
-    """Full workflow: Generate data and load to database in one call."""
-    if not request.connection_id:
-        raise HTTPException(status_code=400, detail="connection_id required for full workflow")
-    
-    request.load_to_db = True
-    return await generate_data_endpoint(request)
+# ─────────────────────────────────────────────────────────────────────────────
+# DB helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_db_conn():
+    return psycopg2.connect(**DB_CONFIG)
 
 
-# =============================================================================
-# Export
-# =============================================================================
+def _collect_logs(dag_run_id):
+    import glob
+    pattern = (
+        f"/opt/airflow/logs/dag_id={PIPELINE_ID}"
+        f"/run_id=*/task_id=run_connector/attempt=*.log"
+    )
+    log_files = sorted(glob.glob(pattern))
+    if not log_files:
+        pattern_old = f"/opt/airflow/logs/{PIPELINE_ID}/run_connector/*.log"
+        log_files   = sorted(glob.glob(pattern_old))
+    if not log_files:
+        print(f"No log files found for pattern: {pattern}")
+        return "No log file found.", None
+    latest = log_files[-1]
+    try:
+        with open(latest, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        print(f"Log file read: {latest} ({len(content)} chars)")
+        return content, latest
+    except Exception as e:
+        return f"Could not read log file: {e}", latest
 
-__all__ = ["router"]
+
+def _save_log_to_db(dag_run_id, status, log_content, log_file_path):
+    try:
+        conn = _get_db_conn()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO pipeline_dag_logs (
+                pipeline_id, dag_run_id, task_id,
+                status, log_content, log_file_path
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+        """, (PIPELINE_ID, dag_run_id, "run_connector", status, log_content, log_file_path))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"Log saved to DB for run: {dag_run_id}")
+    except Exception as e:
+        print(f"Failed to save log to DB: {e}")
+
+
+def _log_run_start():
+    dag_run_id = f"run__{PIPELINE_ID}__{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    try:
+        conn = _get_db_conn()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO airflow_pipeline_runs (
+                dag_id, dag_run_id, pipeline_name,
+                connector_type, folder_path, file_path,
+                sheet_url, api_url, operation, table_name,
+                schedule, status, execution_date, triggered_by
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            PIPELINE_ID, dag_run_id, PIPELINE_ID,
+            CONNECTOR_TYPE, FOLDER_PATH, FILE_PATH,
+            SHEET_URL, API_URL, OPTION, TABLE_NAME,
+            SCHEDULE, "RUNNING", datetime.now().isoformat(), "scheduler",
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"DB log: RUNNING — {dag_run_id}")
+    except Exception as e:
+        print(f"DB log failed (start): {e}")
+    return dag_run_id
+
+
+def _log_run_end(dag_run_id, status, error=""):
+    try:
+        conn = _get_db_conn()
+        cur  = conn.cursor()
+        cur.execute("""
+            UPDATE airflow_pipeline_runs
+            SET status = %s, error_message = %s
+            WHERE dag_run_id = %s
+        """, (status, error or None, dag_run_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"DB log: {status} — {dag_run_id}")
+    except Exception as e:
+        print(f"DB log failed (end): {e}")
+
+    log_content, log_file_path = _collect_logs(dag_run_id)
+    _save_log_to_db(dag_run_id, status, log_content, log_file_path)
+
+def run_multi_source(**context):
+    """
+    Process every source in SOURCES, reusing the exact same hash dedup /
+    URL dedup / folder listing / file moving / path translation logic
+    (_process_one_source, above) that single-source pipelines use.
+    A failure in one source does not stop the others — all sources are
+    attempted, and the run is marked FAILED at the end if any of them failed.
+    """
+    dag_run_id = _log_run_start()
+    results    = []
+    any_failed = False
+
+    try:
+        for i, src in enumerate(SOURCES, 1):
+            label = f"source_{i}_{src['CONNECTOR_TYPE']}"
+            try:
+                status = _process_one_source(src, source_label=label)
+                results.append((label, status))
+                print(f"[{label}] -> {status}")
+            except Exception as e:
+                print(f"[{label}] FAILED: {e}")
+                results.append((label, "FAILED"))
+                any_failed = True
+
+        if any_failed:
+            failed_list = [lbl for lbl, st in results if st == "FAILED"]
+            raise Exception(f"Source(s) failed: {failed_list}")
+
+        _log_run_end(dag_run_id, "SUCCESS")
+        print("All sources processed successfully!")
+        _send_email("success", dag_run_id=dag_run_id)
+
+    except Exception as e:
+        _log_run_end(dag_run_id, "FAILED", str(e))
+        _send_email("failed", error=str(e), dag_run_id=dag_run_id)
+        raise
+
+
+with DAG(
+    dag_id            = PIPELINE_ID,
+    start_date        = pendulum.datetime(2024, 1, 1, tz=TIMEZONE),
+    schedule_interval = SCHEDULE,
+    catchup           = False,
+    tags              = ["multi-source", "connector"],
+) as dag:
+    PythonOperator(
+        task_id         = "run_multi_source",
+        python_callable = run_multi_source,
+    )

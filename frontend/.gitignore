@@ -14,3 +14,8 @@ dist-ssr
 # Logs
 *.log
 npm-debug.log*
+backend.zip
+frontend.zip
+dbt/logs/
+dbt/target/
+dbt/.user.ym

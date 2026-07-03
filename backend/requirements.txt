@@ -58,3 +58,4 @@ langchain-openai>=0.1.0
 sqlglot>=23.0.0
 snowflake-connector-python
 fastexcel
+chardet

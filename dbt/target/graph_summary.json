@@ -1,0 +1,1 @@
+{"_invocation_id": "fbd78e49-ac58-4110-baa1-d46bca293ace", "linked": {"0": {"name": "source.data_connector_dbt.raw.tbl_user_csv", "type": "source", "succ": [1]}, "1": {"name": "model.data_connector_dbt.stg_csv", "type": "model"}}}

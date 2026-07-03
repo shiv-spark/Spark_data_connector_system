@@ -186,6 +186,41 @@ services:
     networks:
       - connector_net
     restart: unless-stopped
+  
+
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+
+    container_name: data_connector_dbt
+
+    working_dir: /usr/app/dbt
+
+    volumes:
+      - ./dbt:/usr/app/dbt
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - connector_net
+
+    stdin_open: true
+    tty: true
+
+    restart: unless-stopped
 
 volumes:
   postgres_data:
@@ -196,3 +231,4 @@ volumes:
 networks:
   connector_net:
     driver: bridge
+

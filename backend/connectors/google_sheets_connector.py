@@ -6,11 +6,6 @@ import re
 import json
 import os
 
-
-# ─────────────────────────────────────────────
-# EXISTING FUNCTIONS (unchanged)
-# ─────────────────────────────────────────────
-
 def convert_to_export_url(sheet_url: str, gid: str = "0") -> str:
     match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", sheet_url)
     if not match:
@@ -205,20 +200,20 @@ def _read_urls_from_json(file_path: str) -> list:
                         raw_urls.append(item[key])
                         break
                 else:
-                    # Pehli string value use karo
+                    # First string value use 
                     for v in item.values():
                         if isinstance(v, str) and v.startswith("http"):
                             raw_urls.append(v)
                             break
 
     elif isinstance(data, dict):
-        # Format 3 — urls key dhundho
+        # Format 3 — Find urls key 
         for key in ("urls", "sheet_urls", "links", "sheets"):
             if key in data and isinstance(data[key], list):
                 raw_urls.extend(data[key])
                 break
         else:
-            # Koi bhi string values jo URLs hain
+            # Any string values which is  URLs 
             for v in data.values():
                 if isinstance(v, str) and v.startswith("http"):
                     raw_urls.append(v)

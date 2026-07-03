@@ -27,6 +27,7 @@ const initial = {
   file_path: "",
   sheet_url: "",
   url: "",
+  api_config: "",
   host: "",
   database: "",
   user: "",
@@ -50,6 +51,7 @@ const initial = {
 export const DirectIngest = () => {
   const [form, setForm] = useState(initial);
   const [result, setResult] = useState<any>(null);
+  const [apiConfigError, setApiConfigError] = useState<string>("");
 
   const update = (key: keyof typeof initial, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -62,20 +64,23 @@ export const DirectIngest = () => {
         sync_mode: form.sync_mode,
         incremental_column: form.sync_mode === "incremental" ? form.incremental_column : null,
       };
+
+      let parsedApiConfig: Record<string, unknown> = {};
+      if (form.connector === "api" && form.api_config.trim()) {
+        try {
+          parsedApiConfig = JSON.parse(form.api_config);
+        } catch (e) {
+          setApiConfigError("Invalid JSON — please check the syntax.");
+          throw new Error("Invalid api_config JSON");
+        }
+      }
+
       const payloads = {
         csv: { ...common, file_path: form.file_path },
         excel: { ...common, file_path: form.file_path },
         google_sheets: { ...common, sheet_url: form.sheet_url },
-        api: { ...common, url: form.url },
-        postgres: {
-          ...common,
-          host: form.host,
-          database: form.database,
-          user: form.user,
-          password: form.password,
-          port: form.port,
-          query: form.query,
-        },
+        api: { ...common, url: form.url, ...parsedApiConfig },   // ← spread flattened onto APIRequest fields
+        postgres: { ...common, host: form.host, database: form.database, user: form.user, password: form.password, port: form.port, query: form.query },
         s3: { ...common, bucket: form.bucket, key: form.key, file_type: form.file_type },
         snowflake: {
           ...common,
@@ -103,9 +108,9 @@ export const DirectIngest = () => {
     },
     onSuccess: setResult,
   });
-
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    setApiConfigError("");
     setResult(null);
     ingest.mutate();
   };
@@ -153,7 +158,22 @@ export const DirectIngest = () => {
               <label className="block space-y-1 text-sm font-medium">Sheet URL<Input value={form.sheet_url} onChange={(e) => update("sheet_url", e.target.value)} required /></label>
             )}
             {form.connector === "api" && (
-              <label className="block space-y-1 text-sm font-medium">API URL<Input value={form.url} onChange={(e) => update("url", e.target.value)} required /></label>
+              <div className="space-y-2">
+                <label className="block space-y-1 text-sm font-medium">API URL<Input value={form.url} onChange={(e) => update("url", e.target.value)} required /></label>
+                <label className="space-y-1 text-sm font-medium block">
+                  Advanced Config (optional JSON — method, auth_type, body, pagination, etc.)
+                  <textarea
+                    className="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
+                    placeholder='{"method": "POST", "auth_type": "bearer", "bearer_token": "...", "pagination_type": "page"}'
+                    value={form.api_config}
+                    onChange={(e) => {
+                      update("api_config", e.target.value);
+                      setApiConfigError("");
+                    }}
+                  />
+                </label>
+                {apiConfigError && <p className="text-sm text-red-500">{apiConfigError}</p>}
+              </div>
             )}
             {form.connector === "postgres" && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

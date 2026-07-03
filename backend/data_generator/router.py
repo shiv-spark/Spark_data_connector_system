@@ -755,11 +755,11 @@ def load_to_db(filepath: str, config: dict, connection, s3_path: str = None) -> 
     if connection.db_type == DatabaseType.SNOWFLAKE:
         return _load_to_snowflake(filepath, table, columns, connection, s3_path)
     elif connection.db_type == DatabaseType.POSTGRESQL:
-        return _load_to_postgres(df, table, connection)
+        return _load_to_postgres(df, table.lower(), connection)
     elif connection.db_type == DatabaseType.MYSQL:
-        return _load_to_mysql(df, table, connection)
+        return _load_to_mysql(df, table.lower(), connection)
     elif connection.db_type == DatabaseType.SQLITE:
-        return _load_to_sqlite(df, table, connection)
+        return _load_to_sqlite(df, table.lower(), connection)
     else:
         raise ValueError(f"Unsupported database type: {connection.db_type}")
 

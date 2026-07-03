@@ -21,7 +21,7 @@ DB_CONFIG = {
 
 def run_ingestion(connector_func, source, connector_name, *args,
                   option=None, table_name=None,
-                  sync_mode="full", incremental_column=None):   # ← new params
+                  sync_mode="full", incremental_column=None,**connector_kwargs):   # ← new params
 
     conn     = psycopg2.connect(**DB_CONFIG)
     tracker  = RunTracker(conn)
@@ -42,7 +42,9 @@ def run_ingestion(connector_func, source, connector_name, *args,
 
     try:
         logger.log("INFO", f"{connector_name} started | sync_mode={sync_mode}")
-        df        = connector_func(*args)
+        # df        = connector_func(*args)
+        # df        = connector_func(*args, **connector_kwargs)
+        df = connector_func(**connector_kwargs) 
         row_count = df.shape[0]
         logger.log("INFO", f"Fetched {row_count} rows")
 

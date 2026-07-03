@@ -1,6 +1,6 @@
-import { FormEvent, useState, useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PlusCircle, Link2, Link2Off } from "lucide-react";
+import { FormEvent, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, PlusCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,18 +9,6 @@ import { SchedulerFields } from "@/components/SchedulerFields";
 import { buildCron, defaultSchedule } from "@/lib/schedule";
 
 type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
-
-const CONNECTOR_TO_SOURCE_TYPE: Record<Connector, string> = {
-  csv: "local_folder",
-  excel: "local_folder",
-  google_sheets: "google_sheet",
-  api: "api",
-  postgres: "postgres",
-  s3: "s3",
-  snowflake: "snowflake",
-};
-
-const SUPPORTS_CONNECTIONS: Connector[] = ["csv", "excel", "google_sheets", "api", "postgres", "s3", "snowflake"];
 
 const base = {
   pipeline_name: "",
@@ -34,7 +22,6 @@ const base = {
   file_path: "",
   sheet_url: "",
   api_url: "",
-  api_config: "",
   src_pg_host: "",
   src_pg_db: "",
   src_pg_user: "",
@@ -60,86 +47,16 @@ export const CreatePipeline = () => {
   const [form, setForm] = useState(base);
   const [schedule, setSchedule] = useState(defaultSchedule);
   const [result, setResult] = useState<any>(null);
-  const [apiConfigError, setApiConfigError] = useState<string>("");
-  const [useExistingConnection, setUseExistingConnection] = useState(false);
-  const [selectedConnectionId, setSelectedConnectionId] = useState<string>("");
-  const [connectionError, setConnectionError] = useState<string>("");
   const update = (key: keyof typeof base, value: string) => setForm((current) => ({ ...current, [key]: value }));
-
-  const connections = useQuery({
-    queryKey: ["connections"],
-    queryFn: async () => (await api.get("/connections")).data.connections ?? [],
-  });
-
-  const filteredConnections = connections.data?.filter(
-    (conn: any) => conn.source_type === CONNECTOR_TO_SOURCE_TYPE[form.connector_type as Connector]
-  ) ?? [];
-
-  const populateFromConnection = (connId: string) => {
-    if (!connId) return;
-    const conn = filteredConnections.find((c: any) => String(c.id) === connId);
-    if (conn?.config) {
-      const cfg = conn.config;
-      if (form.connector_type === "postgres") {
-        update("src_pg_host", cfg.host || "");
-        update("src_pg_db", cfg.database || "");
-        update("src_pg_user", cfg.user || "");
-        update("src_pg_password", cfg.password || "");
-        update("src_pg_port", cfg.port || "5432");
-      } else if (form.connector_type === "s3") {
-        update("s3_bucket", cfg.bucket || "");
-        update("s3_key", cfg.prefix || "");
-        update("s3_file_type", cfg.file_type || "csv");
-      } else if (form.connector_type === "snowflake") {
-        update("sf_account", cfg.account || "");
-        update("sf_user", cfg.user || "");
-        update("sf_password", cfg.password || "");
-        update("sf_warehouse", cfg.warehouse || "");
-        update("sf_database", cfg.database || "");
-        update("sf_schema", cfg.schema || "PUBLIC");
-        update("sf_role", cfg.role || "");
-      } else if (form.connector_type === "api") {
-        update("api_url", cfg.base_url || "");
-      } else if (form.connector_type === "google_sheets") {
-        update("sheet_url", cfg.sheet_url || "");
-      } else if (form.connector_type === "csv" || form.connector_type === "excel") {
-        update("folder_path", cfg.base_path || "");
-        update("s3_file_type", cfg.file_type || "csv");
-      }
-    }
-  };
-
-  useEffect(() => {
-    setSelectedConnectionId("");
-    setUseExistingConnection(false);
-    setConnectionError("");
-  }, [form.connector_type]);
 
   const create = useMutation({
     mutationFn: async () => {
-      if (useExistingConnection && !selectedConnectionId) {
-        setConnectionError("Please select a saved connection");
-        throw new Error("No connection selected");
-      }
-
-      let parsedApiConfig: Record<string, unknown> | null = null;
-      if (form.connector_type === "api" && form.api_config.trim()) {
-        try {
-          parsedApiConfig = JSON.parse(form.api_config);
-        } catch (e) {
-          setApiConfigError("Invalid JSON — please check the syntax.");
-          throw new Error("Invalid api_config JSON");
-        }
-      }
-
       const payload = {
         ...form,
-        api_config: parsedApiConfig,
         schedule: buildCron(schedule),
         timezone: schedule.timezone,
         incremental_column: form.sync_mode === "incremental" ? form.incremental_column : null,
         after_first_run: form.option === "3" ? form.after_first_run || null : null,
-        connection_id: useExistingConnection ? parseInt(selectedConnectionId) : null,
       };
       const response = await api.post("/create_pipeline", payload);
       return response.data;
@@ -153,8 +70,6 @@ export const CreatePipeline = () => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    setConnectionError("");
-    setApiConfigError("");
     setResult(null);
     create.mutate();
   };
@@ -200,64 +115,6 @@ export const CreatePipeline = () => {
 
             <SchedulerFields value={schedule} onChange={setSchedule} />
 
-            {SUPPORTS_CONNECTIONS.includes(form.connector_type) && (
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <input
-                      type="radio"
-                      name="connectionMode"
-                      checked={!useExistingConnection}
-                      onChange={() => {
-                        setUseExistingConnection(false);
-                        setSelectedConnectionId("");
-                        setConnectionError("");
-                      }}
-                    />
-                    <Link2Off className="h-4 w-4" />
-                    New Connection
-                  </label>
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <input
-                      type="radio"
-                      name="connectionMode"
-                      checked={useExistingConnection}
-                      onChange={() => setUseExistingConnection(true)}
-                    />
-                    <Link2 className="h-4 w-4" />
-                    Use Saved Connection
-                  </label>
-                </div>
-                {useExistingConnection && (
-                  <div className="mt-3">
-                    {connections.isLoading ? (
-                      <p className="text-sm text-muted-foreground">Loading connections...</p>
-                    ) : filteredConnections.length === 0 ? (
-                      <p className="text-sm text-red-500">No saved connections for this connector type. Please create a new connection.</p>
-                    ) : (
-                      <select
-                        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        value={selectedConnectionId}
-                        onChange={(e) => {
-                          setSelectedConnectionId(e.target.value);
-                          setConnectionError("");
-                          populateFromConnection(e.target.value);
-                        }}
-                      >
-                        <option value="">Select a connection</option>
-                        {filteredConnections.map((conn: any) => (
-                          <option key={conn.id} value={conn.id}>
-                            {conn.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    {connectionError && <p className="mt-2 text-sm text-red-500">{connectionError}</p>}
-                  </div>
-                )}
-              </div>
-            )}
-
             {form.option === "3" && (
               <label className="block max-w-md space-y-1 text-sm font-medium">After first run<Input placeholder="1 append, 2 overwrite" value={form.after_first_run} onChange={(e) => update("after_first_run", e.target.value)} /></label>
             )}
@@ -272,24 +129,7 @@ export const CreatePipeline = () => {
               </div>
             )}
             {form.connector_type === "google_sheets" && <Input placeholder="Sheet URL" value={form.sheet_url} onChange={(e) => update("sheet_url", e.target.value)} />}
-            {form.connector_type === "api" && (
-              <div className="space-y-2">
-                <Input placeholder="API URL" value={form.api_url} onChange={(e) => update("api_url", e.target.value)} />
-                <label className="space-y-1 text-sm font-medium block">
-                  Advanced Config (optional JSON — method, auth_type, body, pagination, etc.)
-                  <textarea
-                    className="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
-                    placeholder={`{\n  "method": "POST",\n  "auth_type": "api_key_header",\n  "header_name": "x-Gateway-APIKey",\n  "api_key": "xxxxx",\n  "body": { "getpoEncumbranceInfo": { "pUserName": "dm_gsb_usr" } },\n  "pagination_type": "body_bounds",\n  "body_pagination_path": "getpoEncumbranceInfo",\n  "lower_bound_field": "lowerBound",\n  "higher_bound_field": "higherBound",\n  "initial_lower_bound": 0,\n  "step_size": 1000\n}`}
-                    value={form.api_config}
-                    onChange={(e) => {
-                      update("api_config", e.target.value);
-                      setApiConfigError("");
-                    }}
-                  />
-                </label>
-                {apiConfigError && <p className="text-sm text-red-500">{apiConfigError}</p>}
-              </div>
-            )}
+            {form.connector_type === "api" && <Input placeholder="API URL" value={form.api_url} onChange={(e) => update("api_url", e.target.value)} />}
             {form.connector_type === "postgres" && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Input placeholder="Host" value={form.src_pg_host} onChange={(e) => update("src_pg_host", e.target.value)} />
