@@ -414,8 +414,9 @@ def _test_api(config: dict, test_write: bool = False) -> dict:
 
     if not config.get("base_url"):
         return {"success": False, "message": "Missing required field: base_url", "category": "connectivity", "details": _sanitize_config(config)}
-    if not config.get("test_endpoint"):
-        return {"success": False, "message": "Missing required field: test_endpoint", "category": "connectivity", "details": _sanitize_config(config)}
+    # test_endpoint is OPTIONAL — when blank, base_url itself is hit directly.
+    # (Removed the old mandatory check that always failed the test when
+    # someone left test_endpoint blank, which is the common/expected case.)
 
     auth_type = config.get("auth_type", "none").lower().strip()
     timeout = config.get("timeout", 10)
@@ -437,8 +438,28 @@ def _test_api(config: dict, test_write: bool = False) -> dict:
     elif auth_type == "query_param":
         if config.get("api_key"):
             params[config.get("query_param_name", "api_key")] = config["api_key"]
+    
 
-    url = config["base_url"].rstrip("/") + "/" + config["test_endpoint"].lstrip("/")
+    
+    # url = config["base_url"].strip().rstrip("/") + "/" + config["test_endpoint"].strip().lstrip("/")
+
+
+    base_url = config["base_url"].strip()
+    test_endpoint = config["test_endpoint"].strip()
+
+    # If test_endpoint is empty, OR it's literally the same as base_url (which
+    # happens when the frontend defaults test_endpoint = base_url for
+    # convenience), just hit base_url directly — don't concatenate them,
+    # or you get a doubled/invalid URL like ".../search/https://.../search".
+    if not test_endpoint or test_endpoint == base_url:
+        url = base_url
+    elif test_endpoint.startswith("http://") or test_endpoint.startswith("https://"):
+        # test_endpoint is itself a full URL (e.g. user pasted a different
+        # complete URL) — use it as-is rather than appending to base_url.
+        url = test_endpoint
+    else:
+        url = base_url.rstrip("/") + "/" + test_endpoint.lstrip("/")
+    # url = config["base_url"].rstrip("/") + "/" + config["test_endpoint"].lstrip("/")
 
     try:
         with httpx.Client(timeout=timeout, auth=auth, follow_redirects=True) as client:
@@ -792,6 +813,8 @@ class ExcelRequest(BaseModel):
     table_name: str | None = None
     sync_mode:  str        = "full"
     incremental_column: str | None = None
+    sheet_name: str | None = None      # ← NEW
+    all_sheets: bool = False
 
 @app.post("/ingest_excel")
 def ingest_excel(req: ExcelRequest):
@@ -801,6 +824,8 @@ def ingest_excel(req: ExcelRequest):
         req.file_path,
         "ExcelConnector",
         req.file_path,
+        req.sheet_name,
+        req.all_sheets,
         option=req.option,
         table_name=req.table_name,
         sync_mode          = req.sync_mode,
@@ -1534,7 +1559,7 @@ def _resolve_source_connection(source: SourceConfig) -> dict:
         merged["s3_file_type"] = config.get("file_type", "csv")
 
     return merged
-
+@app.post("/create_multi_pipeline")
 def create_multi_pipeline(req: MultiSourcePipelineRequest):
     if not req.sources:
         raise HTTPException(status_code=400, detail="At least one source required.")
@@ -1553,6 +1578,27 @@ def create_multi_pipeline(req: MultiSourcePipelineRequest):
 
     if result.get("status") == "FAILED":
         raise HTTPException(status_code=400, detail=result)
+
+    return result
+
+# def create_multi_pipeline(req: MultiSourcePipelineRequest):
+#     if not req.sources:
+#         raise HTTPException(status_code=400, detail="At least one source required.")
+
+#     for i, src in enumerate(req.sources):
+#         if src.api_config is not None:
+#             try:
+#                 json.dumps(src.api_config)
+#             except (TypeError, ValueError):
+#                 raise HTTPException(status_code=400, detail=f"Source {i+1}: api_config must be JSON-serializable")
+
+#     from utils.multi_dag_generator import create_multi_dag_file
+#     payload = req.model_dump()
+#     payload["sources"] = [_resolve_source_connection(src) for src in req.sources]
+#     result = create_multi_dag_file(payload)
+
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=400, detail=result)
     return result
 # @app.post("/create_multi_pipeline")
 # def create_multi_pipeline(req: MultiSourcePipelineRequest):
@@ -3060,3 +3106,113 @@ def get_logs_table(
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+
+#### testing ####
+
+import shutil
+from fastapi import UploadFile, File
+
+UPLOAD_BASE_DIR = "/app/data/uploads"   # shared with Airflow via ./data host mount
+os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+
+
+def _safe_folder_name(name: str) -> str:
+    """Sanitize a user-supplied folder name — letters, numbers, underscore, hyphen only."""
+    name = (name or "").strip()
+    name = re.sub(r"[^a-zA-Z0-9_\-]", "_", name)
+    name = re.sub(r"_+", "_", name).strip("_")
+    if not name:
+        raise HTTPException(status_code=400, detail="Invalid folder name")
+    return name
+
+
+# ─────────────────────────────────────────────
+# LIST existing upload folders
+# ─────────────────────────────────────────────
+
+@app.get("/upload_folders")
+def list_upload_folders():
+    """
+    Lists user-created folders under /app/data/uploads/, along with the
+    files currently inside each — so the frontend can show a dropdown of
+    reusable folders and let the user pick one to add more files into.
+    """
+    if not os.path.exists(UPLOAD_BASE_DIR):
+        return {"folders": []}
+
+    folders = []
+    for entry in sorted(os.listdir(UPLOAD_BASE_DIR)):
+        full_path = os.path.join(UPLOAD_BASE_DIR, entry)
+        if os.path.isdir(full_path):
+            files = [f for f in os.listdir(full_path) if not f.startswith(".")]
+            folders.append({
+                "folder_name": entry,
+                "folder_path": full_path,          # backend-container path — usable directly as folder_path
+                "file_count":  len(files),
+                "files":       sorted(files),
+            })
+    return {"folders": folders}
+
+
+# ─────────────────────────────────────────────
+# UPLOAD a file into a (new or existing) user folder
+# ─────────────────────────────────────────────
+
+@app.post("/upload_file")
+async def upload_file(
+    file: UploadFile = File(...),
+    folder_name: str = Query(..., description="User-chosen folder name — created if it doesn't exist yet"),
+):
+    safe_folder = _safe_folder_name(folder_name)
+    folder_path = os.path.join(UPLOAD_BASE_DIR, safe_folder)
+    os.makedirs(folder_path, exist_ok=True)
+    os.chmod(folder_path, 0o777)          # ← NEW — ensure Airflow container can write/delete inside this folder too
+
+    safe_name = os.path.basename(file.filename or "")
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    ext = os.path.splitext(safe_name)[1].lower()
+    if ext not in (".csv", ".xlsx", ".xls"):
+        raise HTTPException(status_code=400, detail=f"Unsupported file type '{ext}'. Only .csv, .xlsx, .xls allowed.")
+
+    dest_path = os.path.join(folder_path, safe_name)
+
+    if os.path.exists(dest_path):
+        name, extension = os.path.splitext(safe_name)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = f"{name}_{ts}{extension}"
+        dest_path = os.path.join(folder_path, safe_name)
+
+    try:
+        with open(dest_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        os.chmod(dest_path, 0o666)         # ← NEW — file itself also readable/writable/deletable by any container user
+    finally:
+        file.file.close()
+
+    return {
+        "status":       "SUCCESS",
+        "folder_name":  safe_folder,
+        "folder_path":  folder_path,
+        "file_name":    safe_name,
+        "file_path":    dest_path,
+        "size_kb":      round(os.path.getsize(dest_path) / 1024, 1),
+    }
+# ─────────────────────────────────────────────
+# DELETE a file from a user folder (optional cleanup)
+# ─────────────────────────────────────────────
+
+@app.delete("/upload_folders/{folder_name}/{file_name}")
+def delete_uploaded_file(folder_name: str, file_name: str):
+    safe_folder = _safe_folder_name(folder_name)
+    safe_file   = os.path.basename(file_name)
+    file_path   = os.path.join(UPLOAD_BASE_DIR, safe_folder, safe_file)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    os.remove(file_path)
+    return {"status": "SUCCESS", "message": f"{safe_file} deleted from {safe_folder}"}

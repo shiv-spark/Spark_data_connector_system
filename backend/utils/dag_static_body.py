@@ -169,15 +169,48 @@ def _save_file_record(filepath, file_hash, dest_folder):
     print(f"Hash record saved: {dest}")
 
 
+# def _move_file(src, dest_folder):
+#     os.makedirs(dest_folder, exist_ok=True)
+#     name, ext = os.path.splitext(os.path.basename(src))
+#     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     dest = os.path.join(dest_folder, f"{name}_{ts}{ext}")
+#     shutil.copy2(src, dest)
+#     os.remove(src)
+#     print(f"Moved: {src} -> {dest}")
+# def _move_file(src, dest_folder):
+#     os.makedirs(dest_folder, exist_ok=True)
+#     name, ext = os.path.splitext(os.path.basename(src))
+#     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     dest = os.path.join(dest_folder, f"{name}_{ts}{ext}")
+#     try:
+#         shutil.copy2(src, dest)
+#         os.remove(src)
+#         print(f"Moved: {src} -> {dest}")
+#     except PermissionError as e:
+#         # Data was already successfully ingested at this point — a failure
+#         # to move/delete the source file (e.g. cross-container ownership
+#         # mismatch) should not fail the whole pipeline run. Log and continue;
+#         # the hash record already saved will prevent this file from being
+#         # reprocessed on the next run anyway.
+#         print(f"WARNING: Could not move/delete {src} due to permissions: {e}. "
+#               f"File will remain in place, but hash-based dedup will prevent reprocessing.")
 def _move_file(src, dest_folder):
     os.makedirs(dest_folder, exist_ok=True)
     name, ext = os.path.splitext(os.path.basename(src))
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = os.path.join(dest_folder, f"{name}_{ts}{ext}")
-    shutil.copy2(src, dest)
-    os.remove(src)
-    print(f"Moved: {src} -> {dest}")
-
+    try:
+        shutil.copy2(src, dest)
+        os.remove(src)
+        print(f"Moved: {src} -> {dest}")
+    except PermissionError as e:
+        # Data was already successfully ingested at this point — a failure
+        # to move/delete the source file (e.g. cross-container ownership
+        # mismatch) should not fail the whole pipeline run. Log and continue;
+        # the hash record already saved will prevent this file from being
+        # reprocessed on the next run anyway.
+        print(f"WARNING: Could not move/delete {src} due to permissions: {e}. "
+              f"File will remain in place, but hash-based dedup will prevent reprocessing.")
 
 def _url_already_handled(url, processed_dir, failed_dir):
     """Only check processed/ — failed/ is not checked to allow retries."""

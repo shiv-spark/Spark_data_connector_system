@@ -27,20 +27,17 @@ const initial = {
   auth_type: "none",
   api_key: "",
   header_name: "Authorization",
-  method: "GET",                   
-  query_param_name: "api_key",      
-  bearer_prefix: "Bearer",          
-  api_advanced_config: "",          
+  method: "GET",
+  query_param_name: "api_key",
+  bearer_prefix: "Bearer",
+  api_advanced_config: "",
   sheet_url: "",
   figma_file_url: "",
   figma_access_token: "",
   figma_node_id: "",
-  // AWS S3 fields
   aws_access_key_id: "",
   aws_secret_access_key: "",
-  // PostgreSQL schema
   pg_schema: "",
-  // Snowflake fields
   account: "",
   warehouse: "",
   schema: "PUBLIC",
@@ -77,7 +74,7 @@ export const Connections = () => {
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const [testResult, setTestResult] = useState<{success: boolean; message: string; category: string} | null>(null);
   const [testPassed, setTestPassed] = useState(false);
-  const [apiAdvancedConfigError, setApiAdvancedConfigError] = useState<string>(""); 
+  const [apiAdvancedConfigError, setApiAdvancedConfigError] = useState<string>("");
   const update = (key: keyof typeof initial, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
     if (key === "source_type") {
@@ -106,25 +103,25 @@ export const Connections = () => {
     queryFn: async () => (await api.get("/connections")).data.connections ?? [],
   });
 
-const buildConfig = () => {
+  const buildConfig = () => {
     const config: Record<string, any> = {
-      base_path: form.base_path,
-      bucket: form.bucket,
-      prefix: form.prefix,
-      file_type: form.file_type,
-      host: form.host,
-      database: form.database,
-      user: form.user,
-      password: form.password,
-      port: form.port,
-      base_url: form.base_url,
+      base_path: form.base_path.trim(),
+      bucket: form.bucket.trim(),
+      prefix: form.prefix.trim(),
+      file_type: form.file_type.trim(),
+      host: form.host.trim(),
+      database: form.database.trim(),
+      user: form.user.trim(),
+      password: form.password,   // don't trim passwords — spaces could be intentional
+      port: form.port.trim(),
+      base_url: form.base_url.trim(),
       auth_type: form.auth_type,
-      api_key: form.api_key,
-      header_name: form.header_name,
-      sheet_url: form.sheet_url,
-      figma_file_url: form.figma_file_url,
+      api_key: form.api_key,     // don't trim keys/tokens either
+      header_name: form.header_name.trim(),
+      sheet_url: form.sheet_url.trim(),
+      figma_file_url: form.figma_file_url.trim(),
       figma_access_token: form.figma_access_token,
-      figma_node_id: form.figma_node_id,
+      figma_node_id: form.figma_node_id.trim(),
     };
 
     if (form.source_type === "s3") {
@@ -150,10 +147,10 @@ const buildConfig = () => {
       // https://dummyjson.com/products/search) needs no extra typing,
       // but let the user override with a lighter-weight path if their
       // API has a dedicated health-check endpoint instead.
-      config.test_endpoint = form.test_endpoint || form.base_url;
-      config.method            = form.method || "GET";              // ← NEW
-      config.query_param_name  = form.query_param_name || "api_key"; // ← NEW
-      config.bearer_prefix     = form.bearer_prefix || "Bearer";     // ← NEW
+      config.test_endpoint = form.test_endpoint.trim();   // backend defaults to base_url
+      config.method = form.method || "GET";
+      config.query_param_name = form.query_param_name || "api_key";
+      config.bearer_prefix = form.bearer_prefix || "Bearer";
 
       // Advanced JSON (body, pagination_type, extra_headers, extra_params,
       // custom_fields, etc.) is stored under its own nested key so it can
@@ -162,7 +159,7 @@ const buildConfig = () => {
       // connection is later used to create a pipeline.
       if (form.api_advanced_config.trim()) {
         try {
-          config.api_advanced = JSON.parse(form.api_advanced_config);   // ← NEW
+          config.api_advanced = JSON.parse(form.api_advanced_config);
         } catch (e) {
           // already validated via validateApiAdvancedConfig() before
           // this is called — safe to ignore here
@@ -290,7 +287,7 @@ const buildConfig = () => {
     setEditingId(connection.id);
     setTestPassed(true);
   };
-  
+
   const cancelEdit = () => {
     setForm(initial);
     setEditingId(null);

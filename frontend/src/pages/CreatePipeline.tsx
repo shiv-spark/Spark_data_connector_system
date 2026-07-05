@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SchedulerFields } from "@/components/SchedulerFields";
 import { buildCron, defaultSchedule } from "@/lib/schedule";
+import { FolderUpload } from "@/pages/FolderUpload";
 
 type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
 
@@ -266,9 +267,22 @@ export const CreatePipeline = () => {
             )}
 
             {["csv", "excel"].includes(form.connector_type) && (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Input placeholder="File path" value={form.file_path} onChange={(e) => update("file_path", e.target.value)} />
-                <Input placeholder="Folder path" value={form.folder_path} onChange={(e) => update("folder_path", e.target.value)} />
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Input placeholder="File path (optional — single file)" value={form.file_path} onChange={(e) => update("file_path", e.target.value)} />
+                  <Input placeholder="Folder path (auto-filled by upload below, or type manually)" value={form.folder_path} onChange={(e) => update("folder_path", e.target.value)} />
+                </div>
+                <FolderUpload
+                  connectorType={form.connector_type as "csv" | "excel"}
+                  onFolderResolved={(folderPath) => {
+                    update("folder_path", folderPath);
+                    update("file_path", "");   // "use whole folder" ka matlab single file_path clear ho
+                  }}
+                  onFileResolved={(filePath) => {
+                    update("file_path", filePath);
+                    update("folder_path", "");   // single file select/upload ka matlab folder_path clear ho
+                  }}
+                />
               </div>
             )}
             {form.connector_type === "google_sheets" && <Input placeholder="Sheet URL" value={form.sheet_url} onChange={(e) => update("sheet_url", e.target.value)} />}

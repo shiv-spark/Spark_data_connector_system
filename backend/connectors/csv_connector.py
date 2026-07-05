@@ -1,8 +1,8 @@
-import polars as pl
+# import polars as pl
 
-def csv_connector(file_path):
-    df = pl.read_csv(file_path)
-    return df
+# def csv_connector(file_path):
+#     df = pl.read_csv(file_path)
+#     return df
 
 
 import polars as pl

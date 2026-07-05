@@ -37,6 +37,33 @@ def _extract_records(data):
     raise ValueError(f"Unsupported JSON top-level type: {type(data)}")
 
 
+
+def _find_plain_struct_columns(df: pl.DataFrame):
+    """
+    Return names of columns whose dtype is a bare Struct (not wrapped in a
+    List) — e.g. dimensions: {width, height, depth}. These represent a
+    single row's nested object, not multiple records, so they should be
+    unnested (spread into prefixed columns) rather than exploded.
+    """
+    return [
+        name for name, dtype in zip(df.columns, df.dtypes)
+        if isinstance(dtype, pl.Struct)
+    ]
+
+
+def _unnest_plain_struct_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Unnest bare Struct columns into prefixed flat columns, e.g.
+    dimensions: {width, height} -> dimensions.width, dimensions.height.
+    Unlike List(Struct), no explode is needed since there's exactly one
+    struct value per row already.
+    """
+    struct_cols = _find_plain_struct_columns(df)
+    for col in struct_cols:
+        struct_df = df.select(col).unnest(col)
+        struct_df = struct_df.rename({c: f"{col}.{c}" for c in struct_df.columns})
+        df = df.drop(col).hstack(struct_df)
+    return df
 def _find_nested_list_columns(df: pl.DataFrame):
     """Return names of columns whose dtype is a List of Struct (nested records)."""
     nested_cols = []
@@ -48,6 +75,39 @@ def _find_nested_list_columns(df: pl.DataFrame):
     return nested_cols
 
 
+def _find_simple_list_columns(df: pl.DataFrame):
+    """
+    Return names of columns whose dtype is a List of a simple (non-Struct)
+    type — e.g. List(String) like ["beauty", "skincare"], List(Int64), etc.
+    These aren't "nested records" (no exploding makes sense — each row still
+    represents one entity), so they're converted to a delimited string
+    instead so any downstream DB insert gets a clean TEXT value rather than
+    a raw list/array object it can't adapt.
+    """
+    simple_list_cols = []
+    for name, dtype in zip(df.columns, df.dtypes):
+        if isinstance(dtype, pl.List):
+            inner = dtype.inner
+            if not isinstance(inner, pl.Struct):
+                simple_list_cols.append(name)
+    return simple_list_cols
+
+
+def _stringify_simple_list_columns(df: pl.DataFrame, delimiter: str = ", ") -> pl.DataFrame:
+    """
+    Convert List(non-Struct) columns into a single delimited string per row,
+    e.g. ["beauty", "skincare"] -> "beauty, skincare". Null-safe: a null
+    list becomes a null string, not the literal text "null".
+    """
+    simple_list_cols = _find_simple_list_columns(df)
+    if not simple_list_cols:
+        return df
+
+    for col in simple_list_cols:
+        df = df.with_columns(
+            pl.col(col).list.eval(pl.element().cast(pl.Utf8)).list.join(delimiter).alias(col)
+        )
+    return df
 def _flatten_dataframe(df: pl.DataFrame, max_depth: int = 5) -> pl.DataFrame:
     """
     Recursively explode + unnest any List(Struct) columns so every nested
@@ -56,6 +116,11 @@ def _flatten_dataframe(df: pl.DataFrame, max_depth: int = 5) -> pl.DataFrame:
 
     Caps recursion at max_depth to avoid runaway expansion on pathological
     or self-referential schemas.
+
+    After struct-lists are resolved, any remaining simple lists (e.g.
+    tags: ["beauty", "skincare"]) are converted to delimited strings —
+    they represent a single row's property, not nested records, so they
+    should not be exploded or left as raw array objects.
     """
     depth = 0
     while depth < max_depth:
@@ -72,6 +137,8 @@ def _flatten_dataframe(df: pl.DataFrame, max_depth: int = 5) -> pl.DataFrame:
             df = df.drop(col).hstack(struct_df)
 
         depth += 1
+    df = _unnest_plain_struct_columns(df)
+    df = _stringify_simple_list_columns(df)   
 
     return df
 

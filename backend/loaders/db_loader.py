@@ -9,7 +9,7 @@ from psycopg2.extras import execute_values
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-
+import json
 project_root = Path(__file__).parent.parent.parent
 load_dotenv(project_root / ".env")
 
@@ -180,7 +180,7 @@ def check_schema_mismatch(cursor, df, table_name):
 # ─────────────────────────────────────────────
 # INSERT DATA
 # ─────────────────────────────────────────────
-
+import json   # ← top pe already ho sakta hai, confirm karo import hai
 
 def insert_data(cursor, df, table_name, batch_size=1000):
     if isinstance(df, pl.DataFrame):
@@ -188,7 +188,6 @@ def insert_data(cursor, df, table_name, batch_size=1000):
     else:
         pdf = df
 
-    # Safely quoted columns or table
     cols_sql = sql.SQL(", ").join(
         sql.Identifier(c) for c in pdf.columns
     )
@@ -199,26 +198,37 @@ def insert_data(cursor, df, table_name, batch_size=1000):
         cols  = cols_sql
     )
 
-    # Prepare a list of rows for execute_values
+    def _sanitize_value(v):
+        if v is None:
+            return None
+        if isinstance(v, float) and np.isnan(v):
+            return None
+        if isinstance(v, np.bool_):
+            return bool(v)
+        if isinstance(v, (np.integer, np.floating)):
+            return v.item()
+        # ── NEW: lists, numpy arrays, dicts — Postgres/psycopg2 can't
+        # adapt these directly. Serialize to a JSON string so they land
+        # in the (TEXT-typed) column as readable JSON instead of failing
+        # the whole insert.
+        if isinstance(v, (np.ndarray, list, dict)):
+            try:
+                return json.dumps(v.tolist() if isinstance(v, np.ndarray) else v, default=str)
+            except (TypeError, ValueError):
+                return str(v)
+        return v
+
     rows = [
-        tuple(
-            None if (v is None or (isinstance(v, float) and np.isnan(v)))
-            else bool(v) if isinstance(v, np.bool_)
-            else v.item() if isinstance(v, (np.integer, np.floating))
-            else v
-            for v in row
-        )
+        tuple(_sanitize_value(v) for v in row)
         for row in pdf.itertuples(index=False, name=None)
     ]
 
-    # Insert execute values in batches for better performance and memory efficiency
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
         execute_values(cursor, insert_query, batch, page_size=batch_size)
         print(f"Inserted rows {i+1} to {min(i+batch_size, len(rows))}")
 
     print(f"{len(rows)} rows inserted into '{table_name}'")
-
 
 # ─────────────────────────────────────────────
 # Schema evolution 

@@ -459,7 +459,7 @@ export const MultiSource = () => {
                             Advanced Config (optional JSON)
                             <textarea
                               className="min-h-32 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
-                              placeholder='{"method": "POST", "auth_type": "bearer", "bearer_token": "..."}'
+                              placeholder={`{\n  "method": "POST",\n  "auth_type": "api_key_header",\n  "header_name": "x-Gateway-APIKey",\n  "api_key": "xxxxx",\n  "body": { "getpoEncumbranceInfo": { "pUserName": "dm_gsb_usr" } },\n  "pagination_type": "body_bounds",\n  "body_pagination_path": "getpoEncumbranceInfo",\n  "lower_bound_field": "lowerBound",\n  "higher_bound_field": "higherBound",\n  "initial_lower_bound": 0,\n  "step_size": 1000\n}`}
                               value={source.api_config}
                               onChange={(e) => {
                                 updateSource(index, "api_config", e.target.value);

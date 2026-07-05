@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { FolderUpload } from "@/pages/FolderUpload";
 
 type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
 
@@ -152,9 +153,19 @@ export const DirectIngest = () => {
             )}
 
             {["csv", "excel"].includes(form.connector) && (
-              <label className="block space-y-1 text-sm font-medium">File path<Input value={form.file_path} onChange={(e) => update("file_path", e.target.value)} placeholder="D:/data/sales.csv" required /></label>
+              <div className="space-y-3">
+                <label className="block space-y-1 text-sm font-medium">
+                  File path
+                  <Input value={form.file_path} onChange={(e) => update("file_path", e.target.value)} placeholder="Type a path OR pick a folder below and upload" />
+                </label>
+                <FolderUpload
+                  connectorType={form.connector as "csv" | "excel"}
+                  onFolderResolved={() => {}}
+                  onFileResolved={(filePath) => update("file_path", filePath)}
+                />
+              </div>
             )}
-            {form.connector === "google_sheets" && (
+                        {form.connector === "google_sheets" && (
               <label className="block space-y-1 text-sm font-medium">Sheet URL<Input value={form.sheet_url} onChange={(e) => update("sheet_url", e.target.value)} required /></label>
             )}
             {form.connector === "api" && (
