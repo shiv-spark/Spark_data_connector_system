@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SchedulerFields } from "@/components/SchedulerFields";
 import { buildCron, defaultSchedule } from "@/lib/schedule";
+import { FolderUpload } from "@/pages/FolderUpload";
 
 const CONNECTOR_TO_SOURCE_TYPE: Record<string, string> = {
   csv: "local_folder",
@@ -441,12 +442,25 @@ export const MultiSource = () => {
                             disabled
                           />
                         ) : (
-                          <Input
-                            placeholder="File path (e.g. /app/data/sales.csv)"
-                            value={source.file_path}
-                            onChange={(e) => updateSource(index, "file_path", e.target.value)}
-                            required={fieldsRequired}
-                          />
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                              <Input
+                                placeholder="File path (e.g. /app/data/sales.csv)"
+                                value={source.file_path}
+                                onChange={(e) => updateSource(index, "file_path", e.target.value)}
+                              />
+                              <Input
+                                placeholder="Folder path (all files in it)"
+                                value={source.folder_path}
+                                onChange={(e) => updateSource(index, "folder_path", e.target.value)}
+                              />
+                            </div>
+                            <FolderUpload
+                              connectorType={source.connector_type as "csv" | "excel"}
+                              onFolderResolved={(folderPath) => { updateSource(index, "folder_path", folderPath); updateSource(index, "file_path", ""); }}
+                              onFileResolved={(filePath) => { updateSource(index, "file_path", filePath); updateSource(index, "folder_path", ""); }}
+                            />
+                          </div>
                         )
                       )}
                       {source.connector_type === "google_sheets" && (

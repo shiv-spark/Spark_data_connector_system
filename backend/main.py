@@ -3216,3 +3216,34 @@ def delete_uploaded_file(folder_name: str, file_name: str):
 
     os.remove(file_path)
     return {"status": "SUCCESS", "message": f"{safe_file} deleted from {safe_folder}"}
+
+# ─────────────────────────────────────────────
+# DELETE an entire user folder (and everything inside it)
+# ─────────────────────────────────────────────
+
+@app.delete("/upload_folders/{folder_name}")
+def delete_upload_folder(folder_name: str):
+    """
+    Deletes an entire user-created upload folder and all files inside it.
+    Use with caution — this is irreversible.
+    """
+    safe_folder = _safe_folder_name(folder_name)
+    folder_path = os.path.join(UPLOAD_BASE_DIR, safe_folder)
+
+    if not os.path.exists(folder_path):
+        raise HTTPException(status_code=404, detail=f"Folder '{safe_folder}' not found")
+
+    if not os.path.isdir(folder_path):
+        raise HTTPException(status_code=400, detail=f"'{safe_folder}' is not a folder")
+
+    file_count = len([f for f in os.listdir(folder_path) if not f.startswith(".")])
+
+    try:
+        shutil.rmtree(folder_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete folder '{safe_folder}': {e}")
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Folder '{safe_folder}' and its {file_count} file(s) deleted.",
+    }

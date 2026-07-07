@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Upload, FolderPlus, Folder, FileText } from "lucide-react";
+import { Loader2, Upload, FolderPlus, Folder, FileText, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 
@@ -9,7 +9,6 @@ type Props = {
   onFolderResolved: (folderPath: string) => void;
   onFileResolved: (filePath: string) => void;
 };
-
 
 export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }: Props) => {
   const qc = useQueryClient();
@@ -43,6 +42,29 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
     },
   });
 
+  const deleteFolder = useMutation({
+    mutationFn: async (folderName: string) => {
+      const response = await api.delete(`/upload_folders/${encodeURIComponent(folderName)}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      setBrowseFolder("");
+      qc.invalidateQueries({ queryKey: ["upload_folders"] });
+    },
+  });
+
+  const deleteFile = useMutation({
+    mutationFn: async ({ folderName, fileName }: { folderName: string; fileName: string }) => {
+      const response = await api.delete(
+        `/upload_folders/${encodeURIComponent(folderName)}/${encodeURIComponent(fileName)}`
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["upload_folders"] });
+    },
+  });
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -53,6 +75,16 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
       return;
     }
     upload.mutate({ file, folderName });
+  };
+
+  const handleDeleteFolder = (folderName: string) => {
+    if (!window.confirm(`Delete folder "${folderName}" and all files inside it? This cannot be undone.`)) return;
+    deleteFolder.mutate(folderName);
+  };
+
+  const handleDeleteFile = (folderName: string, fileName: string) => {
+    if (!window.confirm(`Delete file "${fileName}"?`)) return;
+    deleteFile.mutate({ folderName, fileName });
   };
 
   return (
@@ -77,14 +109,25 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
           ))}
         </select>
         {currentFolder && (
-          <button
-            type="button"
-            onClick={() => onFolderResolved(currentFolder.folder_path)}
-            className="whitespace-nowrap rounded-md border border-input bg-white px-3 py-2 text-sm hover:bg-slate-50"
-            title="Use every file inside this folder"
-          >
-            <Folder className="mr-1 inline h-3.5 w-3.5" /> Use whole folder
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => onFolderResolved(currentFolder.folder_path)}
+              className="whitespace-nowrap rounded-md border border-input bg-white px-3 py-2 text-sm hover:bg-slate-50"
+              title="Use every file inside this folder"
+            >
+              <Folder className="mr-1 inline h-3.5 w-3.5" /> Use whole folder
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDeleteFolder(currentFolder.folder_name)}
+              disabled={deleteFolder.isPending}
+              className="whitespace-nowrap rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+              title="Delete this folder and all files inside it"
+            >
+              {deleteFolder.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            </button>
+          </>
         )}
       </div>
 
@@ -96,15 +139,28 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
             </p>
             <div className="max-h-40 overflow-auto">
               {currentFolder.files.map((fname: string) => (
-                <button
+                <div
                   key={fname}
-                  type="button"
-                  onClick={() => onFileResolved(`${currentFolder.folder_path}/${fname}`)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-emerald-50"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-emerald-50"
                 >
-                  <FileText className="h-3.5 w-3.5 shrink-0" />
-                  {fname}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => onFileResolved(`${currentFolder.folder_path}/${fname}`)}
+                    className="flex flex-1 items-center gap-2 text-left"
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                    {fname}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFile(currentFolder.folder_name, fname)}
+                    disabled={deleteFile.isPending}
+                    className="shrink-0 text-red-500 hover:text-red-700 disabled:opacity-50"
+                    title="Delete this file"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>
