@@ -70,3 +70,51 @@ CREATE TABLE IF NOT EXISTS pipeline_dag_logs (
     log_file_path TEXT,
     created_at    TIMESTAMP DEFAULT NOW()
 );
+
+
+-- ─────────────────────────────────────────────
+-- USERS & ROLES
+-- ─────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS app_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(200) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'viewer',  -- 'admin' | 'editor' | 'viewer'
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login TIMESTAMP
+);
+
+-- Optional: team/pipeline ownership for finer-grained access
+CREATE TABLE IF NOT EXISTS pipeline_ownership (
+    id SERIAL PRIMARY KEY,
+    pipeline_id VARCHAR(200) NOT NULL,
+    owner_user_id INTEGER REFERENCES app_users(id),
+    team VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Audit log for who did what
+CREATE TABLE IF NOT EXISTS audit_log (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES app_users(id),
+    username VARCHAR(100),
+    action VARCHAR(100) NOT NULL,        -- 'create_pipeline', 'delete_pipeline', 'edit_connection', etc.
+    resource_type VARCHAR(50),           -- 'pipeline', 'connection'
+    resource_id VARCHAR(200),
+    details JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+-- Roles & Permissions
+-- Admin
+-- Can do everything — manage users, create/edit/delete pipelines, and manage connections.
+
+-- Editor
+-- Can create/edit/delete pipelines and create/edit connections — but cannot manage users.
+
+-- Viewer
+-- Can only view — dashboards, pipeline status, and logs — with no permission to create, edit, or delete anything.

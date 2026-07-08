@@ -9,7 +9,7 @@ import httpx
 import os
 import sys
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Depends
 from pydantic import BaseModel
 import psycopg2
 from psycopg2 import sql
@@ -37,6 +37,11 @@ from connectors.snowflake_connector import snowflake_connector  # ADDED
 
 from fastapi import FastAPI
 from agent.agent_router import router as agent_router
+
+from auth.router import router as auth_router
+from auth.security import get_current_user, require_role
+
+
 
 # Import Data Generator router
 try:
@@ -69,7 +74,9 @@ except ImportError as e:
     print(f"Traceback: {traceback.format_exc()}")
     TEXT2SQL_AVAILABLE = False
 
+
 app = FastAPI()
+app.include_router(auth_router)
 
 def _rows_to_dicts(cursor):
     """Convert psycopg2 cursor result to list of dictionaries"""
@@ -531,8 +538,24 @@ def list_connections():
     conn.close()
     return {"connections": [_public_connection(row) for row in rows]}
 
+# @app.post("/connections")
+# # def save_connection(req: ConnectionRequest):
+# def save_connection(req: ConnectionRequest, user: dict = Depends(require_role("admin", "editor"))):
+#     ensure_connections_table()
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("""
+#         INSERT INTO saved_connections (name, source_type, config, status, updated_at)
+#         VALUES (%s, %s, %s::jsonb, 'connected', NOW())
+#         RETURNING id, name, source_type, config, status, created_at, updated_at
+#     """, (req.name, req.source_type, json.dumps(req.config)))
+#     row = dict(zip([d[0] for d in cur.description], cur.fetchone()))
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+#     return _public_connection(row)
 @app.post("/connections")
-def save_connection(req: ConnectionRequest):
+def save_connection(req: ConnectionRequest, user: dict = Depends(require_role("admin", "editor"))):
     ensure_connections_table()
     conn = get_conn()
     cur = conn.cursor()
@@ -545,6 +568,9 @@ def save_connection(req: ConnectionRequest):
     conn.commit()
     cur.close()
     conn.close()
+
+    _log_audit(user, "create_connection", "connection", row["id"], details={"name": req.name, "source_type": req.source_type})
+
     return _public_connection(row)
 
 @app.get("/connections/{connection_id}")
@@ -566,8 +592,23 @@ def get_connection(connection_id: int):
     conn.close()
     return _public_connection(data)
 
+# @app.delete("/connections/{connection_id}")
+# # def delete_connection(connection_id: int):
+# def delete_connection(connection_id: int, user: dict = Depends(require_role("admin", "editor"))):
+#     ensure_connections_table()
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("DELETE FROM saved_connections WHERE id = %s RETURNING id", (connection_id,))
+#     deleted = cur.fetchone()
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+#     if not deleted:
+#         raise HTTPException(status_code=404, detail="Connection not found")
+#     return {"status": "DELETED", "id": connection_id}
+
 @app.delete("/connections/{connection_id}")
-def delete_connection(connection_id: int):
+def delete_connection(connection_id: int, user: dict = Depends(require_role("admin", "editor"))):
     ensure_connections_table()
     conn = get_conn()
     cur = conn.cursor()
@@ -578,10 +619,33 @@ def delete_connection(connection_id: int):
     conn.close()
     if not deleted:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    _log_audit(user, "delete_connection", "connection", connection_id)
+
     return {"status": "DELETED", "id": connection_id}
 
+# @app.put("/connections/{connection_id}")
+# def update_connection(connection_id: int, req: ConnectionRequest):
+#     ensure_connections_table()
+#     conn = get_conn()
+#     cur = conn.cursor()
+#     cur.execute("""
+#         UPDATE saved_connections 
+#         SET name = %s, source_type = %s, config = %s::jsonb, status = 'connected', updated_at = NOW()
+#         WHERE id = %s
+#         RETURNING id, name, source_type, config, status, created_at, updated_at
+#     """, (req.name, req.source_type, json.dumps(req.config), connection_id))
+#     row = cur.fetchone()
+#     if not row:
+#         cur.close()
+#         conn.close()
+#         raise HTTPException(status_code=404, detail="Connection not found")
+#     conn.commit()
+#     cur.close()
+#     conn.close()
+#     return _public_connection(dict(zip([d[0] for d in cur.description], row)))
 @app.put("/connections/{connection_id}")
-def update_connection(connection_id: int, req: ConnectionRequest):
+def update_connection(connection_id: int, req: ConnectionRequest, user: dict = Depends(require_role("admin", "editor"))):
     ensure_connections_table()
     conn = get_conn()
     cur = conn.cursor()
@@ -599,8 +663,10 @@ def update_connection(connection_id: int, req: ConnectionRequest):
     conn.commit()
     cur.close()
     conn.close()
-    return _public_connection(dict(zip([d[0] for d in cur.description], row)))
 
+    _log_audit(user, "update_connection", "connection", connection_id)
+
+    return _public_connection(dict(zip([d[0] for d in cur.description], row)))
 
 class ConnectionTestRequest(BaseModel):
     source_type: str
@@ -1403,11 +1469,47 @@ def _resolve_connection_config(req: CreatePipelineRequest) -> dict:
     return merged
 
 
+# @app.post("/create_pipeline")
+# # def create_pipeline(req: CreatePipelineRequest):
+# def create_pipeline(req: CreatePipelineRequest, user: dict = Depends(require_role("admin", "editor"))):
+#     if req.api_config is not None:
+#         try:
+#             _json.dumps(req.api_config)
+#         except (TypeError, ValueError):
+#             raise HTTPException(status_code=400, detail="api_config must be JSON-serializable")
+
+#     payload = _resolve_connection_config(req)
+#     result = create_dag_file(payload)
+
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=400, detail=result)
+
+#     # ✅ Log pipeline creation to DB
+#     dag_id = result.get("dag_id")
+#     insert_pipeline_log({
+#         "dag_id":         dag_id,
+#         "dag_run_id":     f"created__{dag_id}",   # placeholder — no real run yet
+#         "pipeline_name":  dag_id,
+#         "connector_type": req.connector_type,
+#         "file_path":      req.file_path,
+#         "folder_path":    req.folder_path,
+#         "sheet_url":      req.sheet_url,
+#         "api_url":        req.api_url,
+#         "operation":      OPTION_MAP.get(req.option, "unknown"),
+#         "table_name":     req.table_name,
+#         "schedule":       req.schedule,
+#         "status":         "CREATED",
+#         "execution_date": None,
+#         "triggered_by":   "create_pipeline",
+#     })
+#     _log_audit(user, "create_pipeline", "pipeline", result.get("dag_id"))
+#     return result
+
 @app.post("/create_pipeline")
-def create_pipeline(req: CreatePipelineRequest):
+def create_pipeline(req: CreatePipelineRequest, user: dict = Depends(require_role("admin", "editor"))):
     if req.api_config is not None:
         try:
-            _json.dumps(req.api_config)
+            json.dumps(req.api_config)
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="api_config must be JSON-serializable")
 
@@ -1417,11 +1519,10 @@ def create_pipeline(req: CreatePipelineRequest):
     if result.get("status") == "FAILED":
         raise HTTPException(status_code=400, detail=result)
 
-    # ✅ Log pipeline creation to DB
     dag_id = result.get("dag_id")
     insert_pipeline_log({
         "dag_id":         dag_id,
-        "dag_run_id":     f"created__{dag_id}",   # placeholder — no real run yet
+        "dag_run_id":     f"created__{dag_id}",
         "pipeline_name":  dag_id,
         "connector_type": req.connector_type,
         "file_path":      req.file_path,
@@ -1435,6 +1536,11 @@ def create_pipeline(req: CreatePipelineRequest):
         "execution_date": None,
         "triggered_by":   "create_pipeline",
     })
+
+    _log_audit(
+        user, "create_pipeline", "pipeline", dag_id,
+        details={"connector_type": req.connector_type, "table_name": req.table_name, "option": req.option},
+    )
 
     return result
 
@@ -1559,8 +1665,31 @@ def _resolve_source_connection(source: SourceConfig) -> dict:
         merged["s3_file_type"] = config.get("file_type", "csv")
 
     return merged
+
+# @app.post("/create_multi_pipeline")
+# # def create_multi_pipeline(req: MultiSourcePipelineRequest):
+# def create_multi_pipeline(req: MultiSourcePipelineRequest, user: dict = Depends(require_role("admin", "editor"))):
+#     if not req.sources:
+#         raise HTTPException(status_code=400, detail="At least one source required.")
+
+#     for i, src in enumerate(req.sources):
+#         if src.api_config is not None:
+#             try:
+#                 json.dumps(src.api_config)
+#             except (TypeError, ValueError):
+#                 raise HTTPException(status_code=400, detail=f"Source {i+1}: api_config must be JSON-serializable")
+
+#     from utils.multi_dag_generator import create_multi_dag_file
+#     payload = req.model_dump()
+#     payload["sources"] = [_resolve_source_connection(src) for src in req.sources]
+#     result = create_multi_dag_file(payload)
+
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=400, detail=result)
+
+#     return result
 @app.post("/create_multi_pipeline")
-def create_multi_pipeline(req: MultiSourcePipelineRequest):
+def create_multi_pipeline(req: MultiSourcePipelineRequest, user: dict = Depends(require_role("admin", "editor"))):
     if not req.sources:
         raise HTTPException(status_code=400, detail="At least one source required.")
 
@@ -1578,6 +1707,11 @@ def create_multi_pipeline(req: MultiSourcePipelineRequest):
 
     if result.get("status") == "FAILED":
         raise HTTPException(status_code=400, detail=result)
+
+    _log_audit(
+        user, "create_multi_pipeline", "pipeline", result.get("dag_id"),
+        details={"sources_count": len(req.sources), "table_name": req.table_name},
+    )
 
     return result
 
@@ -1663,45 +1797,87 @@ class EditPipelineRequest(BaseModel):
     sf_query:           Optional[str] = None
     sf_role:            Optional[str] = None
 
-@app.patch("/edit_pipeline/{pipeline_name}")
-def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
-    """
-    Update variables of an existing DAG file without regenerating the whole DAG.
-    Only the fields you pass will be updated — rest remain unchanged.
+# @app.patch("/edit_pipeline/{pipeline_name}")
+# def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
+#     """
+#     Update variables of an existing DAG file without regenerating the whole DAG.
+#     Only the fields you pass will be updated — rest remain unchanged.
 
-    Example:
-        PATCH /edit_pipeline/sales_data
-        { "schedule": "0 */6 * * *", "option": "2" }
-    """
-    # Only non-None fields pass in edit function 
+#     Example:
+#         PATCH /edit_pipeline/sales_data
+#         { "schedule": "0 */6 * * *", "option": "2" }
+#     """
+#     # Only non-None fields pass in edit function 
+#     updates = {k: v for k, v in req.model_dump().items() if v is not None}
+
+#     if not updates:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="At least one field required for update."
+#         )
+
+#     # validate option if provided
+#     if "option" in updates and updates["option"] not in ("1", "2", "3"):
+#         raise HTTPException(
+#             status_code=400,
+#             detail="option '1' (append), '2' (overwrite), and '3' (create only) are valid."
+#         )
+
+#     # sync_mode validate if provided
+#     if "sync_mode" in updates and updates["sync_mode"] not in ("full", "incremental"):
+#         raise HTTPException(
+#             status_code=400,
+#             detail="sync_mode 'full' or 'incremental' is required."
+#         )
+
+#     result = edit_dag_file(pipeline_name, updates)
+
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=404, detail=result)
+
+#     # Update DB record if schedule, table_name, or operation (option) changed
+#     try:
+#         dag_id = f"pipeline_{pipeline_name}" if not pipeline_name.startswith("pipeline_") else pipeline_name
+#         conn = get_conn()
+#         cur  = conn.cursor()
+#         cur.execute("""
+#             UPDATE airflow_pipeline_runs
+#             SET    schedule      = COALESCE(%s, schedule),
+#                    table_name    = COALESCE(%s, table_name),
+#                    operation     = COALESCE(%s, operation)
+#             WHERE  dag_id = %s
+#         """, (
+#             updates.get("schedule"),
+#             updates.get("table_name"),
+#             updates.get("option"),
+#             dag_id,
+#         ))
+#         conn.commit()
+#         cur.close()
+#         conn.close()
+#     except Exception as e:
+#         print(f"DB update failed (non-critical): {e}")
+
+#     return result
+
+@app.patch("/edit_pipeline/{pipeline_name}")
+def edit_pipeline(pipeline_name: str, req: EditPipelineRequest, user: dict = Depends(require_role("admin", "editor"))):
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
 
     if not updates:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one field required for update."
-        )
+        raise HTTPException(status_code=400, detail="At least one field required for update.")
 
-    # validate option if provided
     if "option" in updates and updates["option"] not in ("1", "2", "3"):
-        raise HTTPException(
-            status_code=400,
-            detail="option '1' (append), '2' (overwrite), and '3' (create only) are valid."
-        )
+        raise HTTPException(status_code=400, detail="option '1' (append), '2' (overwrite), and '3' (create only) are valid.")
 
-    # sync_mode validate if provided
     if "sync_mode" in updates and updates["sync_mode"] not in ("full", "incremental"):
-        raise HTTPException(
-            status_code=400,
-            detail="sync_mode 'full' or 'incremental' is required."
-        )
+        raise HTTPException(status_code=400, detail="sync_mode 'full' or 'incremental' is required.")
 
     result = edit_dag_file(pipeline_name, updates)
 
     if result.get("status") == "FAILED":
         raise HTTPException(status_code=404, detail=result)
 
-    # Update DB record if schedule, table_name, or operation (option) changed
     try:
         dag_id = f"pipeline_{pipeline_name}" if not pipeline_name.startswith("pipeline_") else pipeline_name
         conn = get_conn()
@@ -1712,39 +1888,47 @@ def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
                    table_name    = COALESCE(%s, table_name),
                    operation     = COALESCE(%s, operation)
             WHERE  dag_id = %s
-        """, (
-            updates.get("schedule"),
-            updates.get("table_name"),
-            updates.get("option"),
-            dag_id,
-        ))
+        """, (updates.get("schedule"), updates.get("table_name"), updates.get("option"), dag_id))
         conn.commit()
         cur.close()
         conn.close()
     except Exception as e:
         print(f"DB update failed (non-critical): {e}")
 
+    _log_audit(user, "edit_pipeline", "pipeline", pipeline_name, details={"updated_fields": list(updates.keys())})
+
     return result
 
 # ── DELETE /delete_pipeline/{pipeline_name} ──────────────────────────────────
 
+# @app.delete("/delete_pipeline/{pipeline_name}")
+# # def delete_pipeline(pipeline_name: str):
+# def delete_pipeline(pipeline_name: str, user: dict = Depends(require_role("admin", "editor"))):
+#     """
+#     Delete an existing DAG file.
+#     Example: DELETE /delete_pipeline/hr_data_csv
+#     """
+#     result = delete_dag_file(pipeline_name)
+
+#     if result.get("status") == "FAILED":
+#         raise HTTPException(status_code=404, detail=result)
+#     _log_audit(user, "delete_pipeline", "pipeline", pipeline_name)
+#     return result
+
 @app.delete("/delete_pipeline/{pipeline_name}")
-def delete_pipeline(pipeline_name: str):
-    """
-    Delete an existing DAG file.
-    Example: DELETE /delete_pipeline/hr_data_csv
-    """
+def delete_pipeline(pipeline_name: str, user: dict = Depends(require_role("admin", "editor"))):
     result = delete_dag_file(pipeline_name)
 
     if result.get("status") == "FAILED":
         raise HTTPException(status_code=404, detail=result)
 
+    _log_audit(user, "delete_pipeline", "pipeline", pipeline_name)
     return result
 
 # ── GET /pipelines ────────────────────────────────────────────────────────────
 
 @app.get("/pipelines")
-def list_pipelines():
+def list_pipelines(user: dict = Depends(get_current_user)):
     """
     List of all generated pipeline files.
     """
@@ -1870,48 +2054,77 @@ def get_table_data(
 # DAG PAUSE / UNPAUSE
 # ─────────────────────────────────────────────────────────────────────────────
 
+# @app.patch("/pipeline/{pipeline_name}/pause")
+# # def pause_pipeline(pipeline_name: str):
+# def pause_pipeline(pipeline_name: str, user: dict = Depends(require_role("admin", "editor"))):
+#     """
+#     DAG pause .
+#     Example: PATCH /pipeline/hr_analytics_testing/pause
+#     """
+#     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+
+#     url    = f"{AIRFLOW_BASE}/{dag_id}"
+
+#     res  = requests.patch(url, json={"is_paused": True}, auth=AIRFLOW_AUTH)
+#     data = res.json()
+
+#     if res.status_code != 200:
+#         raise HTTPException(status_code=res.status_code, detail=data)
+
+#     return {
+#         "status":  "PAUSED",
+#         "dag_id":  dag_id,
+#         "message": f"Pipeline '{dag_id}' paused."
+#     }
 @app.patch("/pipeline/{pipeline_name}/pause")
-def pause_pipeline(pipeline_name: str):
-    """
-    DAG pause .
-    Example: PATCH /pipeline/hr_analytics_testing/pause
-    """
+def pause_pipeline(pipeline_name: str, user: dict = Depends(require_role("admin", "editor"))):
     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
-
-    url    = f"{AIRFLOW_BASE}/{dag_id}"
-
-    res  = requests.patch(url, json={"is_paused": True}, auth=AIRFLOW_AUTH)
+    url = f"{AIRFLOW_BASE}/{dag_id}"
+    res = requests.patch(url, json={"is_paused": True}, auth=AIRFLOW_AUTH)
     data = res.json()
 
     if res.status_code != 200:
         raise HTTPException(status_code=res.status_code, detail=data)
 
-    return {
-        "status":  "PAUSED",
-        "dag_id":  dag_id,
-        "message": f"Pipeline '{dag_id}' paused."
-    }
+    _log_audit(user, "pause_pipeline", "pipeline", dag_id)
+
+    return {"status": "PAUSED", "dag_id": dag_id, "message": f"Pipeline '{dag_id}' paused."}
+
+# @app.patch("/pipeline/{pipeline_name}/unpause")
+# def unpause_pipeline(pipeline_name: str):
+#     """
+#     DAG unpause  (resume).
+#     Example: PATCH /pipeline/hr_analytics_testing/unpause
+#     """
+#     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
+#     url    = f"{AIRFLOW_BASE}/{dag_id}"
+
+#     res  = requests.patch(url, json={"is_paused": False}, auth=AIRFLOW_AUTH)
+#     data = res.json()
+
+#     if res.status_code != 200:
+#         raise HTTPException(status_code=res.status_code, detail=data)
+
+#     return {
+#         "status":  "ACTIVE",
+#         "dag_id":  dag_id,
+#         "message": f"Pipeline '{dag_id}' is active ."
+#     }
 
 @app.patch("/pipeline/{pipeline_name}/unpause")
-def unpause_pipeline(pipeline_name: str):
-    """
-    DAG unpause  (resume).
-    Example: PATCH /pipeline/hr_analytics_testing/unpause
-    """
+def unpause_pipeline(pipeline_name: str, user: dict = Depends(require_role("admin", "editor"))):
     dag_id = pipeline_name if pipeline_name.startswith("pipeline_") else f"pipeline_{pipeline_name}"
-    url    = f"{AIRFLOW_BASE}/{dag_id}"
-
-    res  = requests.patch(url, json={"is_paused": False}, auth=AIRFLOW_AUTH)
+    url = f"{AIRFLOW_BASE}/{dag_id}"
+    res = requests.patch(url, json={"is_paused": False}, auth=AIRFLOW_AUTH)
     data = res.json()
 
     if res.status_code != 200:
         raise HTTPException(status_code=res.status_code, detail=data)
 
-    return {
-        "status":  "ACTIVE",
-        "dag_id":  dag_id,
-        "message": f"Pipeline '{dag_id}' is active ."
-    }
+    _log_audit(user, "unpause_pipeline", "pipeline", dag_id)
+
+    return {"status": "ACTIVE", "dag_id": dag_id, "message": f"Pipeline '{dag_id}' is active."}
+
 
 @app.get("/pipeline/{pipeline_name}/status")
 def pipeline_status(pipeline_name: str):
@@ -3246,4 +3459,143 @@ def delete_upload_folder(folder_name: str):
     return {
         "status": "SUCCESS",
         "message": f"Folder '{safe_folder}' and its {file_count} file(s) deleted.",
+    }
+
+#RBAC
+
+
+
+def _log_audit(user: dict, action: str, resource_type: str, resource_id: str, details: dict = None):
+    """
+    Records who did what, on which resource, with optional extra context.
+    Never raises — a logging failure should never break the actual operation.
+
+    Args:
+        user          : the dict returned by get_current_user()/require_role()
+                         — has "user_id", "username", "role"
+        action        : short verb string, e.g. "create_pipeline", "delete_connection"
+        resource_type : "pipeline" | "connection" | "user" | etc.
+        resource_id   : the pipeline_id / connection_id / etc. affected
+        details       : optional extra JSON-serializable context (e.g. changed fields)
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO audit_log (user_id, username, action, resource_type, resource_id, details)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+            """,
+            (
+                user.get("user_id"),
+                user.get("username"),
+                action,
+                resource_type,
+                str(resource_id) if resource_id is not None else None,
+                json.dumps(details or {}, default=str),
+            ),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Audit log failed (non-critical): {e}")
+
+
+@app.on_event("startup")
+async def create_default_admin():
+    """
+    If no users exist yet, create a default admin so the system is usable
+    on first boot. CHANGE THIS PASSWORD IMMEDIATELY after first login.
+    """
+    from auth.security import hash_password
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app_users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) UNIQUE NOT NULL,
+                email VARCHAR(200) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(50) NOT NULL DEFAULT 'viewer',
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                last_login TIMESTAMP
+            )
+        """)
+        conn.commit()
+
+        cur.execute("SELECT COUNT(*) FROM app_users")
+        count = cur.fetchone()[0]
+
+        if count == 0:
+            default_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin")
+            cur.execute(
+                "INSERT INTO app_users (username, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+                ("admin", "admin@example.com", hash_password(default_password), "admin"),
+            )
+            conn.commit()
+            print(f"✓ Default admin created — username: admin, password: {default_password}")
+            print("⚠ CHANGE THIS PASSWORD IMMEDIATELY")
+
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠ Failed to seed default admin: {e}")
+
+@app.get("/audit_log")
+def get_audit_log(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    username: Optional[str] = None,
+    action: Optional[str] = None,
+    resource_type: Optional[str] = None,
+    user: dict = Depends(require_role("admin")),
+):
+    """
+    View the audit trail — who did what, when. Admin-only.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    where_parts = []
+    params = []
+
+    if username:
+        where_parts.append("username = %s")
+        params.append(username)
+    if action:
+        where_parts.append("action = %s")
+        params.append(action)
+    if resource_type:
+        where_parts.append("resource_type = %s")
+        params.append(resource_type)
+
+    where_clause = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    count_query = f"SELECT COUNT(*) FROM audit_log {where_clause}"
+    cur.execute(count_query, params)
+    total = cur.fetchone()[0]
+
+    data_query = f"""
+        SELECT id, user_id, username, action, resource_type, resource_id, details, created_at
+        FROM audit_log
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s
+    """
+    cur.execute(data_query, params + [limit, offset])
+    rows = cur.fetchall()
+    cols = [d[0] for d in cur.description]
+    data = [dict(zip(cols, row)) for row in rows]
+
+    cur.close()
+    conn.close()
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "logs": data,
     }

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { fdt } from "@/lib/format";
-
+import { FolderUpload } from "@/pages/FolderUpload";   
 type SourceType = "local_folder" | "s3" | "postgres" | "snowflake" | "api" | "google_sheet" | "figma_design";
 
 const initial = {
@@ -341,7 +341,24 @@ export const Connections = () => {
               </select>
 
               {form.source_type === "local_folder" && (
-                <Input placeholder="Base folder path, e.g. /app/data or D:/datasets" value={form.base_path} onChange={(e) => update("base_path", e.target.value)} />
+                <div className="space-y-3">
+                  <Input placeholder="Base folder path, e.g. /app/data or D:/datasets" value={form.base_path} onChange={(e) => update("base_path", e.target.value)} />
+                  <label className="space-y-1 text-sm font-medium block">
+                    File type in this folder
+                    <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.file_type} onChange={(e) => update("file_type", e.target.value)}>
+                      <option value="csv">CSV files</option>
+                      <option value="excel">Excel files</option>
+                    </select>
+                  </label>
+                  <FolderUpload
+                    connectorType={form.file_type === "excel" ? "excel" : "csv"}
+                    onFolderResolved={(folderPath) => update("base_path", folderPath)}
+                    onFileResolved={(filePath) => {
+                      const folder = filePath.substring(0, filePath.lastIndexOf("/"));
+                      update("base_path", folder || filePath);
+                    }}
+                  />
+                </div>
               )}
               {form.source_type === "s3" && (
                 <div className="space-y-3">

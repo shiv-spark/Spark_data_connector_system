@@ -15,7 +15,7 @@ psycopg2-binary>=2.9.9
 sqlalchemy>=2.0.30
 
 # Auth
-bcrypt
+bcrypt==4.0.1
 PyJWT
 
 # Excel
@@ -59,3 +59,6 @@ sqlglot>=23.0.0
 snowflake-connector-python
 fastexcel
 chardet
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+email-validator
