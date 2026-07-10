@@ -80,7 +80,7 @@ class Text2SQLResponse(BaseModel):
     run_id: str
     question: str
     sql: Optional[str]
-    connection_id: Optional[str]
+    # connection_id: Optional[str]
     connection_name: Optional[str]
     validation_status: str
     execution_status: str
@@ -95,7 +95,7 @@ class Text2SQLResponse(BaseModel):
 
 class SchemaInfoResponse(BaseModel):
     """Response with schema information."""
-    connection_id: str
+    # connection_id: str
     connection_name: str
     db_type: str
     tables: List[str]
@@ -105,7 +105,7 @@ class SchemaInfoResponse(BaseModel):
 
 class TableSchemaResponse(BaseModel):
     """Response with table schema."""
-    connection_id: str
+    # connection_id: str
     table_name: str
     columns: Dict[str, Dict[str, Any]]
     column_list: List[str]

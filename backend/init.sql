@@ -72,41 +72,41 @@ CREATE TABLE IF NOT EXISTS pipeline_dag_logs (
 );
 
 
--- ─────────────────────────────────────────────
--- USERS & ROLES
--- ─────────────────────────────────────────────
+-- -- ─────────────────────────────────────────────
+-- -- USERS & ROLES
+-- -- ─────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS app_users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(100) UNIQUE NOT NULL,
-    email VARCHAR(200) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'viewer',  -- 'admin' | 'editor' | 'viewer'
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    last_login TIMESTAMP
-);
+-- CREATE TABLE IF NOT EXISTS app_users (
+--     id SERIAL PRIMARY KEY,
+--     username VARCHAR(100) UNIQUE NOT NULL,
+--     email VARCHAR(200) UNIQUE NOT NULL,
+--     password_hash VARCHAR(255) NOT NULL,
+--     role VARCHAR(50) NOT NULL DEFAULT 'viewer',  -- 'admin' | 'editor' | 'viewer'
+--     is_active BOOLEAN DEFAULT TRUE,
+--     created_at TIMESTAMP DEFAULT NOW(),
+--     last_login TIMESTAMP
+-- );
 
--- Optional: team/pipeline ownership for finer-grained access
-CREATE TABLE IF NOT EXISTS pipeline_ownership (
-    id SERIAL PRIMARY KEY,
-    pipeline_id VARCHAR(200) NOT NULL,
-    owner_user_id INTEGER REFERENCES app_users(id),
-    team VARCHAR(100),
-    created_at TIMESTAMP DEFAULT NOW()
-);
+-- -- Optional: team/pipeline ownership for finer-grained access
+-- CREATE TABLE IF NOT EXISTS pipeline_ownership (
+--     id SERIAL PRIMARY KEY,
+--     pipeline_id VARCHAR(200) NOT NULL,
+--     owner_user_id INTEGER REFERENCES app_users(id),
+--     team VARCHAR(100),
+--     created_at TIMESTAMP DEFAULT NOW()
+-- );
 
--- Audit log for who did what
-CREATE TABLE IF NOT EXISTS audit_log (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES app_users(id),
-    username VARCHAR(100),
-    action VARCHAR(100) NOT NULL,        -- 'create_pipeline', 'delete_pipeline', 'edit_connection', etc.
-    resource_type VARCHAR(50),           -- 'pipeline', 'connection'
-    resource_id VARCHAR(200),
-    details JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+-- -- Audit log for who did what
+-- CREATE TABLE IF NOT EXISTS audit_log (
+--     id SERIAL PRIMARY KEY,
+--     user_id INTEGER REFERENCES app_users(id),
+--     username VARCHAR(100),
+--     action VARCHAR(100) NOT NULL,        -- 'create_pipeline', 'delete_pipeline', 'edit_connection', etc.
+--     resource_type VARCHAR(50),           -- 'pipeline', 'connection'
+--     resource_id VARCHAR(200),
+--     details JSONB,
+--     created_at TIMESTAMP DEFAULT NOW()
+-- );
 
 
 -- Roles & Permissions
@@ -118,3 +118,38 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 -- Viewer
 -- Can only view — dashboards, pipeline status, and logs — with no permission to create, edit, or delete anything.
+
+
+
+-- ─────────────────────────────────────────────
+-- SQL EDITOR TABLES
+-- ─────────────────────────────────────────────
+
+-- Query history for SQL editor
+CREATE TABLE IF NOT EXISTS sql_query_history (
+    query_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    connection_id INTEGER NOT NULL REFERENCES saved_connections(id),
+    user_id INTEGER NOT NULL REFERENCES app_users(id),
+    query_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'success',
+    row_count INTEGER,
+    error_message TEXT,
+    duration_ms INTEGER,
+    executed_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Saved queries for SQL editor
+CREATE TABLE IF NOT EXISTS sql_saved_queries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    connection_id INTEGER NOT NULL REFERENCES saved_connections(id),
+    user_id INTEGER NOT NULL REFERENCES app_users(id),
+    name TEXT NOT NULL,
+    query_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for query history
+CREATE INDEX IF NOT EXISTS idx_sql_query_history_user ON sql_query_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_sql_query_history_connection ON sql_query_history(connection_id);
+CREATE INDEX IF NOT EXISTS idx_sql_query_history_executed_at ON sql_query_history(executed_at DESC);

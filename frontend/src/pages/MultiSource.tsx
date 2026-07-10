@@ -1,13 +1,15 @@
+
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Network, Plus, Trash2, Link2, Link2Off } from "lucide-react";
+import { Loader2, PlusCircle, Link2, Link2Off, Check, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Network, Plus, Trash2 } from "lucide-react";
+// import { Loader2, Network, Plus, Trash2, Link2, Link2Off, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SchedulerFields } from "@/components/SchedulerFields";
-import { buildCron, defaultSchedule } from "@/lib/schedule";
 import { FolderUpload } from "@/pages/FolderUpload";
+import { buildCron, defaultSchedule } from "@/lib/schedule";
 
 const CONNECTOR_TO_SOURCE_TYPE: Record<string, string> = {
   csv: "local_folder",
@@ -19,14 +21,26 @@ const CONNECTOR_TO_SOURCE_TYPE: Record<string, string> = {
   snowflake: "snowflake",
 };
 
+const CONNECTOR_LABELS: Record<string, string> = {
+  csv: "CSV",
+  excel: "Excel",
+  google_sheets: "Google Sheets",
+  api: "API",
+  postgres: "Postgres",
+  s3: "S3",
+  snowflake: "Snowflake",
+};
+
 const SUPPORTS_CONNECTIONS = ["csv", "excel", "google_sheets", "api", "postgres", "s3", "snowflake"];
 
-// Fields that hold secrets. These come back from GET /connections already
-// masked as "********" (see backend _public_connection), so they must
-// NEVER be copied from a saved connection into a submittable field —
-// only the backend (which has the real, unmasked value) may resolve them,
-// via connection_id.
 const SECRET_FIELDS: Array<keyof Source> = ["src_pg_password", "sf_password"];
+
+const STEPS = [
+  { id: 1, label: "Basic Info" },
+  { id: 2, label: "Sources" },
+  { id: 3, label: "Schedule" },
+  { id: 4, label: "Review & Create" },
+];
 
 type Source = {
   connector_type: string;
@@ -62,7 +76,7 @@ const blankSource = (): Source => ({
   folder_path: "",
   sheet_url: "",
   api_url: "",
-  api_config: "",   
+  api_config: "",
   s3_bucket: "",
   s3_key: "",
   s3_file_type: "csv",
@@ -88,15 +102,6 @@ type SourceConnectionState = {
   connectionError: string;
 };
 
-// export const MultiSource = () => {
-//   const qc = useQueryClient();
-//   const [pipelineName, setPipelineName] = useState("");
-//   const [tableName, setTableName] = useState("");
-//   const [schedule, setSchedule] = useState(defaultSchedule);
-//   const [option, setOption] = useState("1");
-//   const [sources, setSources] = useState<Source[]>([blankSource()]);
-//   const [sourceConnectionStates, setSourceConnectionStates] = useState<Record<number, SourceConnectionState>>({});
-//   const [result, setResult] = useState<any>(null);
 export const MultiSource = () => {
   const qc = useQueryClient();
   const [pipelineName, setPipelineName] = useState("");
@@ -105,8 +110,12 @@ export const MultiSource = () => {
   const [option, setOption] = useState("1");
   const [sources, setSources] = useState<Source[]>([blankSource()]);
   const [sourceConnectionStates, setSourceConnectionStates] = useState<Record<number, SourceConnectionState>>({});
-  const [apiConfigErrors, setApiConfigErrors] = useState<Record<number, string>>({});   // ← NEW
+  const [apiConfigErrors, setApiConfigErrors] = useState<Record<number, string>>({});
   const [result, setResult] = useState<any>(null);
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [stepError, setStepError] = useState("");
+  const [activeSourceTab, setActiveSourceTab] = useState(0);
 
   const connections = useQuery({
     queryKey: ["connections"],
@@ -123,27 +132,11 @@ export const MultiSource = () => {
 
   const updateConnectionState = (index: number, key: keyof SourceConnectionState, value: string | boolean) => {
     setSourceConnectionStates((current) => {
-      const existingState = current[index] ?? {
-        useExisting: false,
-        selectedConnectionId: "",
-        connectionError: "",
-      };
-
-      return {
-        ...current,
-        [index]: {
-          ...existingState,
-          [key]: value,
-        },
-      };
+      const existingState = current[index] ?? { useExisting: false, selectedConnectionId: "", connectionError: "" };
+      return { ...current, [index]: { ...existingState, [key]: value } };
     });
   };
 
-  // Fills the visible fields for a saved connection so the user gets a
-  // preview of what will be used — EXCEPT secret fields, which the
-  // backend returns masked and can only resolve safely itself from
-  // connection_id at pipeline-creation time. Never widen this to include
-  // SECRET_FIELDS.
   const populateFromConnection = (index: number, connId: string) => {
     const conn = getFilteredConnections(sources[index].connector_type).find((c: any) => String(c.id) === connId);
     if (conn?.config) {
@@ -154,7 +147,7 @@ export const MultiSource = () => {
         updateSource(index, "src_pg_host", cfg.host || "");
         updateSource(index, "src_pg_db", cfg.database || "");
         updateSource(index, "src_pg_user", cfg.user || "");
-        updateSource(index, "src_pg_password", ""); // never trust masked value — resolved server-side
+        updateSource(index, "src_pg_password", "");
         updateSource(index, "src_pg_port", cfg.port || "5432");
       } else if (connectorType === "s3") {
         updateSource(index, "s3_bucket", cfg.bucket || "");
@@ -163,7 +156,7 @@ export const MultiSource = () => {
       } else if (connectorType === "snowflake") {
         updateSource(index, "sf_account", cfg.account || "");
         updateSource(index, "sf_user", cfg.user || "");
-        updateSource(index, "sf_password", ""); // never trust masked value — resolved server-side
+        updateSource(index, "sf_password", "");
         updateSource(index, "sf_warehouse", cfg.warehouse || "");
         updateSource(index, "sf_database", cfg.database || "");
         updateSource(index, "sf_schema", cfg.schema || "PUBLIC");
@@ -173,11 +166,6 @@ export const MultiSource = () => {
       } else if (connectorType === "google_sheets") {
         updateSource(index, "sheet_url", cfg.sheet_url || "");
       } else if (connectorType === "csv" || connectorType === "excel") {
-        // A saved csv/excel connection's base_path is a DIRECTORY the
-        // backend scans (see _resolve_connection_config on the backend,
-        // which sets folder_path — not file_path — from base_path).
-        // Mirror that here so single-source and multi-source pipelines
-        // behave identically for the same saved connection.
         updateSource(index, "folder_path", cfg.base_path || "");
         updateSource(index, "file_path", "");
         updateSource(index, "s3_file_type", cfg.file_type || "csv");
@@ -191,7 +179,6 @@ export const MultiSource = () => {
       ...current,
       [index]: { useExisting: false, selectedConnectionId: "", connectionError: "" },
     }));
-    setApiConfigErrors((current) => ({ ...current, [index]: "" }));
     updateSource(index, "connection_id", null);
     updateSource(index, "file_path", "");
     updateSource(index, "folder_path", "");
@@ -216,6 +203,26 @@ export const MultiSource = () => {
     updateSource(index, "sf_query", "");
     updateSource(index, "sf_role", "");
   };
+
+  const addSource = () => {
+    setSources((current) => [...current, blankSource()]);
+    setActiveSourceTab(sources.length); // jump to the new tab
+  };
+
+  const removeSource = (index: number) => {
+    setSources((current) => current.filter((_, i) => i !== index));
+    setSourceConnectionStates((current) => {
+      const next: Record<number, SourceConnectionState> = {};
+      Object.entries(current).forEach(([key, val]) => {
+        const i = Number(key);
+        if (i < index) next[i] = val;
+        else if (i > index) next[i - 1] = val;
+      });
+      return next;
+    });
+    setActiveSourceTab((current) => Math.max(0, current >= index ? current - 1 : current));
+  };
+
   const create = useMutation({
     mutationFn: async () => {
       const sourcesWithConnectionId = sources.map((source, index) => {
@@ -257,78 +264,104 @@ export const MultiSource = () => {
       setResult(data);
       qc.invalidateQueries({ queryKey: ["pipelines"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+
+      // Reset the whole form so the user can immediately create another
+      // pipeline without manually going Back through every step, and
+      // without accidentally resubmitting the same pipeline_name (which
+      // the backend rejects as "already exists").
+      setPipelineName("");
+      setTableName("");
+      setSchedule(defaultSchedule);
+      setOption("1");
+      setSources([blankSource()]);
+      setSourceConnectionStates({});
+      setApiConfigErrors({});
+      setStepError("");
+      setCurrentStep(1);
+      setActiveSourceTab(0);
     },
   });
 
-  // const create = useMutation({
-  //   mutationFn: async () => {
-  //     const sourcesWithConnectionId = sources.map((source, index) => {
-  //       const connState = sourceConnectionStates[index];
-  //       const connectionId = connState?.useExisting && connState?.selectedConnectionId
-  //         ? parseInt(connState.selectedConnectionId)
-  //         : null;
+  // ── Step + per-source validation ──────────────────────────────────────
+  const validateSource = (index: number): string => {
+    const source = sources[index];
+    const connState = sourceConnectionStates[index];
+    const label = `Source ${index + 1}`;
 
-  //       // When using a saved connection, strip any locally-held secret
-  //       // values before sending — connection_id is the only thing the
-  //       // backend needs to resolve real credentials. This is a belt-and-
-  //       // suspenders guard on top of populateFromConnection() never
-  //       // filling these fields in the first place.
-  //       const cleaned = { ...source, connection_id: connectionId };
-  //       if (connectionId) {
-  //         for (const field of SECRET_FIELDS) {
-  //           (cleaned as any)[field] = "";
-  //         }
-  //       }
-  //       return cleaned;
-  //     });
+    if (SUPPORTS_CONNECTIONS.includes(source.connector_type) && connState?.useExisting) {
+      if (!connState.selectedConnectionId) return `${label}: select a saved connection, or switch to New Connection.`;
+      return "";
+    }
 
-  //     const response = await api.post("/create_multi_pipeline", {
-  //       pipeline_name: pipelineName,
-  //       table_name: tableName,
-  //       option,
-  //       schedule: buildCron(schedule),
-  //       timezone: schedule.timezone,
-  //       sync_mode: "full",
-  //       sources: sourcesWithConnectionId,
-  //     });
-  //     return response.data;
-  //   },
-  //   onSuccess: (data) => {
-  //     setResult(data);
-  //     qc.invalidateQueries({ queryKey: ["pipelines"] });
-  //     qc.invalidateQueries({ queryKey: ["dashboard"] });
-  //   },
-  // });
+    if (["csv", "excel"].includes(source.connector_type) && !source.file_path && !source.folder_path) {
+      return `${label}: provide a file path or folder path.`;
+    }
+    if (source.connector_type === "google_sheets" && !source.sheet_url.trim()) return `${label}: sheet URL is required.`;
+    if (source.connector_type === "api" && !source.api_url.trim()) return `${label}: API URL is required.`;
+    if (source.connector_type === "api" && source.api_config.trim()) {
+      try { JSON.parse(source.api_config); } catch { return `${label}: Advanced Config has invalid JSON.`; }
+    }
+    if (source.connector_type === "postgres" && (!source.src_pg_host || !source.src_pg_db || !source.src_pg_user || !source.pg_query)) {
+      return `${label}: host, database, user, and query are required.`;
+    }
+    if (source.connector_type === "s3" && (!source.s3_bucket || !source.s3_key)) return `${label}: bucket and key are required.`;
+    if (source.connector_type === "snowflake" && (!source.sf_account || !source.sf_user || !source.sf_warehouse || !source.sf_database || !source.sf_query)) {
+      return `${label}: account, user, warehouse, database, and query are required.`;
+    }
+    return "";
+  };
+
+  const validateStep = (step: number): string => {
+    if (step === 1) {
+      if (!pipelineName.trim()) return "Pipeline name is required.";
+      if (!tableName.trim()) return "Target table is required.";
+      return "";
+    }
+    if (step === 2) {
+      if (sources.length === 0) return "At least one source is required.";
+      for (let i = 0; i < sources.length; i++) {
+        const err = validateSource(i);
+        if (err) {
+          setActiveSourceTab(i);
+          return err;
+        }
+      }
+      return "";
+    }
+    return "";
+  };
+
+  const goNext = () => {
+    const err = validateStep(currentStep);
+    if (err) { setStepError(err); return; }
+    setStepError("");
+    setCurrentStep((s) => Math.min(s + 1, STEPS.length));
+  };
+
+  const goBack = () => {
+    setStepError("");
+    setCurrentStep((s) => Math.max(s - 1, 1));
+  };
+
+  const goToStep = (step: number) => {
+    if (step < currentStep) { setStepError(""); setCurrentStep(step); return; }
+    for (let s = currentStep; s < step; s++) {
+      const err = validateStep(s);
+      if (err) { setStepError(err); return; }
+    }
+    setStepError("");
+    setCurrentStep(step);
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setResult(null);
+    setStepError("");
 
-    let hasError = false;
-    const nextStates = { ...sourceConnectionStates };
-    const nextApiConfigErrors: Record<number, string> = {};
-
-    sources.forEach((source, index) => {
-      if (SUPPORTS_CONNECTIONS.includes(source.connector_type)) {
-        const state = nextStates[index];
-        if (state?.useExisting && !state?.selectedConnectionId) {
-          nextStates[index] = { ...state, connectionError: "Please select a saved connection, or switch to New Connection." };
-          hasError = true;
-        }
-      }
-      if (source.connector_type === "api" && source.api_config.trim()) {
-        try {
-          JSON.parse(source.api_config);
-        } catch (e) {
-          nextApiConfigErrors[index] = "Invalid JSON — please check the syntax.";
-          hasError = true;
-        }
-      }
-    });
-
-    if (hasError) {
-      setSourceConnectionStates(nextStates);
-      setApiConfigErrors(nextApiConfigErrors);
+    const err = validateStep(2);
+    if (err) {
+      setStepError(err);
+      setCurrentStep(2);
       return;
     }
 
@@ -338,44 +371,123 @@ export const MultiSource = () => {
   return (
     <div className="space-y-5">
       <h2 className="h-section flex items-center gap-2"><Network className="h-5 w-5" /> Multi-Source Pipeline</h2>
+
+      {/* ── Stepper ─────────────────────────────────────────────────── */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Merge Multiple Sources Into One Pipeline</CardTitle></CardHeader>
+        <CardContent className="p-4">
+          <div className="flex items-center">
+            {STEPS.map((step, idx) => (
+              <div key={step.id} className="flex flex-1 items-center last:flex-none">
+                <button type="button" onClick={() => goToStep(step.id)} className="flex items-center gap-2 group">
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors ${
+                      step.id === currentStep
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : step.id < currentStep
+                        ? "border-emerald-600 bg-emerald-50 text-emerald-600"
+                        : "border-slate-300 bg-white text-slate-400 group-hover:border-slate-400"
+                    }`}
+                  >
+                    {step.id < currentStep ? <Check className="h-4 w-4" /> : step.id}
+                  </span>
+                  <span className={`hidden text-sm font-medium sm:block ${step.id === currentStep ? "text-slate-950" : step.id < currentStep ? "text-emerald-700" : "text-slate-400"}`}>
+                    {step.label}
+                  </span>
+                </button>
+                {idx < STEPS.length - 1 && <div className={`mx-3 h-0.5 flex-1 ${step.id < currentStep ? "bg-emerald-600" : "bg-slate-200"}`} />}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Step {currentStep} of {STEPS.length}: {STEPS[currentStep - 1].label}</CardTitle>
+        </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Input placeholder="Pipeline name" value={pipelineName} onChange={(e) => setPipelineName(e.target.value)} required />
-              <Input placeholder="Target table" value={tableName} onChange={(e) => setTableName(e.target.value)} required />
-              <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={option} onChange={(e) => setOption(e.target.value)}>
-                <option value="1">Append</option><option value="2">Overwrite</option><option value="3">Create new</option>
-              </select>
-            </div>
 
-            <SchedulerFields value={schedule} onChange={setSchedule} />
+            {/* ══════════════════ STEP 1 — BASIC INFO ══════════════════ */}
+            {currentStep === 1 && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label className="space-y-1 text-sm font-medium">
+                  Pipeline name
+                  <Input value={pipelineName} onChange={(e) => setPipelineName(e.target.value)} placeholder="e.g. combined_sales_pipeline" required />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  Target table
+                  <Input value={tableName} onChange={(e) => setTableName(e.target.value)} placeholder="e.g. combined_sales" required />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  Load option (first source)
+                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={option} onChange={(e) => setOption(e.target.value)}>
+                    <option value="1">Append</option>
+                    <option value="2">Overwrite</option>
+                    <option value="3">Create new</option>
+                  </select>
+                </label>
+                <p className="text-xs text-muted-foreground md:col-span-3">
+                  Note: only the first source uses this load option. Every subsequent source always appends, so it can't overwrite rows from earlier sources.
+                </p>
+              </div>
+            )}
 
-            <div className="space-y-4">
-              {sources.map((source, index) => {
-                const connState = sourceConnectionStates[index] || { useExisting: false, selectedConnectionId: "", connectionError: "" };
-                const filteredConnections = getFilteredConnections(source.connector_type);
-                const fieldsRequired = !connState.useExisting;
+            {/* ══════════════════ STEP 2 — SOURCES (tabs) ══════════════════ */}
+            {currentStep === 2 && (
+              <div className="space-y-4">
+                {/* Tab bar */}
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+                  {sources.map((source, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setActiveSourceTab(index)}
+                      className={`flex items-center gap-2 rounded-t-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        activeSourceTab === index
+                          ? "bg-slate-100 text-slate-950"
+                          : "text-muted-foreground hover:bg-slate-50"
+                      }`}
+                    >
+                      Source {index + 1}
+                      <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">{CONNECTOR_LABELS[source.connector_type]}</span>
+                      {sources.length > 1 && (
+                        <Trash2
+                          className="h-3 w-3 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => { e.stopPropagation(); removeSource(index); }}
+                        />
+                      )}
+                    </button>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" onClick={addSource}>
+                    <Plus className="h-3.5 w-3.5" /> Add Source
+                  </Button>
+                </div>
 
-                return (
-                  <Card key={index} className="bg-slate-50">
-                    <CardContent className="space-y-4 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={source.connector_type} onChange={(e) => handleConnectorTypeChange(index, e.target.value)}>
-                          <option value="csv">CSV</option>
-                          <option value="excel">Excel</option>
-                          <option value="google_sheets">Google Sheets</option>
-                          <option value="api">API</option>
-                          <option value="postgres">Postgres</option>
-                          <option value="s3">S3</option>
-                          <option value="snowflake">Snowflake</option>
+                {/* Active source's config panel */}
+                {sources.map((source, index) => {
+                  if (index !== activeSourceTab) return null;
+                  const connState = sourceConnectionStates[index] || { useExisting: false, selectedConnectionId: "", connectionError: "" };
+                  const filteredConnections = getFilteredConnections(source.connector_type);
+                  const fieldsRequired = !connState.useExisting;
+
+                  return (
+                    <div key={index} className="space-y-4">
+                      <label className="space-y-1 text-sm font-medium block max-w-xs">
+                        Connector type
+                        <select
+                          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          value={source.connector_type}
+                          onChange={(e) => handleConnectorTypeChange(index, e.target.value)}
+                        >
+                          {Object.keys(CONNECTOR_LABELS).map((c) => (
+                            <option key={c} value={c}>{CONNECTOR_LABELS[c]}</option>
+                          ))}
                         </select>
-                        {sources.length > 1 && <Button type="button" variant="outline" onClick={() => setSources((current) => current.filter((_, i) => i !== index))}><Trash2 /> Remove</Button>}
-                      </div>
+                      </label>
 
                       {SUPPORTS_CONNECTIONS.includes(source.connector_type) && (
-                        <div className="rounded-md border border-slate-200 bg-white p-3">
+                        <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                           <div className="flex items-center gap-4">
                             <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                               <input
@@ -389,8 +501,7 @@ export const MultiSource = () => {
                                   updateSource(index, "connection_id", null);
                                 }}
                               />
-                              <Link2Off className="h-4 w-4" />
-                              New Connection
+                              <Link2Off className="h-4 w-4" /> New Connection
                             </label>
                             <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                               <input
@@ -399,8 +510,7 @@ export const MultiSource = () => {
                                 checked={connState.useExisting}
                                 onChange={() => updateConnectionState(index, "useExisting", true)}
                               />
-                              <Link2 className="h-4 w-4" />
-                              Use Saved Connection
+                              <Link2 className="h-4 w-4" /> Use Saved Connection
                             </label>
                           </div>
                           {connState.useExisting && (
@@ -421,9 +531,7 @@ export const MultiSource = () => {
                                 >
                                   <option value="">Select a connection</option>
                                   {filteredConnections.map((conn: any) => (
-                                    <option key={conn.id} value={conn.id}>
-                                      {conn.name}
-                                    </option>
+                                    <option key={conn.id} value={conn.id}>{conn.name}</option>
                                   ))}
                                 </select>
                               )}
@@ -435,25 +543,12 @@ export const MultiSource = () => {
 
                       {["csv", "excel"].includes(source.connector_type) && (
                         connState.useExisting ? (
-                          <Input
-                            placeholder="Folder path (from saved connection)"
-                            value={source.folder_path}
-                            readOnly
-                            disabled
-                          />
+                          <Input placeholder="Folder path (from saved connection)" value={source.folder_path} readOnly disabled />
                         ) : (
                           <div className="space-y-3">
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                              <Input
-                                placeholder="File path (e.g. /app/data/sales.csv)"
-                                value={source.file_path}
-                                onChange={(e) => updateSource(index, "file_path", e.target.value)}
-                              />
-                              <Input
-                                placeholder="Folder path (all files in it)"
-                                value={source.folder_path}
-                                onChange={(e) => updateSource(index, "folder_path", e.target.value)}
-                              />
+                              <Input placeholder="File path" value={source.file_path} onChange={(e) => updateSource(index, "file_path", e.target.value)} />
+                              <Input placeholder="Folder path (all files in it)" value={source.folder_path} onChange={(e) => updateSource(index, "folder_path", e.target.value)} />
                             </div>
                             <FolderUpload
                               connectorType={source.connector_type as "csv" | "excel"}
@@ -473,7 +568,7 @@ export const MultiSource = () => {
                             Advanced Config (optional JSON)
                             <textarea
                               className="min-h-32 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
-                              placeholder={`{\n  "method": "POST",\n  "auth_type": "api_key_header",\n  "header_name": "x-Gateway-APIKey",\n  "api_key": "xxxxx",\n  "body": { "getpoEncumbranceInfo": { "pUserName": "dm_gsb_usr" } },\n  "pagination_type": "body_bounds",\n  "body_pagination_path": "getpoEncumbranceInfo",\n  "lower_bound_field": "lowerBound",\n  "higher_bound_field": "higherBound",\n  "initial_lower_bound": 0,\n  "step_size": 1000\n}`}
+                              placeholder='{"method": "GET", "records_path": "products"}'
                               value={source.api_config}
                               onChange={(e) => {
                                 updateSource(index, "api_config", e.target.value);
@@ -505,12 +600,12 @@ export const MultiSource = () => {
                             disabled={connState.useExisting}
                           />
                           <Input placeholder="Port" value={source.src_pg_port} onChange={(e) => updateSource(index, "src_pg_port", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
-                          <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={source.pg_query} onChange={(e) => updateSource(index, "pg_query", e.target.value)} required={true} />
+                          <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={source.pg_query} onChange={(e) => updateSource(index, "pg_query", e.target.value)} required />
                         </div>
                       )}
                       {source.connector_type === "snowflake" && (
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                          <Input placeholder="Account (e.g. XROJPNQ-RO43084)" value={source.sf_account} onChange={(e) => updateSource(index, "sf_account", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                          <Input placeholder="Account" value={source.sf_account} onChange={(e) => updateSource(index, "sf_account", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
                           <Input placeholder="User" value={source.sf_user} onChange={(e) => updateSource(index, "sf_user", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
                           <Input
                             type="password"
@@ -522,28 +617,105 @@ export const MultiSource = () => {
                           />
                           <Input placeholder="Warehouse" value={source.sf_warehouse} onChange={(e) => updateSource(index, "sf_warehouse", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
                           <Input placeholder="Database" value={source.sf_database} onChange={(e) => updateSource(index, "sf_database", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
-                          <Input placeholder="Schema (default PUBLIC)" value={source.sf_schema} onChange={(e) => updateSource(index, "sf_schema", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                          <Input placeholder="Schema" value={source.sf_schema} onChange={(e) => updateSource(index, "sf_schema", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
                           <Input placeholder="Role (optional)" value={source.sf_role} onChange={(e) => updateSource(index, "sf_role", e.target.value)} disabled={connState.useExisting} />
-                          <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={source.sf_query} onChange={(e) => updateSource(index, "sf_query", e.target.value)} required={true} />
+                          <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={source.sf_query} onChange={(e) => updateSource(index, "sf_query", e.target.value)} required />
                         </div>
                       )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-            <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={() => setSources((current) => [...current, blankSource()])}><Plus /> Add Source</Button>
-              <Button type="submit" disabled={create.isPending}>{create.isPending ? <Loader2 className="animate-spin" /> : <Network />} Create Multi-Source Pipeline</Button>
+            {/* ══════════════════ STEP 3 — SCHEDULE ══════════════════ */}
+            {currentStep === 3 && <SchedulerFields value={schedule} onChange={setSchedule} />}
+
+            {/* ══════════════════ STEP 4 — REVIEW ══════════════════ */}
+            {currentStep === 4 && (
+              <div className="space-y-4">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <h3 className="mb-3 font-semibold text-slate-950">Pipeline overview</h3>
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
+                    <div><dt className="text-muted-foreground">Pipeline name</dt><dd className="font-medium">{pipelineName || "—"}</dd></div>
+                    <div><dt className="text-muted-foreground">Target table</dt><dd className="font-medium">{tableName || "—"}</dd></div>
+                    <div><dt className="text-muted-foreground">Load option</dt><dd className="font-medium">{{ "1": "Append", "2": "Overwrite", "3": "Create new" }[option]}</dd></div>
+                    <div><dt className="text-muted-foreground">Schedule</dt><dd className="font-medium">{buildCron(schedule)} ({schedule.timezone})</dd></div>
+                  </dl>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-slate-950">Sources ({sources.length})</h3>
+                  {sources.map((source, index) => {
+                    const connState = sourceConnectionStates[index];
+                    return (
+                      <div key={index} className="rounded-md border border-slate-200 bg-white p-3 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">Source {index + 1}: {CONNECTOR_LABELS[source.connector_type]}</span>
+                          {index === 0 && <span className="text-xs text-muted-foreground">uses pipeline load option</span>}
+                        </div>
+                        <p className="mt-1 text-muted-foreground">
+                          {connState?.useExisting
+                            ? `Saved connection: ${getFilteredConnections(source.connector_type).find((c: any) => String(c.id) === connState.selectedConnectionId)?.name || connState.selectedConnectionId}`
+                            : source.file_path || source.folder_path || source.sheet_url || source.api_url || source.src_pg_host || source.s3_bucket || source.sf_account || "—"}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {stepError && <p className="text-sm text-red-500">{stepError}</p>}
+
+            {/* ══════════════════ NAVIGATION ══════════════════ */}
+            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+              <Button type="button" variant="outline" onClick={goBack} disabled={currentStep === 1}>
+                <ChevronLeft className="h-4 w-4" /> Back
+              </Button>
+
+              {currentStep < STEPS.length ? (
+                <Button type="button" onClick={goNext}>
+                  Next <ChevronRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button type="submit" disabled={create.isPending}>
+                  {create.isPending ? <Loader2 className="animate-spin" /> : <Network />} Create Multi-Source Pipeline
+                </Button>
+              )}
             </div>
           </form>
         </CardContent>
       </Card>
 
-      {(result || create.error) && (
-        <Card className={create.error ? "border-rose-200 bg-rose-50" : "border-emerald-200 bg-emerald-50"}>
-          <CardContent className="p-4"><pre className="max-h-80 overflow-auto text-xs">{JSON.stringify(result ?? (create.error as any)?.response?.data ?? (create.error as Error).message, null, 2)}</pre></CardContent>
+      {result && (
+        <Card className="border-emerald-200 bg-emerald-50">
+          <CardContent className="flex items-start gap-3 p-4">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <div className="space-y-1">
+              <p className="font-medium text-emerald-900">Pipeline created successfully</p>
+              <p className="text-sm text-emerald-800">
+                <span className="font-medium">{result.dag_id}</span> is set up and will start running on schedule.
+              </p>
+              {result.message && <p className="text-xs text-emerald-700">{result.message}</p>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+{create.error && (
+        <Card className="border-rose-200 bg-rose-50">
+          <CardContent className="flex items-start gap-3 p-4">
+            <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+            <div className="space-y-1">
+              <p className="font-medium text-rose-900">Couldn't create pipeline</p>
+              <p className="text-sm text-rose-800">
+                {(create.error as any)?.response?.data?.detail?.error
+                  || (create.error as any)?.response?.data?.detail
+                  || (create.error as Error).message}
+              </p>
+            </div>
+          </CardContent>
         </Card>
       )}
     </div>

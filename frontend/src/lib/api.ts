@@ -7,7 +7,7 @@ const USER_KEY = "auth_user";
 
 export const api = axios.create({
   baseURL,
-  timeout: 120_000, // 2 min — analyze/ingest can take 20–60s due to LLM + heavy queries
+  timeout: 200_000, //  — analyze/ingest can take 20–60s due to LLM + heavy queries
 });
 
 // ── Attach JWT token to every outgoing request ──────────────────────────

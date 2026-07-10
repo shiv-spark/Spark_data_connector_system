@@ -19,7 +19,8 @@ COPY backend/loaders/        ./loaders/
 COPY backend/agent/          ./agent/
 COPY backend/text_sql/       ./text_sql/
 COPY backend/data_generator/ ./data_generator/
-COPY backend/auth/           ./auth/
+COPY backend/sql_executors/  ./sql_executors/
+COPY backend/sql_router.py   .
 COPY backend/main.py         .
 COPY backend/run.py          .
 

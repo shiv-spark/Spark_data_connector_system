@@ -1659,7 +1659,7 @@ class SourceConfig(BaseModel):
     sf_query:       Optional[str] = None
     sf_role:        Optional[str] = None
     # Saved connection
-    # connection_id:  Optional[int] = None
+    connection_id:  Optional[int] = None
 
 class MultiSourcePipelineRequest(BaseModel):
     pipeline_name: str

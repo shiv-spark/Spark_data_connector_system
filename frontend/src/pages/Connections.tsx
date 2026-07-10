@@ -343,20 +343,10 @@ export const Connections = () => {
               {form.source_type === "local_folder" && (
                 <div className="space-y-3">
                   <Input placeholder="Base folder path, e.g. /app/data or D:/datasets" value={form.base_path} onChange={(e) => update("base_path", e.target.value)} />
-                  <label className="space-y-1 text-sm font-medium block">
-                    File type in this folder
-                    <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.file_type} onChange={(e) => update("file_type", e.target.value)}>
-                      <option value="csv">CSV files</option>
-                      <option value="excel">Excel files</option>
-                    </select>
-                  </label>
                   <FolderUpload
-                    connectorType={form.file_type === "excel" ? "excel" : "csv"}
+                    connectorType="any"
                     onFolderResolved={(folderPath) => update("base_path", folderPath)}
-                    onFileResolved={(filePath) => {
-                      const folder = filePath.substring(0, filePath.lastIndexOf("/"));
-                      update("base_path", folder || filePath);
-                    }}
+                    onFileResolved={(filePath) => update("base_path", filePath)}
                   />
                 </div>
               )}
@@ -606,7 +596,7 @@ export const Connections = () => {
                         <p className="font-semibold text-slate-950">{connection.name}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{connection.source_type} / {fdt(connection.updated_at)}</p>
                       </div>
-                      <Badge variant={connection.status === "connected" ? "success" : "muted"}>{connection.status}</Badge>
+                      
                     </div>
                     <pre className="mt-3 max-h-28 overflow-auto rounded-md bg-slate-50 p-3 text-xs text-slate-600">{JSON.stringify(connection.config, null, 2)}</pre>
                     <div className="mt-3 flex gap-2">
@@ -651,7 +641,7 @@ export const Connections = () => {
                                 <p className="text-xs text-muted-foreground">{fdt(connection.updated_at)}</p>
                               </div>
                               <div className="flex items-center gap-2">
-                                <Badge variant={connection.status === "connected" ? "success" : "muted"} className="mr-2">{connection.status}</Badge>
+                                
                                 <Button variant="outline" size="sm" onClick={() => startEdit(connection)}>
                                   <Pencil className="h-3 w-3" />
                                 </Button>

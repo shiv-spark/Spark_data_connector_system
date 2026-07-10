@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 
 type Props = {
-  connectorType: "csv" | "excel";
+  connectorType: "csv" | "excel" | "any";
   onFolderResolved: (folderPath: string) => void;
   onFileResolved: (filePath: string) => void;
 };
@@ -193,7 +193,7 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
           <input
             ref={fileInputRef}
             type="file"
-            accept={connectorType === "csv" ? ".csv" : ".xlsx,.xls"}
+            accept={connectorType === "csv" ? ".csv" : connectorType === "excel" ? ".xlsx,.xls" : ".csv,.xlsx,.xls"}
             className="hidden"
             onChange={handleFileSelect}
             disabled={upload.isPending}
