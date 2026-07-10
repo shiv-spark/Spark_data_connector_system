@@ -73,6 +73,10 @@ export const DashboardStudio = () => {
     queryFn: async () => (await api.get("/pipelines")).data.pipelines ?? [],
   });
 
+  const selectedPipelineObj = (pipelines.data ?? []).find(
+    (p: any) => p.dag_id === selectedPipeline
+  );
+
   const dashboards = useQuery({
     queryKey: ["agent-dashboards"],
     queryFn: async () => (await api.get("/agent/dashboards")).data.dashboards ?? [],
@@ -90,16 +94,17 @@ export const DashboardStudio = () => {
     mutationFn: async () => {
       // Pipeline shortcut: send postgres source with the chosen pipeline name.
       if (sourceType === "pipeline" && !connectionId) {
-        const pipelineId = selectedPipeline.replace(/^pipeline_/, "");
-        const response = await api.post("/agent/analyze", {
-          source_type: "postgres",
-          pipeline_name: pipelineId,
-          table_name: pipelineId,
-          request: effectiveRequest,
-          figma_connection_id: designConnectionId ? Number(designConnectionId) : null,
-        });
-        return response.data;
-      }
+  const pipelineName = selectedPipeline.replace(/^pipeline_/, "");
+  const actualTableName = selectedPipelineObj?.table_name || pipelineName; 
+  const response = await api.post("/agent/analyze", {
+    source_type: "postgres",
+    pipeline_name: pipelineName,
+    table_name: actualTableName,   
+    request: effectiveRequest,
+    figma_connection_id: designConnectionId ? Number(designConnectionId) : null,
+  });
+  return response.data;
+}
 
       const selectedConnection = (connections.data ?? []).find(
         (item: any) => String(item.id) === connectionId,
@@ -328,18 +333,26 @@ export const DashboardStudio = () => {
                     </span>
                   ) : (
                     <>
+
                       <select
                         className="h-9 min-w-[260px] rounded-md border border-slate-200 bg-white px-2 text-[13px] text-slate-800 shadow-[0_1px_0_rgba(15,23,42,0.02)] outline-none transition hover:border-slate-300 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15"
                         value={selectedPipeline}
                         onChange={(event) => setSelectedPipeline(event.target.value)}
                       >
                         <option value="">— Select a pipeline —</option>
-                        {(pipelines.data ?? []).map((p: any) => (
+                        {(pipelines.data ?? [])
+                      .slice()
+                      .sort((a: any, b: any) => a.dag_id.localeCompare(b.dag_id, undefined, { numeric: true }))
+                      .map((p: any) => {
+                        const rawName = p.dag_id.replace(/^pipeline_/, "");
+                        return (
                           <option key={p.dag_id} value={p.dag_id}>
-                            {p.dag_id.replace(/^pipeline_/, "")} · {p.schedule}
+                            {rawName}
                           </option>
-                        ))}
+                        );
+                      })}
                       </select>
+
                       {selectedPipeline ? (
                         <span
                           className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-600"

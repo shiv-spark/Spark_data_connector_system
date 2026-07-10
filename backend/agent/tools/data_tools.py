@@ -209,6 +209,18 @@ def _read_dataframe(path: str) -> pd.DataFrame:
         return pd.read_parquet(resolved)
     return pd.read_csv(resolved)
 
+import re
+
+def fetch_table_data(table_name: str, limit: int = 5000) -> list[dict]:
+    """Fetch actual rows from a pipeline's target Postgres table for analysis."""
+    logger.info("fetch_table_data(table=%s, limit=%d)", table_name, limit)
+
+    if not table_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+        logger.error("Invalid or missing table_name: %r", table_name)
+        return []
+
+    sql = f'SELECT * FROM "{table_name}" LIMIT %s'
+    return query(sql, [limit])
 
 def fetch_data_by_source(source_type, **kwargs) -> list[dict]:
     logger.info("fetch_data_by_source(source=%s)", source_type)
@@ -216,7 +228,14 @@ def fetch_data_by_source(source_type, **kwargs) -> list[dict]:
 
     try:
         if source_type == "postgres":
-            return fetch_pipeline_metrics(kwargs.get("pipeline_name"), kwargs.get("table_name"))
+            table_name = kwargs.get("table_name")
+            logger.info("Reading Postgres table: %s", table_name)
+            if not table_name:
+                logger.error("postgres source requires table_name")
+                return []
+            return fetch_table_data(table_name)
+        # if source_type == "postgres":
+        #     return fetch_pipeline_metrics(kwargs.get("pipeline_name"), kwargs.get("table_name"))
 
         if source_type == "csv":
             path = kwargs.get("file_path")
