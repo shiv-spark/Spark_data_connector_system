@@ -250,8 +250,8 @@ export const Pipelines = () => {
       {isLoading ? (
         <p className="text-muted-foreground">Loading pipelines...</p>
       ) : pipes.length === 0 ? (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="px-4 py-3 text-sm text-amber-800">
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+          <CardContent className="px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
             No pipelines found. Create one using the "Create Pipeline" page.
           </CardContent>
         </Card>
@@ -260,15 +260,15 @@ export const Pipelines = () => {
           <div className="grid grid-cols-3 gap-3">
             <Card><CardContent className="px-4 py-3">
               <p className="text-xs text-muted-foreground">Total Pipelines</p>
-              <p className="text-2xl font-bold text-slate-900">{counts.total}</p>
+              <p className="text-2xl font-bold text-foreground">{counts.total}</p>
             </CardContent></Card>
             <Card><CardContent className="px-4 py-3">
               <p className="text-xs text-muted-foreground">Active</p>
-              <p className="text-2xl font-bold text-emerald-600">{counts.active}</p>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-500">{counts.active}</p>
             </CardContent></Card>
             <Card><CardContent className="px-4 py-3">
               <p className="text-xs text-muted-foreground">Paused</p>
-              <p className="text-2xl font-bold text-amber-600">{counts.paused}</p>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-500">{counts.paused}</p>
             </CardContent></Card>
           </div>
 
@@ -287,10 +287,10 @@ export const Pipelines = () => {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-900">{row.dag_id}</span>
+                          <span className="font-semibold text-foreground">{row.dag_id}</span>
                           <StatusBadge status={row.status} />
                           {connectorType && (
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                               {connectorType}
                             </span>
                           )}
@@ -326,7 +326,7 @@ export const Pipelines = () => {
                         )}
                         <Button
                           variant="outline"
-                          className="hover:border-destructive hover:bg-red-50 hover:text-destructive"
+                          className="hover:border-destructive hover:bg-red-50 hover:text-destructive dark:hover:bg-red-950/30"
                           onClick={() => {
                             if (confirm(`Delete pipeline "${row.name}"? This cannot be undone.`)) {
                               deleteM.mutate(row.name);
@@ -339,7 +339,7 @@ export const Pipelines = () => {
                     </div>
 
                     {state && (
-                      <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="space-y-4 rounded-lg border border-border bg-card p-3">
                         <div>
                           <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Schedule</p>
                           <SchedulerFields
@@ -350,14 +350,14 @@ export const Pipelines = () => {
                         </div>
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                          <label className="space-y-1 text-sm font-medium">
+                          <label className="space-y-1 text-sm font-medium text-foreground">
                             Table name
                             <Input value={state.table_name} onChange={(e) => updateEdit(row.name, { table_name: e.target.value })} />
                           </label>
-                          <label className="space-y-1 text-sm font-medium">
+                          <label className="space-y-1 text-sm font-medium text-foreground">
                             Load option
                             <select
-                              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
                               value={state.option}
                               onChange={(e) => updateEdit(row.name, { option: e.target.value })}
                             >
@@ -366,10 +366,10 @@ export const Pipelines = () => {
                               <option value="3">Create new</option>
                             </select>
                           </label>
-                          <label className="space-y-1 text-sm font-medium">
+                          <label className="space-y-1 text-sm font-medium text-foreground">
                             Sync mode
                             <select
-                              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
                               value={state.sync_mode}
                               onChange={(e) => updateEdit(row.name, { sync_mode: e.target.value })}
                             >
@@ -380,7 +380,7 @@ export const Pipelines = () => {
                         </div>
 
                         {state.option === "3" && (
-                          <label className="block max-w-md space-y-1 text-sm font-medium">
+                          <label className="block max-w-md space-y-1 text-sm font-medium text-foreground">
                             After first run
                             <Input
                               placeholder="1 append, 2 overwrite"
@@ -390,7 +390,7 @@ export const Pipelines = () => {
                           </label>
                         )}
                         {state.sync_mode === "incremental" && (
-                          <label className="block max-w-md space-y-1 text-sm font-medium">
+                          <label className="block max-w-md space-y-1 text-sm font-medium text-foreground">
                             Incremental column
                             <Input
                               value={state.incremental_column}
@@ -443,7 +443,7 @@ export const Pipelines = () => {
                             />
                             <Input placeholder="Port" value={state.src_pg_port} onChange={(e) => updateEdit(row.name, { src_pg_port: e.target.value })} />
                             <textarea
-                              className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2"
+                              className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground md:col-span-2"
                               placeholder="SQL query"
                               value={state.pg_query}
                               onChange={(e) => updateEdit(row.name, { pg_query: e.target.value })}
@@ -474,7 +474,7 @@ export const Pipelines = () => {
                             <Input placeholder="Schema" value={state.sf_schema} onChange={(e) => updateEdit(row.name, { sf_schema: e.target.value })} />
                             <Input placeholder="Role (optional)" value={state.sf_role} onChange={(e) => updateEdit(row.name, { sf_role: e.target.value })} />
                             <textarea
-                              className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2"
+                              className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground md:col-span-2"
                               placeholder="SQL query"
                               value={state.sf_query}
                               onChange={(e) => updateEdit(row.name, { sf_query: e.target.value })}

@@ -42,7 +42,6 @@ export const Logs = () => {
   const [activePipeline, setActivePipeline] = useState("");
   const [selectedTable, setSelectedTable] = useState<LogsTable>("pipeline_runs");
 
-  // ── Chatbot state ──────────────────────────────────────────────────────────
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState("");
@@ -51,8 +50,6 @@ export const Logs = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Check whether the backend has a configured default key/model, so the
-  // UI can tell the user the key field is optional instead of required.
   const backendConfig = useQuery({
     queryKey: ["chatbot-config"],
     queryFn: async () => (await api.get("/chatbot/config")).data,
@@ -96,8 +93,6 @@ export const Logs = () => {
       const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userMessage }];
       setMessages(nextMessages);
 
-      // Only send non-empty overrides — empty fields let the backend fall
-      // back to its own configured default key/model.
       const response = await api.post("/chatbot", {
         messages: nextMessages,
         openrouter_key: openrouterKey || undefined,
@@ -130,14 +125,12 @@ export const Logs = () => {
     chat.mutate(trimmed);
   };
 
-  // ── Single-pipeline log lookup ─────────────────────────────────────────────
   const logs = useQuery({
     queryKey: ["pipeline-logs", activePipeline],
     enabled: !!activePipeline,
     queryFn: async () => (await api.get(`/pipeline/${activePipeline}/logs?limit=20`)).data,
   });
 
-  // ── Generic table browser ───────────────────────────────────────────────────
   const tableData = useQuery({
     queryKey: ["logs-table", selectedTable],
     queryFn: async () => (await api.get(`/logs_table/${selectedTable}?limit=50`)).data,
@@ -167,7 +160,7 @@ export const Logs = () => {
     <div className="space-y-5">
       <h2 className="h-section flex items-center gap-2"><ScrollText className="h-5 w-5" /> Logs</h2>
 
-      {/* ── Chatbot ──────────────────────────────────────────────────────── */}
+      {/* Chatbot */}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2"><MessageCircle className="h-4 w-4" /> Pipeline Assistant</CardTitle>
@@ -216,10 +209,10 @@ export const Logs = () => {
           </div>
           <p className="text-xs text-muted-foreground">
             Find model IDs at{" "}
-            <a href="https://openrouter.ai/models" target="_blank" rel="noreferrer" className="underline">
+            <a href="https://openrouter.ai/models" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
               openrouter.ai/models
             </a>
-            . Free models end in <code className="rounded bg-slate-100 px-1">:free</code>.
+            . Free models end in <code className="rounded bg-muted px-1 text-foreground">:free</code>.
             {hasBackendKey
               ? " A shared backend key/model is configured — your own values here are optional overrides."
               : " No backend default is configured — you must provide your own key to use the assistant."}
@@ -228,7 +221,7 @@ export const Logs = () => {
             Your key/model are stored only in your browser's local storage and sent only to your own backend.
           </p>
 
-          <div className="max-h-[420px] space-y-3 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div className="max-h-[420px] space-y-3 overflow-y-auto rounded-md border border-border bg-muted p-3">
             {messages.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Ask about pipeline failures, recent runs, error patterns, or system health — answers are grounded in your live database.
@@ -240,7 +233,7 @@ export const Logs = () => {
                   className={`rounded-lg px-3 py-2 text-sm ${
                     msg.role === "user"
                       ? "ml-auto max-w-[85%] bg-blue-600 text-white"
-                      : "max-w-[90%] bg-white text-slate-800 shadow-sm"
+                      : "max-w-[90%] bg-card text-foreground shadow-sm"
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -269,7 +262,7 @@ export const Logs = () => {
         </CardContent>
       </Card>
 
-      {/* ── Pipeline Log Lookup ─────────────────────────────────────────────── */}
+      {/* Pipeline Log Lookup */}
       <Card>
         <CardHeader><CardTitle className="text-sm">Pipeline Log Lookup</CardTitle></CardHeader>
         <CardContent>
@@ -290,18 +283,18 @@ export const Logs = () => {
           </CardHeader>
           <CardContent>
             {logs.isFetching ? <p className="text-sm text-muted-foreground">Loading logs...</p> : logs.error ? (
-              <p className="text-sm text-rose-700">{(logs.error as any)?.response?.data?.detail ?? (logs.error as Error).message}</p>
+              <p className="text-sm text-destructive">{(logs.error as any)?.response?.data?.detail ?? (logs.error as Error).message}</p>
             ) : (
               <div className="space-y-4">
                 {(logs.data?.logs ?? []).map((entry: any, i: number) => (
-                  <div key={entry.dag_run_id ?? i} className="space-y-2 rounded-md border border-slate-200 p-3">
+                  <div key={entry.dag_run_id ?? i} className="space-y-2 rounded-md border border-border bg-card p-3">
                     <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                       <StatusBadge status={entry.status ?? "UNKNOWN"} />
                       <span>Run: {entry.dag_run_id ?? "-"}</span>
                       <span>Source: {logs.data?.source ?? "-"}</span>
                       <span>Logged: {fdt(entry.logged_at)}</span>
                     </div>
-                    <pre className="max-h-[400px] overflow-auto rounded-md bg-slate-950 p-4 text-xs text-slate-100">
+                    <pre className="max-h-[400px] overflow-auto rounded-md bg-background p-4 text-xs text-foreground">
                       {entry.log ?? "No log content."}
                     </pre>
                   </div>
@@ -315,14 +308,14 @@ export const Logs = () => {
         </Card>
       )}
 
-      {/* ── Browse Log / Metrics Tables ──────────────────────────────────────── */}
+      {/* Browse Log / Metrics Tables */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <CardTitle className="text-sm">Browse Log / Metrics Tables</CardTitle>
           <label className="flex items-center gap-2 text-sm font-medium">
             Table
             <select
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
               value={selectedTable}
               onChange={(e) => setSelectedTable(e.target.value as LogsTable)}
             >
@@ -336,7 +329,7 @@ export const Logs = () => {
           {tableData.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading {tableLabels[selectedTable]}...</p>
           ) : tableData.error ? (
-            <p className="text-sm text-rose-700">
+            <p className="text-sm text-destructive">
               {(tableData.error as any)?.response?.data?.detail ?? (tableData.error as Error).message}
             </p>
           ) : rows.length === 0 ? (
@@ -345,7 +338,7 @@ export const Logs = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                  <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                     {columns.map((col) => (
                       <th key={col} className="py-3 pr-4 whitespace-nowrap">{col}</th>
                     ))}
@@ -353,7 +346,7 @@ export const Logs = () => {
                 </thead>
                 <tbody>
                   {rows.map((row, i) => (
-                    <tr key={row.id ?? row.run_id ?? i} className="border-b border-slate-100">
+                    <tr key={row.id ?? row.run_id ?? i} className="border-b border-border">
                       {columns.map((col) => (
                         <td key={col} className="max-w-xs truncate py-3 pr-4 text-muted-foreground">
                           {formatCell(col, row[col])}

@@ -80,6 +80,7 @@ class AnalyzeRequest(BaseModel):
     api_headers:   Optional[dict] = None  # optional API auth headers
     figma_connection_id: Optional[int] = None
     request:       str = "full analysis with report"
+    model:         Optional[str] = None  
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -201,6 +202,7 @@ Use the Figma reference as the visual blueprint for this dashboard. Match the de
                 "api_headers":   body.api_headers,
                 "figma_connection_id": body.figma_connection_id,
                 "figma_context":  figma_context,
+                "model":          body.model,
             },
             "kpis":       kpis,
             "chart_meta": result.get("chart_meta", []),
@@ -287,6 +289,7 @@ def get_dashboard_data(dashboard_id: str):
                     "api_url":       source_config.get("api_url"),
                     "api_headers":   source_config.get("api_headers"),
                     "user_request":  "full analysis",
+                    "model":         source_config.get("model"),    
                     "data": {}, "null_result": {}, "dup_result": {},
                     "stats_result": {}, "outlier_result": {}, "corr_result": {},
                     "health_result": {}, "quality_result": {}, "charts": {},

@@ -9,17 +9,17 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),inset_0_0_0_1px_rgba(4,120,87,0.55),0_1px_2px_rgba(4,120,87,0.3),0_6px_16px_-8px_rgba(16,185,129,0.55)] hover:brightness-[1.06]",
+          "bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),inset_0_0_0_1px_rgba(4,120,87,0.55),0_1px_2px_rgba(4,120,87,0.3),0_6px_16px_-8px_rgba(16,185,129,0.55)] hover:brightness-[1.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_0_0_1px_rgba(16,185,129,0.4),0_1px_2px_rgba(0,0,0,0.3),0_6px_16px_-8px_rgba(16,185,129,0.4)]",
         destructive:
           "bg-gradient-to-b from-rose-500 to-rose-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),inset_0_0_0_1px_rgba(190,18,60,0.5),0_1px_2px_rgba(190,18,60,0.3)] hover:brightness-[1.06]",
         outline:
-          "border border-slate-200 bg-white text-slate-700 shadow-[0_1px_0_rgba(15,23,42,0.04)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900",
+          "border border-border bg-background text-foreground shadow-[0_1px_0_rgba(15,23,42,0.04)] dark:shadow-[0_1px_0_rgba(0,0,0,0.2)] hover:bg-accent hover:text-accent-foreground",
         secondary:
-          "border border-slate-200 bg-slate-50 text-slate-800 hover:bg-white hover:border-slate-300",
+          "border border-border bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
-          "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+          "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         link:
-          "text-emerald-700 underline-offset-4 hover:underline",
+          "text-emerald-700 dark:text-emerald-400 underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-3.5 text-[13px]",

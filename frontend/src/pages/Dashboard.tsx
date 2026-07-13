@@ -65,7 +65,7 @@ const chartText = {
 };
 
 const EmptyChart = ({ label }: { label: string }) => (
-  <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 text-sm text-muted-foreground">
+  <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed border-border bg-muted/50 text-sm text-muted-foreground">
     {label}
   </div>
 );
@@ -73,10 +73,10 @@ const EmptyChart = ({ label }: { label: string }) => (
 const PanelTitle = ({ icon: Icon, title, detail }: { icon: typeof Activity; title: string; detail?: string }) => (
   <div className="flex items-center justify-between gap-3">
     <div className="flex items-center gap-2">
-      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-600">
+      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
         <Icon className="h-4 w-4" />
       </div>
-      <CardTitle className="text-sm text-slate-950">{title}</CardTitle>
+      <CardTitle className="text-sm text-foreground">{title}</CardTitle>
     </div>
     {detail ? <span className="text-xs font-medium text-muted-foreground">{detail}</span> : null}
   </div>
@@ -84,10 +84,10 @@ const PanelTitle = ({ icon: Icon, title, detail }: { icon: typeof Activity; titl
 
 const PipelineFlow = ({ health }: { health: string }) => {
   const steps = [
-    { label: "Sources", meta: "CSV / API / DB", icon: Database, tone: "text-cyan-600" },
-    { label: "Validate", meta: "Schema checks", icon: GitBranch, tone: "text-blue-600" },
-    { label: "Transform", meta: "Quality rules", icon: ServerCog, tone: "text-violet-600" },
-    { label: "Warehouse", meta: "Postgres load", icon: HardDrive, tone: "text-emerald-600" },
+    { label: "Sources", meta: "CSV / API / DB", icon: Database, tone: "text-cyan-600 dark:text-cyan-400" },
+    { label: "Validate", meta: "Schema checks", icon: GitBranch, tone: "text-blue-600 dark:text-blue-400" },
+    { label: "Transform", meta: "Quality rules", icon: ServerCog, tone: "text-violet-600 dark:text-violet-400" },
+    { label: "Warehouse", meta: "Postgres load", icon: HardDrive, tone: "text-emerald-600 dark:text-emerald-400" },
   ];
 
   return (
@@ -95,24 +95,24 @@ const PipelineFlow = ({ health }: { health: string }) => {
       <CardContent className="p-0">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px]">
           <div className="relative min-h-[220px] p-5">
-            <div className="absolute inset-x-10 top-[104px] hidden h-px bg-slate-200 md:block" />
+            <div className="absolute inset-x-10 top-[104px] hidden h-px bg-border md:block" />
             <div className="pipeline-flow-line hidden md:block" />
             <div className="relative grid grid-cols-1 gap-4 md:grid-cols-4">
               {steps.map(({ label, meta, icon: Icon, tone }, index) => (
-                <div key={label} className="motion-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm" style={{ animationDelay: `${index * 90}ms` }}>
+                <div key={label} className="motion-card rounded-lg border border-border bg-card p-4 shadow-sm" style={{ animationDelay: `${index * 90}ms` }}>
                   <div className="mb-4 flex items-center justify-between">
-                    <div className={cn("flex h-10 w-10 items-center justify-center rounded-md bg-slate-100", tone)}>
+                    <div className={cn("flex h-10 w-10 items-center justify-center rounded-md bg-muted", tone)}>
                       <Icon className="h-5 w-5" />
                     </div>
-                    <span className="text-xs font-semibold text-slate-400">0{index + 1}</span>
+                    <span className="text-xs font-semibold text-muted-foreground">0{index + 1}</span>
                   </div>
-                  <p className="text-sm font-bold text-slate-950">{label}</p>
+                  <p className="text-sm font-bold text-foreground">{label}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{meta}</p>
                 </div>
               ))}
             </div>
           </div>
-          <div className="border-t border-slate-200 bg-slate-950 p-5 text-white lg:border-l lg:border-t-0">
+          <div className="border-t border-border bg-slate-950 p-5 text-white lg:border-l lg:border-t-0 dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase text-slate-400">Automation state</p>
               <span className="live-ring" />
@@ -158,7 +158,7 @@ export const Dashboard = () => {
   const failedRate = totalRuns ? Math.round((failed / totalRuns) * 1000) / 10 : 0;
   const avgDuration = metrics.avg_duration ?? 0;
 
-  const healthTone = health === "HEALTHY" ? "text-emerald-600" : health === "WARNING" ? "text-amber-600" : "text-rose-600";
+  const healthTone = health === "HEALTHY" ? "text-emerald-600 dark:text-emerald-400" : health === "WARNING" ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400";
   const healthColor = health === "HEALTHY" ? "#059669" : health === "WARNING" ? "#d97706" : health === "DEGRADED" ? "#dc2626" : "#64748b";
 
   const dailyChart = useMemo(
@@ -207,8 +207,8 @@ export const Dashboard = () => {
 
   if (error) {
     return (
-      <Card className="border-rose-200 bg-rose-50">
-        <CardContent className="flex items-center gap-3 p-5 text-rose-700">
+      <Card className="border-rose-200 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-950/50">
+        <CardContent className="flex items-center gap-3 p-5 text-rose-700 dark:text-rose-400">
           <AlertTriangle className="h-5 w-5" />
           <span className="text-sm font-medium">Failed to load dashboard data.</span>
         </CardContent>
@@ -218,30 +218,30 @@ export const Dashboard = () => {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border border-slate-200 bg-white px-5 py-5 shadow-sm">
+      <section className="rounded-lg border border-border bg-card px-5 py-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-3 flex items-center gap-2">
               <span className={cn("flex h-2.5 w-2.5 rounded-full", healthTone.replace("text", "bg"))} />
               <span className="text-xs font-semibold uppercase text-muted-foreground">Data monitoring</span>
             </div>
-            <h2 className="text-2xl font-bold text-slate-950">Data Monitoring Dashboard</h2>
+            <h2 className="text-2xl font-bold text-foreground">Data Monitoring Dashboard</h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Monitor ingested data health, pipeline runs, throughput, connector mix, failures, and recent activity from one control surface.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
+          <div className="grid grid-cols-3 gap-3 rounded-lg border border-border bg-muted/50 p-3 text-center">
             <div className="min-w-24">
               <p className="text-xs font-semibold uppercase text-muted-foreground">Health</p>
               <p className={cn("mt-1 text-sm font-bold", healthTone)}>{health}</p>
             </div>
-            <div className="min-w-24 border-x border-slate-200 px-3">
+            <div className="min-w-24 border-x border-border px-3">
               <p className="text-xs font-semibold uppercase text-muted-foreground">Failure</p>
-              <p className="mt-1 text-sm font-bold text-slate-950">{failedRate}%</p>
+              <p className="mt-1 text-sm font-bold text-foreground">{failedRate}%</p>
             </div>
             <div className="min-w-24">
               <p className="text-xs font-semibold uppercase text-muted-foreground">Avg run</p>
-              <p className="mt-1 text-sm font-bold text-slate-950">{avgDuration}s</p>
+              <p className="mt-1 text-sm font-bold text-foreground">{avgDuration}s</p>
             </div>
           </div>
         </div>
@@ -267,10 +267,10 @@ export const Dashboard = () => {
             {dailyChart.length ? (
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={dailyChart}>
-                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                  <CartesianGrid vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
                   <XAxis dataKey="day" tick={chartText} tickLine={false} axisLine={false} />
                   <YAxis tick={chartText} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: "#f1f5f9" }} />
+                  <Tooltip cursor={{ fill: "#f1f5f9" }} contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }} />
                   <Legend />
                   <Bar dataKey="success" stackId="runs" fill="#059669" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="failed" stackId="runs" fill="#dc2626" radius={[4, 4, 0, 0]} />
@@ -303,7 +303,7 @@ export const Dashboard = () => {
                       <Cell key={index} fill={CLR[index % CLR.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -327,10 +327,10 @@ export const Dashboard = () => {
                       <stop offset="95%" stopColor="#2563eb" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                  <CartesianGrid vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
                   <XAxis dataKey="day" tick={chartText} tickLine={false} axisLine={false} />
                   <YAxis tick={chartText} tickLine={false} axisLine={false} />
-                  <Tooltip />
+                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }} />
                   <Area type="monotone" dataKey="rows" stroke="#2563eb" strokeWidth={2} fill="url(#rowsFill)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -348,10 +348,10 @@ export const Dashboard = () => {
             {hourlyChart.length ? (
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={hourlyChart}>
-                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                  <CartesianGrid vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
                   <XAxis dataKey="hour" tick={chartText} tickLine={false} axisLine={false} />
                   <YAxis tick={chartText} tickLine={false} axisLine={false} />
-                  <Tooltip />
+                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }} />
                   <Legend />
                   <Area type="monotone" dataKey="success" stroke="#059669" strokeWidth={2} fill="#059669" fillOpacity={0.13} />
                   <Area type="monotone" dataKey="failed" stroke="#dc2626" strokeWidth={2} fill="#dc2626" fillOpacity={0.08} />
@@ -376,7 +376,7 @@ export const Dashboard = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 text-left text-xs uppercase text-muted-foreground">
+                    <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                       <th className="py-3 pr-4 font-semibold">Pipeline</th>
                       <th className="py-3 pr-4 font-semibold">Connector</th>
                       <th className="py-3 pr-4 font-semibold">Runs</th>
@@ -387,19 +387,19 @@ export const Dashboard = () => {
                   </thead>
                   <tbody>
                     {pipelines.map((pipeline: any) => (
-                      <tr key={pipeline.pipeline_id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                        <td className="max-w-[260px] truncate py-3 pr-4 font-medium text-slate-900">{pipeline.pipeline_id}</td>
-                        <td className="py-3 pr-4 text-slate-600">{pipeline.connector_type ?? "-"}</td>
-                        <td className="py-3 pr-4 text-slate-600">{pipeline.total_runs}</td>
+                      <tr key={pipeline.pipeline_id} className="border-b border-border last:border-0 hover:bg-muted/50">
+                        <td className="max-w-[260px] truncate py-3 pr-4 font-medium text-foreground">{pipeline.pipeline_id}</td>
+                        <td className="py-3 pr-4 text-muted-foreground">{pipeline.connector_type ?? "-"}</td>
+                        <td className="py-3 pr-4 text-muted-foreground">{pipeline.total_runs}</td>
                         <td className="py-3 pr-4">
                           <div className="flex min-w-32 items-center gap-2">
-                            <div className="h-2 flex-1 rounded-full bg-slate-100">
+                            <div className="h-2 flex-1 rounded-full bg-muted">
                               <div
                                 className="h-2 rounded-full bg-emerald-600"
                                 style={{ width: `${Math.min(Number(pipeline.success_rate ?? 0), 100)}%` }}
                               />
                             </div>
-                            <span className="w-12 text-right text-xs font-semibold text-slate-600">
+                            <span className="w-12 text-right text-xs font-semibold text-muted-foreground">
                               {pipeline.success_rate ?? "-"}%
                             </span>
                           </div>
@@ -423,10 +423,10 @@ export const Dashboard = () => {
             <CardContent className="space-y-3">
               {(data?.top_failing ?? []).length ? (
                 (data?.top_failing ?? []).slice(0, 5).map((item: any) => (
-                  <div key={item.pipeline_id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div key={item.pipeline_id} className="rounded-md border border-border bg-muted/50 p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-semibold text-slate-900">{item.pipeline_id}</p>
-                      <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                      <p className="truncate text-sm font-semibold text-foreground">{item.pipeline_id}</p>
+                      <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-400">
                         {item.fail_count ?? 0} fails
                       </span>
                     </div>
@@ -446,9 +446,9 @@ export const Dashboard = () => {
             <CardContent className="space-y-3">
               {(data?.recent_runs ?? []).length ? (
                 (data?.recent_runs ?? []).slice(0, 6).map((run: any) => (
-                  <div key={run.run_id ?? `${run.pipeline_id}-${run.logged_at}`} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                  <div key={run.run_id ?? `${run.pipeline_id}-${run.logged_at}`} className="flex items-start justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{run.pipeline_id ?? run.connector_name ?? "Pipeline"}</p>
+                      <p className="truncate text-sm font-semibold text-foreground">{run.pipeline_id ?? run.connector_name ?? "Pipeline"}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{fmtInt(run.rows_inserted ?? run.records_count ?? 0)} rows / {run.duration_sec ?? 0}s</p>
                     </div>
                     <StatusBadge status={run.status} />

@@ -199,12 +199,12 @@ export default function SqlEditor() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white text-gray-900">
+    <div className="flex flex-col h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Database className="w-5 h-5 text-blue-600" />
+            <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             SQL Editor
           </h1>
 
@@ -218,7 +218,7 @@ export default function SqlEditor() {
                 setResults(null);
                 setError(null);
               }}
-              className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="appearance-none bg-background border border-border rounded-lg px-4 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-foreground"
               disabled={isRunning}
             >
               <option value="">Select a connection...</option>
@@ -228,7 +228,7 @@ export default function SqlEditor() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           </div>
         </div>
 
@@ -236,7 +236,7 @@ export default function SqlEditor() {
           <button
             onClick={handleRunQuery}
             disabled={!selectedConnection || !query.trim() || isRunning}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 disabled:bg-muted disabled:dark:bg-muted disabled:cursor-not-allowed rounded-lg text-sm font-medium text-white transition-colors"
           >
             {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             {isRunning ? 'Running...' : 'Run'}
@@ -245,7 +245,7 @@ export default function SqlEditor() {
           {isRunning && (
             <button
               onClick={handleCancel}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium text-white transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 rounded-lg text-sm font-medium text-white transition-colors"
             >
               <Square className="w-4 h-4" />
               Cancel
@@ -255,14 +255,14 @@ export default function SqlEditor() {
           <button
             onClick={handleFormat}
             disabled={!query.trim() || isRunning}
-            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-gray-700 transition-colors border border-gray-300"
+            className="px-4 py-2 bg-secondary hover:bg-secondary/80 dark:bg-secondary dark:hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-secondary-foreground transition-colors border border-border"
           >
             Format
           </button>
 
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors border border-gray-300"
+            className="px-4 py-2 bg-secondary hover:bg-secondary/80 dark:bg-secondary dark:hover:bg-secondary/80 rounded-lg text-sm font-medium text-secondary-foreground transition-colors border border-border"
           >
             <History className="w-4 h-4" />
           </button>
@@ -270,7 +270,7 @@ export default function SqlEditor() {
           {results && (
             <button
               onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors border border-gray-300"
+              className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 dark:bg-secondary dark:hover:bg-secondary/80 rounded-lg text-sm font-medium text-secondary-foreground transition-colors border border-border"
             >
               <Download className="w-4 h-4" />
               Export
@@ -285,13 +285,13 @@ export default function SqlEditor() {
         <div className={`flex-1 flex flex-col ${showHistory ? 'w-3/4' : 'w-full'}`}>
           {/* Error Banner */}
           {error && (
-            <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="mx-6 mt-4 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-red-700">{error.error_type}</p>
-                <p className="text-red-600 text-sm mt-1">{error.message}</p>
+                <p className="font-medium text-red-700 dark:text-red-400">{error.error_type}</p>
+                <p className="text-red-600 dark:text-red-300 text-sm mt-1">{error.message}</p>
                 {error.line && (
-                  <p className="text-red-500 text-xs mt-2">
+                  <p className="text-red-500 dark:text-red-400 text-xs mt-2">
                     Line {error.line}{error.column ? `, Column ${error.column}` : ''}
                   </p>
                 )}
@@ -301,14 +301,14 @@ export default function SqlEditor() {
 
           {/* Editor */}
           <div className="flex-1 p-4">
-            <div className="h-full border border-gray-300 rounded-lg overflow-hidden">
+            <div className="h-full border border-border rounded-lg overflow-hidden bg-card">
               <Editor
                 height="100%"
                 language={getEditorLanguage()}
                 value={query}
                 onChange={(value) => setQuery(value || '')}
                 onMount={handleEditorMount}
-                theme="light"
+                theme="vs-dark"
                 options={{
                   minimap: { enabled: false },
                   fontSize: 14,
@@ -324,18 +324,18 @@ export default function SqlEditor() {
           </div>
 
           {/* Results Panel */}
-          <div className="h-1/2 border-t border-gray-200 flex flex-col">
+          <div className="h-1/2 border-t border-border flex flex-col bg-card">
             {/* Results Header */}
-            <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-muted/50">
               <div className="flex items-center gap-4">
-                <span className="text-sm font-medium text-gray-700">Results</span>
+                <span className="text-sm font-medium text-foreground">Results</span>
                 {results && (
                   <>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-muted-foreground">
                       {results.row_count} row{results.row_count !== 1 ? 's' : ''}
                       {results.truncated && ' (truncated)'}
                     </span>
-                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {results.execution_time_ms}ms
                     </span>
@@ -344,7 +344,7 @@ export default function SqlEditor() {
               </div>
 
               {isRunning && (
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>{elapsedTime}s</span>
                 </div>
@@ -355,16 +355,16 @@ export default function SqlEditor() {
             <div className="flex-1 overflow-auto" ref={parentRef}>
               {results && results.rows.length > 0 ? (
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-gray-50">
+                  <thead className="sticky top-0 bg-muted/50">
                     <tr>
                       {results.columns.map((col, i) => (
                         <th
                           key={i}
-                          className="px-4 py-2 text-left font-medium text-gray-700 border-b border-gray-200 whitespace-nowrap bg-gray-50"
+                          className="px-4 py-2 text-left font-medium text-foreground border-b border-border whitespace-nowrap bg-muted/50"
                         >
                           <div className="flex flex-col">
                             <span>{col.name}</span>
-                            <span className="text-xs text-gray-500 font-normal">
+                            <span className="text-xs text-muted-foreground font-normal">
                               {col.type}
                             </span>
                           </div>
@@ -376,15 +376,15 @@ export default function SqlEditor() {
                     {results.rows.map((row, rowIdx) => (
                       <tr
                         key={rowIdx}
-                        className="hover:bg-gray-50 border-b border-gray-100"
+                        className="hover:bg-muted/50 dark:hover:bg-muted/30 border-b border-border"
                       >
                         {row.map((cell, cellIdx) => (
                           <td
                             key={cellIdx}
-                            className="px-4 py-2 text-gray-700 whitespace-nowrap max-w-xs overflow-hidden text-ellipsis"
+                            className="px-4 py-2 text-foreground whitespace-nowrap max-w-xs overflow-hidden text-ellipsis"
                           >
                             {cell === null ? (
-                              <span className="text-gray-400 italic">NULL</span>
+                              <span className="text-muted-foreground italic">NULL</span>
                             ) : (
                               String(cell)
                             )}
@@ -395,11 +395,11 @@ export default function SqlEditor() {
                   </tbody>
                 </table>
               ) : results && results.rows.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-gray-500">
+                <div className="flex items-center justify-center h-full text-muted-foreground">
                   Query returned no results
                 </div>
               ) : !results && !error && (
-                <div className="flex items-center justify-center h-full text-gray-500">
+                <div className="flex items-center justify-center h-full text-muted-foreground">
                   Run a query to see results
                 </div>
               )}
@@ -409,43 +409,43 @@ export default function SqlEditor() {
 
         {/* History Sidebar */}
         {showHistory && (
-          <div className="w-1/4 border-l border-gray-200 flex flex-col bg-gray-50">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="font-medium text-gray-700">Query History</h2>
+          <div className="w-1/4 border-l border-border flex flex-col bg-card">
+            <div className="p-4 border-b border-border">
+              <h2 className="font-medium text-foreground">Query History</h2>
             </div>
             <div className="flex-1 overflow-y-auto">
               {history.length === 0 ? (
-                <div className="p-4 text-gray-500 text-sm">
+                <div className="p-4 text-muted-foreground text-sm">
                   No query history yet
                 </div>
               ) : (
-                <div className="divide-y divide-gray-200">
+                <div className="divide-y divide-border">
                   {history.map((item) => (
                     <button
                       key={item.query_id}
                       onClick={() => handleSelectHistory(item)}
-                      className="w-full p-4 text-left hover:bg-white transition-colors"
+                      className="w-full p-4 text-left hover:bg-muted/50 dark:hover:bg-muted/30 transition-colors"
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span
                           className={`text-xs px-2 py-0.5 rounded ${
                             item.status === 'success'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                           }`}
                         >
                           {item.status}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-muted-foreground">
                           {item.duration_ms}ms
                         </span>
                       </div>
-                      <p className="text-sm text-gray-700 font-mono truncate">
+                      <p className="text-sm text-foreground font-mono truncate">
                         {item.query_text.split('\n')[0]}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
                         {item.connection_name && (
-                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                          <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs">
                             {item.connection_name}
                           </span>
                         )}

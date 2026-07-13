@@ -62,7 +62,6 @@ interface QueryHistory {
   status: string;
 }
 
-// Database type icons
 const DB_ICONS: Record<string, string> = {
   postgresql: "🐘",
   mysql: "🐬",
@@ -81,14 +80,12 @@ export default function Text2SQL() {
   const [copied, setCopied] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>("");
 
-  // Fetch available connections
   const { data: connections = [], isLoading: connectionsLoading, refetch: refetchConnections } = useQuery({
     queryKey: ["text2sql-connections"],
     queryFn: fetchText2SQLConnections,
     staleTime: 30000,
   });
 
-  // Fetch tables for selected connection
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ["text2sql-tables", selectedConnectionId],
     queryFn: () => fetchText2SQLTables(selectedConnectionId || undefined),
@@ -98,10 +95,8 @@ export default function Text2SQL() {
 
   const tables = tablesData || [];
 
-  // Get selected connection info
   const selectedConnection = connections.find((c: Text2SQLConnection) => c.id === selectedConnectionId);
 
-  // Fetch stats
   const { data: stats } = useQuery({
     queryKey: ["text2sql-stats"],
     queryFn: fetchText2SQLStats,
@@ -174,44 +169,42 @@ export default function Text2SQL() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-emerald-500" />
             Text-to-SQL
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Ask questions about your data in natural language
           </p>
         </div>
         <div className="flex items-center gap-3">
           {stats && (
-            <div className="flex items-center gap-4 text-sm text-slate-600">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
                 <CheckCircle className="h-4 w-4 text-emerald-500" />
                 {stats.successful_runs} successful
               </span>
               <span className="flex items-center gap-1">
-                <History className="h-4 w-4 text-slate-400" />
+                <History className="h-4 w-4 text-muted-foreground" />
                 {stats.total_runs} total
               </span>
             </div>
           )}
-          <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
+          <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
             AI Powered
           </Badge>
         </div>
       </div>
 
-      {/* Connection Selector */}
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="border-border shadow-sm">
         <CardContent className="pt-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2 flex-1">
-              <Plug className="h-5 w-5 text-slate-500" />
+              <Plug className="h-5 w-5 text-muted-foreground" />
               <div className="flex-1">
-                <label className="text-sm font-medium text-slate-700 block mb-1">
+                <label className="text-sm font-medium text-foreground block mb-1">
                   Select Data Source
                 </label>
                 <Select 
@@ -236,7 +229,7 @@ export default function Text2SQL() {
                           <span className="flex items-center gap-2">
                             <span>{getDBIcon(conn.type)}</span>
                             <span className="font-medium">{conn.name}</span>
-                            <span className="text-slate-400 text-xs">({conn.type})</span>
+                            <span className="text-muted-foreground text-xs">({conn.type})</span>
                           </span>
                         </SelectItem>
                       ))
@@ -256,15 +249,15 @@ export default function Text2SQL() {
           </div>
           
           {selectedConnection && (
-            <div className="mt-3 p-3 bg-slate-50 rounded-lg flex items-center gap-2 text-sm text-slate-600">
+            <div className="mt-3 p-3 bg-muted/50 rounded-lg flex items-center gap-2 text-sm text-muted-foreground">
               <Server className="h-4 w-4 text-emerald-500" />
               <span>Connected to:</span>
-              <span className="font-medium text-slate-900">{selectedConnection.name}</span>
+              <span className="font-medium text-foreground">{selectedConnection.name}</span>
               <Badge variant="outline" className="text-xs">
                 {getDBIcon(selectedConnection.type)} {selectedConnection.type}
               </Badge>
               {tables.length > 0 && (
-                <span className="text-slate-400">
+                <span className="text-muted-foreground">
                   • {tables.length} tables available
                 </span>
               )}
@@ -274,13 +267,11 @@ export default function Text2SQL() {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Query Area */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Input Card */}
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-border shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-base font-medium flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-slate-500" />
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 Ask a Question
               </CardTitle>
               <CardDescription>
@@ -314,10 +305,9 @@ export default function Text2SQL() {
                   </Button>
                 </div>
 
-                {/* Example Questions */}
                 {selectedConnectionId && (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Example Questions
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -326,7 +316,7 @@ export default function Text2SQL() {
                           key={i}
                           type="button"
                           onClick={() => setQuestion(q)}
-                          className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition"
+                          className="text-xs px-3 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-full transition"
                         >
                           {q}
                         </button>
@@ -336,7 +326,7 @@ export default function Text2SQL() {
                 )}
 
                 {!selectedConnectionId && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
                     Please select a database connection above to start querying.
                   </div>
                 )}
@@ -344,11 +334,10 @@ export default function Text2SQL() {
             </CardContent>
           </Card>
 
-          {/* Results Area for blocked commands */}
           {result && result.error && result.error.includes("not supported") && (
-            <Card className="border shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardContent className="pt-4">
-                <p className="text-sm text-slate-600">{result.error}</p>
+                <p className="text-sm text-muted-foreground">{result.error}</p>
               </CardContent>
             </Card>
           )}
@@ -356,7 +345,9 @@ export default function Text2SQL() {
           {result && !result.error?.includes("not supported") && (
             <Card className={cn(
               "border shadow-sm",
-              result.success ? "border-emerald-200 bg-emerald-50/30" : "border-rose-200 bg-rose-50/30"
+              result.success 
+                ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/20" 
+                : "border-rose-200 dark:border-rose-800 bg-rose-50/30 dark:bg-rose-950/20"
             )}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -377,24 +368,22 @@ export default function Text2SQL() {
                 </div>
               </CardHeader>
               <CardContent className="pt-0 space-y-4">
-                {/* Summary */}
                 {result.summary && (
-                  <div className="p-3 bg-white rounded-lg border border-slate-200">
-                    <p className="text-sm text-slate-700">{result.summary}</p>
+                  <div className="p-3 bg-card rounded-lg border border-border">
+                    <p className="text-sm text-foreground">{result.summary}</p>
                   </div>
                 )}
 
-                {/* SQL Code */}
                 {result.sql && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-slate-500 flex items-center gap-1">
+                      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                         <Code className="h-3 w-3" />
                         Generated SQL
                       </span>
                       <button
                         onClick={handleCopySQL}
-                        className="text-xs flex items-center gap-1 text-slate-500 hover:text-slate-700"
+                        className="text-xs flex items-center gap-1 text-muted-foreground hover:text-foreground"
                       >
                         {copied ? (
                           <>
@@ -409,28 +398,27 @@ export default function Text2SQL() {
                         )}
                       </button>
                     </div>
-                    <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs overflow-x-auto">
+                    <pre className="p-3 bg-slate-900 dark:bg-slate-950 text-slate-100 rounded-lg text-xs overflow-x-auto">
                       <code>{result.sql}</code>
                     </pre>
                   </div>
                 )}
 
-                {/* Results Table */}
                 {result.execution_result && result.execution_result.rows && result.execution_result.rows.length > 0 && (
                   <div className="space-y-2">
-                    <span className="text-xs font-medium text-slate-500 flex items-center gap-1">
+                    <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                       <Table className="h-3 w-3" />
                       Results
                     </span>
-                    <div className="border rounded-lg overflow-hidden bg-white">
+                    <div className="border border-border rounded-lg overflow-hidden bg-card">
                       <div className="max-h-64 overflow-auto">
                         <table className="w-full text-sm">
-                          <thead className="bg-slate-50 sticky top-0">
+                          <thead className="bg-muted sticky top-0">
                             <tr>
                               {result.execution_result.columns.map((col) => (
                                 <th
                                   key={col}
-                                  className="px-3 py-2 text-left text-xs font-medium text-slate-600 border-b"
+                                  className="px-3 py-2 text-left text-xs font-medium text-muted-foreground border-b border-border"
                                 >
                                   {col}
                                 </th>
@@ -439,14 +427,14 @@ export default function Text2SQL() {
                           </thead>
                           <tbody>
                             {result.execution_result.rows.map((row, i) => (
-                              <tr key={i} className="hover:bg-slate-50">
+                              <tr key={i} className="hover:bg-muted/50">
                                 {row.map((cell: any, j: number) => (
                                   <td
                                     key={j}
-                                    className="px-3 py-2 text-xs text-slate-700 border-b"
+                                    className="px-3 py-2 text-xs text-foreground border-b border-border"
                                   >
                                     {cell === null ? (
-                                      <span className="text-slate-400">NULL</span>
+                                      <span className="text-muted-foreground">NULL</span>
                                     ) : (
                                       String(cell).substring(0, 50)
                                     )}
@@ -461,15 +449,13 @@ export default function Text2SQL() {
                   </div>
                 )}
 
-                {/* Error */}
                 {result.error && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-                    <p className="text-sm text-rose-700">{result.error}</p>
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-lg">
+                    <p className="text-sm text-rose-700 dark:text-rose-300">{result.error}</p>
                   </div>
                 )}
 
-                {/* Metadata */}
-                <div className="flex items-center gap-4 text-xs text-slate-500 pt-2 border-t">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t border-border">
                   <span>LLM: {(result.llm_latency ?? 0).toFixed(2)}s</span>
                   <span>Execution: {(result.execution_latency ?? 0).toFixed(2)}s</span>
                   <span>Status: {result.validation_status}</span>
@@ -478,12 +464,11 @@ export default function Text2SQL() {
             </Card>
           )}
 
-          {/* Query History */}
           {history.length > 0 && (
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <History className="h-4 w-4 text-slate-500" />
+                  <History className="h-4 w-4 text-muted-foreground" />
                   Recent Queries
                 </CardTitle>
               </CardHeader>
@@ -493,10 +478,10 @@ export default function Text2SQL() {
                     <button
                       key={i}
                       onClick={() => setQuestion(item.question)}
-                      className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30 transition text-sm"
+                      className="w-full text-left p-3 rounded-lg border border-border hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition text-sm"
                     >
-                      <p className="font-medium text-slate-800 mb-1">{item.question}</p>
-                      <code className="text-xs text-slate-500 block truncate">
+                      <p className="font-medium text-foreground mb-1">{item.question}</p>
+                      <code className="text-xs text-muted-foreground block truncate">
                         {item.sql}
                       </code>
                     </button>
@@ -507,14 +492,12 @@ export default function Text2SQL() {
           )}
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6">
-          {/* Schema Explorer */}
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-border shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <Database className="h-4 w-4 text-slate-500" />
+                  <Database className="h-4 w-4 text-muted-foreground" />
                   Database Schema
                 </CardTitle>
                 <Button
@@ -543,24 +526,24 @@ export default function Text2SQL() {
             <CardContent className="pt-0">
               <div className="space-y-1 max-h-64 overflow-auto">
                 {!selectedConnectionId ? (
-                  <div className="text-center py-4 text-slate-400 text-sm">
+                  <div className="text-center py-4 text-muted-foreground text-sm">
                     No connection selected
                   </div>
                 ) : tablesLoading ? (
                   <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   </div>
                 ) : tables.length === 0 ? (
-                  <div className="text-center py-4 text-slate-400 text-sm">
+                  <div className="text-center py-4 text-muted-foreground text-sm">
                     No tables found
                   </div>
                 ) : (
                   tables.map((table: string) => (
                     <div
                       key={table}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-slate-700 hover:bg-slate-100"
+                      className="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-foreground hover:bg-muted"
                     >
-                      <Table className="h-3.5 w-3.5 text-slate-400" />
+                      <Table className="h-3.5 w-3.5 text-muted-foreground" />
                       {table}
                     </div>
                   ))
@@ -569,49 +552,47 @@ export default function Text2SQL() {
             </CardContent>
           </Card>
 
-          {/* Quick Stats */}
           {stats && (
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-slate-500" />
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
                   Query Statistics
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-2xl font-bold text-slate-900">{stats.total_runs}</p>
-                    <p className="text-xs text-slate-500">Total Queries</p>
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <p className="text-2xl font-bold text-foreground">{stats.total_runs}</p>
+                    <p className="text-xs text-muted-foreground">Total Queries</p>
                   </div>
-                  <div className="p-3 bg-emerald-50 rounded-lg">
-                    <p className="text-2xl font-bold text-emerald-700">{stats.successful_runs}</p>
-                    <p className="text-xs text-emerald-600">Successful</p>
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg">
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{stats.successful_runs}</p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-500">Successful</p>
                   </div>
-                  <div className="p-3 bg-rose-50 rounded-lg">
-                    <p className="text-2xl font-bold text-rose-700">{stats.failed_runs}</p>
-                    <p className="text-xs text-rose-600">Failed</p>
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/30 rounded-lg">
+                    <p className="text-2xl font-bold text-rose-700 dark:text-rose-400">{stats.failed_runs}</p>
+                    <p className="text-xs text-rose-600 dark:text-rose-500">Failed</p>
                   </div>
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-2xl font-bold text-blue-700">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
                       {stats.avg_llm_latency?.toFixed(2) || 0}s
                     </p>
-                    <p className="text-xs text-blue-600">Avg Latency</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-500">Avg Latency</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Usage Tips */}
-          <Card className="border-slate-200 shadow-sm bg-gradient-to-br from-emerald-50/50 to-teal-50/50">
+          <Card className="border-border shadow-sm bg-gradient-to-br from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/30">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-slate-800">
+              <CardTitle className="text-sm font-medium text-foreground">
                 Tips for Better Results
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <ul className="space-y-2 text-sm text-slate-600">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <span className="text-emerald-500 mt-0.5">•</span>
                   Be specific about table names when possible

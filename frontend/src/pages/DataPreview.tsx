@@ -50,7 +50,7 @@ export const DataPreview = () => {
       </Card>
 
       {error && (
-        <Card className="border-rose-200 bg-rose-50"><CardContent className="p-4 text-sm text-rose-700">{(error as any)?.response?.data?.detail ?? (error as Error).message}</CardContent></Card>
+        <Card className="border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950"><CardContent className="p-4 text-sm text-rose-700 dark:text-rose-400">{(error as any)?.response?.data?.detail ?? (error as Error).message}</CardContent></Card>
       )}
 
       {activeTable && (
@@ -61,15 +61,15 @@ export const DataPreview = () => {
           <CardContent>
             {isFetching ? <p className="text-sm text-muted-foreground">Loading rows...</p> : rows.length ? (
               <>
-                <div className="overflow-auto rounded-md border border-slate-200">
+                <div className="overflow-auto rounded-md border border-border">
                   <table className="w-full text-sm">
-                    <thead className="bg-slate-50">
+                    <thead className="bg-muted">
                       <tr>{columns.map((column) => <th key={column} className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">{column}</th>)}</tr>
                     </thead>
                     <tbody>
                       {rows.map((row: any, index: number) => (
-                        <tr key={index} className="border-t border-slate-100">
-                          {columns.map((column) => <td key={column} className="max-w-72 truncate px-3 py-2 text-slate-700">{String(row[column] ?? "")}</td>)}
+                        <tr key={index} className="border-t border-border">
+                          {columns.map((column) => <td key={column} className="max-w-72 truncate px-3 py-2 text-foreground">{String(row[column] ?? "")}</td>)}
                         </tr>
                       ))}
                     </tbody>

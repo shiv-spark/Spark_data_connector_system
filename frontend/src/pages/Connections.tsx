@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { fdt } from "@/lib/format";
-import { FolderUpload } from "@/pages/FolderUpload";   
+import { FolderUpload } from "@/pages/FolderUpload";
+
 type SourceType = "local_folder" | "s3" | "postgres" | "snowflake" | "api" | "google_sheet" | "figma_design";
 
 const initial = {
@@ -112,11 +113,11 @@ export const Connections = () => {
       host: form.host.trim(),
       database: form.database.trim(),
       user: form.user.trim(),
-      password: form.password,   // don't trim passwords — spaces could be intentional
+      password: form.password,   // don\'t trim passwords — spaces could be intentional
       port: form.port.trim(),
       base_url: form.base_url.trim(),
       auth_type: form.auth_type,
-      api_key: form.api_key,     // don't trim keys/tokens either
+      api_key: form.api_key,     // don\'t trim keys/tokens either
       header_name: form.header_name.trim(),
       sheet_url: form.sheet_url.trim(),
       figma_file_url: form.figma_file_url.trim(),
@@ -141,7 +142,7 @@ export const Connections = () => {
     }
 
     if (form.source_type === "api") {
-      // Backend's /connectors/test requires config.test_endpoint for the
+      // Backend\'s /connectors/test requires config.test_endpoint for the
       // "api" source type. Default to base_url so the common case (the
       // base URL is itself a directly-callable endpoint, as with
       // https://dummyjson.com/products/search) needs no extra typing,
@@ -247,8 +248,8 @@ export const Connections = () => {
   // backend _public_connection). Never prefill an edit form with that —
   // the PUT /connections/{id} endpoint treats a blank OR "********"
   // secret field as "leave the stored value alone", so leaving these
-  // blank here is both accurate (we don't have the real value in hand)
-  // and safe (saving without retyping them won't clobber what's stored).
+  // blank here is both accurate (we don\'t have the real value in hand)
+  // and safe (saving without retyping them won\'t clobber what\'s stored).
   const startEdit = (connection: any) => {
     const cfg = connection.config || {};
     setForm({
@@ -312,7 +313,7 @@ export const Connections = () => {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="h-section flex items-center gap-2"><DatabaseZap className="h-5 w-5" /> Connections</h2>
@@ -485,7 +486,7 @@ export const Connections = () => {
                       }}
                     />
                   </label>
-                  {apiAdvancedConfigError && <p className="text-sm text-red-500">{apiAdvancedConfigError}</p>}
+                  {apiAdvancedConfigError && <p className="text-sm text-destructive">{apiAdvancedConfigError}</p>}
                 </div>
               )}
 
@@ -493,8 +494,8 @@ export const Connections = () => {
                 <Input placeholder="Reusable Google Sheet URL" value={form.sheet_url} onChange={(e) => update("sheet_url", e.target.value)} />
               )}
               {form.source_type === "figma_design" && (
-                <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <div className="space-y-3 rounded-md border border-border bg-muted/50 p-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <Figma className="h-4 w-4 text-pink-600" />
                     Figma design reference
                   </div>
@@ -542,8 +543,8 @@ export const Connections = () => {
               {testResult && (
                 <div className={`mt-2 flex items-center gap-2 rounded-md p-3 text-sm ${
                   testResult.success 
-                    ? "bg-green-50 text-green-800 border border-green-200" 
-                    : "bg-red-50 text-red-800 border border-red-200"
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800" 
+                    : "bg-destructive/10 text-destructive border border-destructive/20 dark:bg-destructive/20 dark:text-destructive"
                 }`}>
                   {testResult.success ? (
                     <CheckCircle className="h-4 w-4 shrink-0" />
@@ -566,7 +567,7 @@ export const Connections = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Saved Connections</CardTitle>
-              <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-0.5">
+              <div className="flex items-center gap-1 rounded-md border border-border bg-muted/50 p-0.5">
                 <Button
                   variant={viewMode === "card" ? "default" : "ghost"}
                   size="sm"
@@ -590,20 +591,20 @@ export const Connections = () => {
             {connections.isLoading ? <p className="text-sm text-muted-foreground">Loading connections...</p> : viewMode === "card" ? (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {(connections.data ?? []).map((connection: any) => (
-                  <div key={connection.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <div key={connection.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-slate-950">{connection.name}</p>
+                        <p className="font-semibold text-foreground">{connection.name}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{connection.source_type} / {fdt(connection.updated_at)}</p>
                       </div>
                       
                     </div>
-                    <pre className="mt-3 max-h-28 overflow-auto rounded-md bg-slate-50 p-3 text-xs text-slate-600">{JSON.stringify(connection.config, null, 2)}</pre>
+                    <pre className="mt-3 max-h-28 overflow-auto rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">{JSON.stringify(connection.config, null, 2)}</pre>
                     <div className="mt-3 flex gap-2">
                       <Button variant="outline" onClick={() => startEdit(connection)}>
                         <Pencil /> Edit
                       </Button>
-                      <Button variant="outline" className="hover:border-destructive hover:bg-red-50 hover:text-destructive" onClick={() => remove.mutate(connection.id)}>
+                      <Button variant="outline" className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/20" onClick={() => remove.mutate(connection.id)}>
                         <Trash2 /> Delete
                       </Button>
                     </div>
@@ -617,27 +618,27 @@ export const Connections = () => {
                   <p className="text-sm text-muted-foreground">No connections saved yet.</p>
                 ) : (
                   groupedConnections.map(([type, conns]: [string, any[]]) => (
-                    <div key={type} className="rounded-lg border border-slate-200 bg-white">
+                    <div key={type} className="rounded-lg border border-border bg-card">
                       <button
-                        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
+                        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
                         onClick={() => toggleTypeExpanded(type)}
                       >
                         <div className="flex items-center gap-2">
                           {expandedTypes.has(type) ? (
-                            <ChevronDown className="h-4 w-4 text-slate-500" />
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           ) : (
-                            <ChevronRight className="h-4 w-4 text-slate-500" />
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           )}
-                          <span className="font-medium text-slate-950">{sourceTypeLabels[type] || type}</span>
+                          <span className="font-medium text-foreground">{sourceTypeLabels[type] || type}</span>
                           <Badge variant="outline" className="ml-1">{conns.length}</Badge>
                         </div>
                       </button>
                       {expandedTypes.has(type) && (
-                        <div className="border-t border-slate-200 bg-slate-50 px-4 pb-3">
+                        <div className="border-t border-border bg-muted/30 px-4 pb-3">
                           {conns.map((connection: any) => (
-                            <div key={connection.id} className="flex items-center justify-between border-b border-slate-200 py-3 last:border-0">
+                            <div key={connection.id} className="flex items-center justify-between border-b border-border py-3 last:border-0">
                               <div className="flex-1">
-                                <p className="font-medium text-slate-900">{connection.name}</p>
+                                <p className="font-medium text-foreground">{connection.name}</p>
                                 <p className="text-xs text-muted-foreground">{fdt(connection.updated_at)}</p>
                               </div>
                               <div className="flex items-center gap-2">
@@ -645,7 +646,7 @@ export const Connections = () => {
                                 <Button variant="outline" size="sm" onClick={() => startEdit(connection)}>
                                   <Pencil className="h-3 w-3" />
                                 </Button>
-                                <Button variant="outline" size="sm" className="hover:border-destructive hover:bg-red-50 hover:text-destructive" onClick={() => remove.mutate(connection.id)}>
+                                <Button variant="outline" size="sm" className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/20" onClick={() => remove.mutate(connection.id)}>
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
                               </div>

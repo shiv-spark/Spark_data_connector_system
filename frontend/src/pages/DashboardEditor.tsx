@@ -2,7 +2,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import GridLayout, { type Layout, type LayoutItem } from "react-grid-layout";
+import Plotly from "plotly.js-dist-min";
 
+// Make it globally available so the embedded chart <script> tags
+// (which call Plotly.newPlot(...)) can find it as window.Plotly
+if (typeof window !== "undefined") {
+  (window as any).Plotly = Plotly;
+}
 const TypedGrid = GridLayout as unknown as React.ComponentType<any>;
 import {
   ArrowLeft,
@@ -218,16 +224,15 @@ export const DashboardEditor = () => {
   return (
     <div className="-mx-6 -my-6 grid h-[calc(100vh-56px)] grid-cols-[360px_1fr]">
       {/* Chat rail */}
-      <aside className="flex h-full flex-col border-r border-slate-200/80 bg-white/80 backdrop-blur">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 px-4 py-3">
+      <aside className="flex h-full flex-col border-r border-border bg-background/80 backdrop-blur dark:border-border">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-700 text-white shadow-[inset_0_0_0_1px_rgba(15,23,42,0.12)]">
               <Bot className="h-3.5 w-3.5" />
             </span>
             <div className="leading-tight">
-              <p className="text-[12.5px] font-semibold tracking-tight text-slate-900">Dashboard agent</p>
-              <p className="text-[10.5px] text-slate-500" style={mono}>
-                opus-4.7
+              <p className="text-[12.5px] font-semibold tracking-tight text-foreground">Dashboard agent</p>
+              <p className="text-[10.5px] text-muted-foreground" style={mono}>
               </p>
             </div>
           </div>
@@ -248,7 +253,7 @@ export const DashboardEditor = () => {
             history.map((m, i) => <ChatBubble key={i} message={m} />)
           )}
           {command.isPending && (
-            <div className="flex items-center gap-2 text-[11.5px] text-slate-500">
+            <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" /> agent thinking…
             </div>
           )}
@@ -256,9 +261,9 @@ export const DashboardEditor = () => {
 
         <form
           onSubmit={submit}
-          className="border-t border-slate-200/80 bg-white px-3 py-3"
+          className="border-t border-border bg-background px-3 py-3"
         >
-          <div className="rounded-[10px] border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_1px_2px_rgba(15,23,42,0.04)] focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-500/15">
+          <div className="rounded-[10px] border border-input bg-background shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_1px_2px_rgba(15,23,42,0.04)] focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-500/15 dark:border-input dark:focus-within:border-emerald-500">
             <textarea
               rows={2}
               value={input}
@@ -268,11 +273,11 @@ export const DashboardEditor = () => {
                   submit(e as unknown as FormEvent);
                 }
               }}
-              className="w-full resize-none rounded-[10px] bg-transparent px-3 py-2 text-[13px] leading-5 text-slate-900 outline-none placeholder:text-slate-400"
+              className="w-full resize-none rounded-[10px] bg-transparent px-3 py-2 text-[13px] leading-5 text-foreground outline-none placeholder:text-muted-foreground"
               placeholder="Ask, add a chart, refine a metric…"
             />
-            <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-2 py-1.5">
-              <span className="text-[10.5px] text-slate-400" style={mono}>
+            <div className="flex items-center justify-between gap-2 border-t border-border px-2 py-1.5">
+              <span className="text-[10.5px] text-muted-foreground" style={mono}>
                 ⌘ ↵ to send
               </span>
               <button
@@ -294,7 +299,7 @@ export const DashboardEditor = () => {
 
       {/* Canvas */}
       <main className="flex h-full flex-col overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/80 px-6 py-3 backdrop-blur">
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-background/80 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-3 min-w-0">
             <Link
               to="/"
@@ -304,14 +309,14 @@ export const DashboardEditor = () => {
               <ArrowLeft className="h-3.5 w-3.5" />
             </Link>
             <div className="min-w-0">
-              <p className="truncate text-[14px] font-semibold tracking-tight text-slate-900">
+              <p className="truncate text-[14px] font-semibold tracking-tight text-foreground">
                 {data?.display_name || summary?.name || dashboardId}
               </p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">
+              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
                   {data?.source_type || summary?.source_type || "—"}
                 </span>
-                <span className="text-slate-300">·</span>
+                <span className="text-muted-foreground/50">·</span>
                 <span style={mono}>{fdt(data?.last_updated || summary?.last_updated)}</span>
               </p>
             </div>
@@ -325,7 +330,7 @@ export const DashboardEditor = () => {
                   "Add one new chart that reveals the most insightful pattern in this data — pick the best chart type yourself and pick a metric we don't already visualize.",
                 )
               }
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-[12px] font-semibold text-emerald-800 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:bg-emerald-100 disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-[12px] font-semibold text-emerald-800 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900"
               title="Ask the agent to add a new chart"
             >
               {command.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
@@ -342,14 +347,14 @@ export const DashboardEditor = () => {
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset",
-                tone === "good" && "bg-emerald-50 text-emerald-700 ring-emerald-200",
-                tone === "warn" && "bg-amber-50 text-amber-800 ring-amber-200",
-                tone === "bad" && "bg-rose-50 text-rose-700 ring-rose-200",
+                tone === "good" && "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800",
+                tone === "warn" && "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800",
+                tone === "bad" && "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800",
               )}
             >
               <Gauge className="h-3 w-3" />
               <span style={mono}>{score}</span>/100
-              <span className="text-slate-400">·</span>
+              <span className="text-muted-foreground">·</span>
               <span style={mono}>{grade}</span>
             </span>
             {sql ? (
@@ -359,8 +364,8 @@ export const DashboardEditor = () => {
                 className={cn(
                   "inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-[12px] font-semibold transition",
                   sqlOpen
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900",
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+                    : "border-input bg-background text-foreground hover:border-border hover:text-foreground",
                 )}
               >
                 <Code2 className="h-3 w-3" /> SQL
@@ -368,7 +373,7 @@ export const DashboardEditor = () => {
             ) : null}
             <a
               href={`/agent/dashboard/${dashboardId}`}
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:text-slate-900"
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2.5 text-[12px] font-semibold text-foreground shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-border hover:text-foreground"
             >
               Published view <ExternalLink className="h-3 w-3" />
             </a>
@@ -390,13 +395,13 @@ export const DashboardEditor = () => {
                     <div key={i} className="surface-tinted px-4 py-3">
                       <div className="section-eyebrow">{kpi.label}</div>
                       <div
-                        className="mt-1 text-[20px] font-semibold leading-none tracking-tight text-slate-900"
+                        className="mt-1 text-[20px] font-semibold leading-none tracking-tight text-foreground"
                         style={mono}
                       >
                         {String(kpi.value)}
                       </div>
                       {kpi.hint ? (
-                        <p className="mt-1 text-[11px] text-slate-500">{kpi.hint}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{kpi.hint}</p>
                       ) : null}
                     </div>
                   ))}
@@ -405,12 +410,12 @@ export const DashboardEditor = () => {
 
               {/* Summary */}
               {data?.ai_summary ? (
-                <section className="mb-5 rounded-[10px] border border-slate-200/80 bg-gradient-to-b from-emerald-50/30 to-white px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+                <section className="mb-5 rounded-[10px] border border-border bg-gradient-to-b from-emerald-50/30 to-background px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)] dark:from-emerald-950/30 dark:to-background">
                   <div className="mb-1 flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span className="section-eyebrow">Agent summary</span>
                   </div>
-                  <p className="text-[13px] leading-6 text-slate-700">{data.ai_summary}</p>
+                  <p className="text-[13px] leading-6 text-foreground">{data.ai_summary}</p>
                 </section>
               ) : null}
 
@@ -478,8 +483,26 @@ const PALETTES: { id: string; label: string; swatch: string[] }[] = [
   { id: "mono", label: "Mono", swatch: ["#475569", "#334155", "#0f172a"] },
 ];
 
+// const ChartCanvasMount = ({ html, className }: { html: string; className?: string }) => {
+//   const ref = useRef<HTMLDivElement>(null);
+//   useEffect(() => {
+//     const el = ref.current;
+//     if (!el) return;
+//     el.innerHTML = html;
+//     const scripts = Array.from(el.querySelectorAll("script"));
+//     scripts.forEach((old) => {
+//       const next = document.createElement("script");
+//       Array.from(old.attributes).forEach((a) => next.setAttribute(a.name, a.value));
+//       next.text = old.text;
+//       old.parentNode?.replaceChild(next, old);
+//     });
+//   }, [html]);
+//   return <div ref={ref} className={className} />;
+// };
 const ChartCanvasMount = ({ html, className }: { html: string; className?: string }) => {
   const ref = useRef<HTMLDivElement>(null);
+
+  // Mount HTML + re-execute embedded <script> tags (Plotly init script)
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -492,6 +515,44 @@ const ChartCanvasMount = ({ html, className }: { html: string; className?: strin
       old.parentNode?.replaceChild(next, old);
     });
   }, [html]);
+
+  // Resize Plotly chart whenever the container size changes — needed
+  // because react-grid-layout resizes/drags cards without a window resize
+  // event, so Plotly's own auto-resize never fires.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const resizePlots = () => {
+      const plotDivs = el.querySelectorAll<HTMLElement>(".js-plotly-plot");
+      plotDivs.forEach((div) => {
+        // @ts-ignore — Plotly is loaded globally via the embedded script
+        if (window.Plotly && div) {
+          try {
+            // @ts-ignore
+            window.Plotly.Plots.resize(div);
+          } catch {
+            /* noop — chart may not be fully initialized yet */
+          }
+        }
+      });
+    };
+
+    const ro = new ResizeObserver(() => {
+      // Slight delay so Plotly's own render finishes before we resize it
+      requestAnimationFrame(resizePlots);
+    });
+    ro.observe(el);
+
+    // Also resize once right after mount, in case initial width was wrong
+    const initialTimer = setTimeout(resizePlots, 50);
+
+    return () => {
+      ro.disconnect();
+      clearTimeout(initialTimer);
+    };
+  }, [html]);
+
   return <div ref={ref} className={className} />;
 };
 
@@ -517,7 +578,6 @@ const ChartCard = ({
   const [expanded, setExpanded] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Click-outside closes any popover
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
@@ -527,7 +587,6 @@ const ChartCard = ({
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
-  // Esc closes fullscreen
   useEffect(() => {
     if (!expanded) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExpanded(false);
@@ -546,7 +605,7 @@ const ChartCard = ({
     <>
       <div
         ref={wrapRef}
-        className="group/card relative flex h-full flex-col overflow-hidden rounded-[14px] border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_-6px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-slate-300 hover:shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.16)]"
+        className="group/card relative flex h-full flex-col overflow-hidden rounded-[14px] border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_-6px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-border hover:shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.16)]"
       >
         {/* Top accent strip */}
         <div
@@ -559,21 +618,21 @@ const ChartCard = ({
         />
 
         {/* Header */}
-        <div className="chart-drag-handle flex cursor-move items-center justify-between gap-2 border-b border-slate-100 bg-gradient-to-b from-white to-slate-50/60 px-3 py-2 select-none">
+        <div className="chart-drag-handle flex cursor-move items-center justify-between gap-2 border-b border-border bg-gradient-to-b from-card to-muted/60 px-3 py-2 select-none">
           <div className="flex min-w-0 items-center gap-1.5">
-            <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 transition group-hover/card:text-slate-500" />
+            <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition group-hover/card:text-muted-foreground" />
             <div className="min-w-0">
-              <p className="truncate text-[13px] font-semibold tracking-tight text-slate-900">
+              <p className="truncate text-[13px] font-semibold tracking-tight text-foreground">
                 {titleLabel}
               </p>
               {meta?.description ? (
-                <p className="mt-0.5 truncate text-[11px] text-slate-500">{meta.description}</p>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{meta.description}</p>
               ) : null}
             </div>
           </div>
           <div className="flex items-center gap-1">
             <span
-              className="rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-600"
+              className="rounded bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold text-muted-foreground"
               style={mono}
             >
               #{slot}
@@ -584,7 +643,7 @@ const ChartCard = ({
         {/* Hover toolbar */}
         <div
           onMouseDown={(e) => e.stopPropagation()}
-          className="absolute right-2.5 top-11 z-20 flex items-center gap-1 rounded-md border border-slate-200/80 bg-white/95 p-1 opacity-0 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_24px_-12px_rgba(15,23,42,0.18)] backdrop-blur transition-opacity duration-150 group-hover/card:opacity-100 focus-within:opacity-100"
+          className="absolute right-2.5 top-11 z-20 flex items-center gap-1 rounded-md border border-border bg-card/95 p-1 opacity-0 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_24px_-12px_rgba(15,23,42,0.18)] backdrop-blur transition-opacity duration-150 group-hover/card:opacity-100 focus-within:opacity-100"
         >
           {/* Type popover */}
           <ToolbarButton
@@ -609,7 +668,7 @@ const ChartCard = ({
             onClick={() => setOpen(open === "refine" ? null : "refine")}
             icon={MessageSquarePlus}
           />
-          <span className="mx-0.5 h-4 w-px bg-slate-200" />
+          <span className="mx-0.5 h-4 w-px bg-border" />
           {/* Regenerate */}
           <ToolbarButton
             label="Regenerate"
@@ -652,14 +711,14 @@ const ChartCard = ({
                   onClick={() =>
                     fire(`Change chart ${slot} to a ${id} chart. Keep the same metric and grouping.`)
                   }
-                  className="group/pill flex flex-col items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-2 text-[11px] font-medium text-slate-700 transition hover:-translate-y-px hover:border-emerald-300 hover:text-emerald-800 hover:shadow-sm disabled:opacity-50"
+                  className="group/pill flex flex-col items-center gap-1 rounded-md border border-border bg-card px-2 py-2 text-[11px] font-medium text-foreground transition hover:-translate-y-px hover:border-emerald-300 hover:text-emerald-800 hover:shadow-sm disabled:opacity-50 dark:hover:border-emerald-700 dark:hover:text-emerald-200"
                 >
-                  <Icon className="h-3.5 w-3.5 text-slate-500 group-hover/pill:text-emerald-600" />
+                  <Icon className="h-3.5 w-3.5 text-muted-foreground group-hover/pill:text-emerald-600 dark:group-hover/pill:text-emerald-400" />
                   {label}
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-[10.5px] text-slate-400" style={mono}>
+            <p className="mt-2 text-[10.5px] text-muted-foreground" style={mono}>
               the agent re-renders the chart
             </p>
           </PopoverPanel>
@@ -676,21 +735,21 @@ const ChartCard = ({
                   onClick={() =>
                     fire(`Recolor chart ${slot} using a ${label} palette (${swatch.join(", ")}).`)
                   }
-                  className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1.5 text-[12px] font-medium text-slate-700 transition hover:border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                  className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1.5 text-[12px] font-medium text-foreground transition hover:border-border hover:bg-muted disabled:opacity-50"
                 >
                   <span className="flex items-center gap-2">
                     <span className="flex">
                       {swatch.map((c) => (
                         <span
                           key={c}
-                          className="-ml-1 h-3.5 w-3.5 rounded-full ring-2 ring-white first:ml-0"
+                          className="-ml-1 h-3.5 w-3.5 rounded-full ring-2 ring-background first:ml-0"
                           style={{ background: c }}
                         />
                       ))}
                     </span>
                     {label}
                   </span>
-                  <ArrowUpRight className="h-3 w-3 text-slate-400" />
+                  <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
                 </button>
               ))}
             </div>
@@ -715,10 +774,10 @@ const ChartCard = ({
                 value={refineText}
                 onChange={(e) => setRefineText(e.target.value)}
                 placeholder="e.g. group by quarter, sort descending, add a moving average…"
-                className="w-full resize-none rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[12.5px] leading-5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15"
+                className="w-full resize-none rounded-md border border-input bg-background px-2 py-1.5 text-[12.5px] leading-5 text-foreground outline-none placeholder:text-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:border-input dark:focus:border-emerald-500"
               />
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[10.5px] text-slate-400" style={mono}>
+                <span className="text-[10.5px] text-muted-foreground" style={mono}>
                   refines this chart only
                 </span>
                 <button
@@ -744,20 +803,20 @@ const ChartCard = ({
       {/* Fullscreen overlay */}
       {expanded && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-6 backdrop-blur-sm"
           onClick={() => setExpanded(false)}
         >
           <div
-            className="relative flex h-full max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-2xl"
+            className="relative flex h-full max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-[14px] border border-border bg-card shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 bg-white px-4 py-3">
+            <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
               <div className="min-w-0">
-                <p className="truncate text-[14px] font-semibold tracking-tight text-slate-900">
+                <p className="truncate text-[14px] font-semibold tracking-tight text-foreground">
                   {titleLabel}
                 </p>
                 {meta?.description ? (
-                  <p className="mt-0.5 truncate text-[11.5px] text-slate-500">
+                  <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
                     {meta.description}
                   </p>
                 ) : null}
@@ -775,11 +834,11 @@ const ChartCard = ({
               html={html}
               className="flex-1 w-full overflow-auto p-4 [&_*]:max-w-full"
             />
-            <div className="flex items-center justify-end gap-1.5 border-t border-slate-100 bg-slate-50/60 px-3 py-2">
+            <div className="flex items-center justify-end gap-1.5 border-t border-border bg-muted/60 px-3 py-2">
               <button
                 type="button"
                 onClick={() => setExpanded(false)}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:border-slate-300"
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-[12px] font-semibold text-foreground hover:border-border"
               >
                 <Minimize2 className="h-3 w-3" /> Collapse
               </button>
@@ -821,9 +880,9 @@ const ToolbarButton = ({
     }}
     className={cn(
       "inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-[11px] font-medium transition",
-      "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
-      active && "bg-slate-900 text-white hover:bg-slate-900 hover:text-white",
-      tone === "danger" && "hover:bg-rose-50 hover:text-rose-600",
+      "text-muted-foreground hover:bg-muted hover:text-foreground",
+      active && "bg-foreground text-background hover:bg-foreground hover:text-background",
+      tone === "danger" && "hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400",
       disabled && "opacity-50",
     )}
   >
@@ -842,7 +901,7 @@ const PopoverPanel = ({
   <div
     onMouseDown={(e) => e.stopPropagation()}
     className={cn(
-      "absolute right-2.5 top-[78px] z-30 rounded-[10px] border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.22)]",
+      "absolute right-2.5 top-[78px] z-30 rounded-[10px] border border-border bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.22)]",
       wide ? "w-[320px]" : "w-[220px]",
     )}
   >
@@ -862,8 +921,8 @@ const SqlPreview = ({ sql }: { sql: string }) => {
     }
   };
   return (
-    <section className="mb-5 overflow-hidden rounded-[10px] border border-slate-200/80 bg-slate-950 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_4px_12px_-6px_rgba(15,23,42,0.18)]">
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+    <section className="mb-5 overflow-hidden rounded-[10px] border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.06),0_4px_12px_-6px_rgba(15,23,42,0.18)]">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-1.5">
           <Code2 className="h-3.5 w-3.5 text-emerald-400" />
           <span
@@ -876,7 +935,7 @@ const SqlPreview = ({ sql }: { sql: string }) => {
         <button
           type="button"
           onClick={copy}
-          className="inline-flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-slate-200 transition hover:bg-white/10"
+          className="inline-flex h-6 items-center gap-1 rounded bg-muted px-1.5 text-[11px] font-medium text-muted-foreground transition hover:bg-muted/80"
         >
           <Copy className="h-3 w-3" /> {copied ? "Copied" : "Copy"}
         </button>
@@ -899,8 +958,8 @@ const ChatBubble = ({ message }: { message: ChatMessage }) => {
         className={cn(
           "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 ring-inset",
           isUser
-            ? "bg-slate-100 text-slate-600 ring-slate-200"
-            : "bg-emerald-50 text-emerald-700 ring-emerald-200",
+            ? "bg-muted text-muted-foreground ring-border"
+            : "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800",
         )}
       >
         {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
@@ -909,8 +968,8 @@ const ChatBubble = ({ message }: { message: ChatMessage }) => {
         className={cn(
           "max-w-[78%] rounded-[10px] px-3 py-2 text-[12.5px] leading-5 ring-1 ring-inset",
           isUser
-            ? "bg-slate-50 text-slate-800 ring-slate-200"
-            : "bg-white text-slate-700 ring-slate-200/80 shadow-[0_1px_0_rgba(15,23,42,0.03)]",
+            ? "bg-muted text-foreground ring-border"
+            : "bg-card text-foreground ring-border shadow-[0_1px_0_rgba(15,23,42,0.03)]",
         )}
       >
         {message.content}
@@ -921,11 +980,11 @@ const ChatBubble = ({ message }: { message: ChatMessage }) => {
 
 const EmptyChat = ({ onPick }: { onPick: (s: string) => void }) => (
   <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-    <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-200">
-      <Sparkles className="h-4 w-4 text-emerald-600" />
+    <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950 dark:ring-emerald-800">
+      <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
     </div>
-    <p className="text-[13px] font-semibold text-slate-900">Refine your dashboard</p>
-    <p className="max-w-[260px] text-[11.5px] text-slate-500">
+    <p className="text-[13px] font-semibold text-foreground">Refine your dashboard</p>
+    <p className="max-w-[260px] text-[11.5px] text-muted-foreground">
       Ask the agent to add charts, replace metrics, explain anomalies — all in plain English.
     </p>
     <div className="mt-1 flex w-full flex-col gap-1.5">
@@ -934,10 +993,10 @@ const EmptyChat = ({ onPick }: { onPick: (s: string) => void }) => (
           key={s}
           type="button"
           onClick={() => onPick(s)}
-          className="inline-flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left text-[12px] text-slate-700 transition hover:border-slate-300"
+          className="inline-flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-left text-[12px] text-foreground transition hover:border-border"
         >
           <span className="truncate">{s}</span>
-          <ArrowUpRight className="h-3 w-3 text-slate-400" />
+          <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
         </button>
       ))}
     </div>
@@ -948,24 +1007,24 @@ const CanvasSkeleton = () => (
   <div className="space-y-4">
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="h-[68px] animate-pulse rounded-[10px] bg-slate-100" />
+        <div key={i} className="h-[68px] animate-pulse rounded-[10px] bg-muted" />
       ))}
     </div>
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="h-[280px] animate-pulse rounded-[12px] bg-slate-100" />
+        <div key={i} className="h-[280px] animate-pulse rounded-[12px] bg-muted" />
       ))}
     </div>
   </div>
 );
 
 const CanvasError = ({ onRetry }: { onRetry: () => void }) => (
-  <div className="flex flex-col items-center justify-center gap-3 rounded-[12px] border border-rose-200 bg-rose-50/40 px-6 py-12 text-center">
-    <p className="text-[13px] font-semibold text-rose-800">Couldn't load this dashboard</p>
+  <div className="flex flex-col items-center justify-center gap-3 rounded-[12px] border border-rose-200 bg-rose-50/40 px-6 py-12 text-center dark:border-rose-800 dark:bg-rose-950/40">
+    <p className="text-[13px] font-semibold text-rose-800 dark:text-rose-300">Couldn't load this dashboard</p>
     <button
       type="button"
       onClick={onRetry}
-      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white px-3 text-[12px] font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 hover:ring-slate-300"
+      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-card px-3 text-[12px] font-semibold text-foreground ring-1 ring-inset ring-border hover:ring-border"
     >
       Try again
     </button>
@@ -973,12 +1032,12 @@ const CanvasError = ({ onRetry }: { onRetry: () => void }) => (
 );
 
 const CanvasEmpty = () => (
-  <div className="flex flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-slate-200 bg-slate-50/40 px-6 py-16 text-center">
-    <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-200">
-      <Sparkles className="h-4 w-4 text-emerald-600" />
+  <div className="flex flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-border bg-muted/40 px-6 py-16 text-center">
+    <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950 dark:ring-emerald-800">
+      <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
     </div>
-    <p className="text-[13px] font-semibold text-slate-900">No charts yet</p>
-    <p className="max-w-xs text-[11.5px] text-slate-500">
+    <p className="text-[13px] font-semibold text-foreground">No charts yet</p>
+    <p className="max-w-xs text-[11.5px] text-muted-foreground">
       Ask the agent on the left to add the first chart.
     </p>
   </div>

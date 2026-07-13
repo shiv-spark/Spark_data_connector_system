@@ -378,23 +378,23 @@ export const MultiSource = () => {
           <div className="flex items-center">
             {STEPS.map((step, idx) => (
               <div key={step.id} className="flex flex-1 items-center last:flex-none">
-                <button type="button" onClick={() => goToStep(step.id)} className="flex items-center gap-2 group">
-                  <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors ${
-                      step.id === currentStep
-                        ? "border-emerald-600 bg-emerald-600 text-white"
-                        : step.id < currentStep
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-600"
-                        : "border-slate-300 bg-white text-slate-400 group-hover:border-slate-400"
-                    }`}
-                  >
-                    {step.id < currentStep ? <Check className="h-4 w-4" /> : step.id}
-                  </span>
-                  <span className={`hidden text-sm font-medium sm:block ${step.id === currentStep ? "text-slate-950" : step.id < currentStep ? "text-emerald-700" : "text-slate-400"}`}>
-                    {step.label}
-                  </span>
-                </button>
-                {idx < STEPS.length - 1 && <div className={`mx-3 h-0.5 flex-1 ${step.id < currentStep ? "bg-emerald-600" : "bg-slate-200"}`} />}
+                  <button type="button" onClick={() => goToStep(step.id)} className="flex items-center gap-2 group">
+                   <span
+                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors ${
+                       step.id === currentStep
+                         ? "border-emerald-600 bg-emerald-600 text-white"
+                         : step.id < currentStep
+                         ? "border-emerald-600 bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400"
+                         : "border-border bg-background text-muted-foreground group-hover:border-muted-foreground"
+                     }`}
+                   >
+                     {step.id < currentStep ? <Check className="h-4 w-4" /> : step.id}
+                   </span>
+                   <span className={`hidden text-sm font-medium sm:block ${step.id === currentStep ? "text-foreground" : step.id < currentStep ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                     {step.label}
+                   </span>
+                 </button>
+                 {idx < STEPS.length - 1 && <div className={`mx-3 h-0.5 flex-1 ${step.id < currentStep ? "bg-emerald-600" : "bg-border"}`} />}
               </div>
             ))}
           </div>
@@ -437,20 +437,20 @@ export const MultiSource = () => {
             {currentStep === 2 && (
               <div className="space-y-4">
                 {/* Tab bar */}
-                <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
-                  {sources.map((source, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => setActiveSourceTab(index)}
-                      className={`flex items-center gap-2 rounded-t-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                        activeSourceTab === index
-                          ? "bg-slate-100 text-slate-950"
-                          : "text-muted-foreground hover:bg-slate-50"
-                      }`}
-                    >
-                      Source {index + 1}
-                      <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">{CONNECTOR_LABELS[source.connector_type]}</span>
+                <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
+                   {sources.map((source, index) => (
+                     <button
+                       key={index}
+                       type="button"
+                       onClick={() => setActiveSourceTab(index)}
+                       className={`flex items-center gap-2 rounded-t-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                         activeSourceTab === index
+                           ? "bg-muted text-foreground"
+                           : "text-muted-foreground hover:bg-muted/50"
+                       }`}
+                     >
+                       Source {index + 1}
+                       <span className="rounded bg-muted px-1.5 py-0.5 text-xs">{CONNECTOR_LABELS[source.connector_type]}</span>
                       {sources.length > 1 && (
                         <Trash2
                           className="h-3 w-3 text-muted-foreground hover:text-destructive"
@@ -487,7 +487,7 @@ export const MultiSource = () => {
                       </label>
 
                       {SUPPORTS_CONNECTIONS.includes(source.connector_type) && (
-                        <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                         <div className="rounded-md border border-border bg-muted/50 p-3">
                           <div className="flex items-center gap-4">
                             <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                               <input
@@ -518,7 +518,7 @@ export const MultiSource = () => {
                               {connections.isLoading ? (
                                 <p className="text-sm text-muted-foreground">Loading connections...</p>
                               ) : filteredConnections.length === 0 ? (
-                                <p className="text-sm text-red-500">No saved connections for this connector type. Please create a new connection.</p>
+                                <p className="text-sm text-destructive">No saved connections for this connector type. Please create a new connection.</p>
                               ) : (
                                 <select
                                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -535,7 +535,7 @@ export const MultiSource = () => {
                                   ))}
                                 </select>
                               )}
-                              {connState.connectionError && <p className="mt-2 text-sm text-red-500">{connState.connectionError}</p>}
+                              {connState.connectionError && <p className="mt-2 text-sm text-destructive">{connState.connectionError}</p>}
                             </div>
                           )}
                         </div>
@@ -576,7 +576,7 @@ export const MultiSource = () => {
                               }}
                             />
                           </label>
-                          {apiConfigErrors[index] && <p className="text-sm text-red-500">{apiConfigErrors[index]}</p>}
+                           {apiConfigErrors[index] && <p className="text-sm text-destructive">{apiConfigErrors[index]}</p>}
                         </div>
                       )}
                       {source.connector_type === "s3" && (
@@ -634,8 +634,8 @@ export const MultiSource = () => {
             {/* ══════════════════ STEP 4 — REVIEW ══════════════════ */}
             {currentStep === 4 && (
               <div className="space-y-4">
-                <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
-                  <h3 className="mb-3 font-semibold text-slate-950">Pipeline overview</h3>
+                 <div className="rounded-md border border-border bg-muted/50 p-4 text-sm">
+                   <h3 className="mb-3 font-semibold text-foreground">Pipeline overview</h3>
                   <dl className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
                     <div><dt className="text-muted-foreground">Pipeline name</dt><dd className="font-medium">{pipelineName || "—"}</dd></div>
                     <div><dt className="text-muted-foreground">Target table</dt><dd className="font-medium">{tableName || "—"}</dd></div>
@@ -644,12 +644,12 @@ export const MultiSource = () => {
                   </dl>
                 </div>
 
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-slate-950">Sources ({sources.length})</h3>
-                  {sources.map((source, index) => {
-                    const connState = sourceConnectionStates[index];
-                    return (
-                      <div key={index} className="rounded-md border border-slate-200 bg-white p-3 text-sm">
+                 <div className="space-y-2">
+                   <h3 className="text-sm font-semibold text-foreground">Sources ({sources.length})</h3>
+                   {sources.map((source, index) => {
+                     const connState = sourceConnectionStates[index];
+                     return (
+                       <div key={index} className="rounded-md border border-border bg-card p-3 text-sm">
                         <div className="flex items-center justify-between">
                           <span className="font-medium">Source {index + 1}: {CONNECTOR_LABELS[source.connector_type]}</span>
                           {index === 0 && <span className="text-xs text-muted-foreground">uses pipeline load option</span>}
@@ -666,10 +666,10 @@ export const MultiSource = () => {
               </div>
             )}
 
-            {stepError && <p className="text-sm text-red-500">{stepError}</p>}
+            {stepError && <p className="text-sm text-destructive">{stepError}</p>}
 
             {/* ══════════════════ NAVIGATION ══════════════════ */}
-            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between border-t border-border pt-4">
               <Button type="button" variant="outline" onClick={goBack} disabled={currentStep === 1}>
                 <ChevronLeft className="h-4 w-4" /> Back
               </Button>
@@ -689,35 +689,35 @@ export const MultiSource = () => {
       </Card>
 
       {result && (
-        <Card className="border-emerald-200 bg-emerald-50">
-          <CardContent className="flex items-start gap-3 p-4">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-            <div className="space-y-1">
-              <p className="font-medium text-emerald-900">Pipeline created successfully</p>
-              <p className="text-sm text-emerald-800">
-                <span className="font-medium">{result.dag_id}</span> is set up and will start running on schedule.
-              </p>
-              {result.message && <p className="text-xs text-emerald-700">{result.message}</p>}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+         <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950">
+           <CardContent className="flex items-start gap-3 p-4">
+             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+             <div className="space-y-1">
+               <p className="font-medium text-emerald-900 dark:text-emerald-100">Pipeline created successfully</p>
+               <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                 <span className="font-medium">{result.dag_id}</span> is set up and will start running on schedule.
+               </p>
+               {result.message && <p className="text-xs text-emerald-700 dark:text-emerald-300">{result.message}</p>}
+             </div>
+           </CardContent>
+         </Card>
+       )}
 
 {create.error && (
-        <Card className="border-rose-200 bg-rose-50">
-          <CardContent className="flex items-start gap-3 p-4">
-            <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
-            <div className="space-y-1">
-              <p className="font-medium text-rose-900">Couldn't create pipeline</p>
-              <p className="text-sm text-rose-800">
-                {(create.error as any)?.response?.data?.detail?.error
-                  || (create.error as any)?.response?.data?.detail
-                  || (create.error as Error).message}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+         <Card className="border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950">
+           <CardContent className="flex items-start gap-3 p-4">
+             <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+             <div className="space-y-1">
+               <p className="font-medium text-rose-900 dark:text-rose-100">Couldn\'t create pipeline</p>
+               <p className="text-sm text-rose-800 dark:text-rose-200">
+                 {(create.error as any)?.response?.data?.detail?.error
+                   || (create.error as any)?.response?.data?.detail
+                   || (create.error as Error).message}
+               </p>
+             </div>
+           </CardContent>
+         </Card>
+       )}
     </div>
   );
 };

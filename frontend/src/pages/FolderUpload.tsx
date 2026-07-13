@@ -88,14 +88,14 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
   };
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div className="space-y-3 rounded-md border border-border bg-muted/50 p-3">
       <p className="text-xs font-medium text-muted-foreground">
         Browse an existing folder to pick a file or use the whole folder — or upload a new file.
       </p>
 
       <div className="flex items-center gap-2">
         <select
-          className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+          className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm text-foreground"
           value={browseFolder}
           onChange={(e) => setBrowseFolder(e.target.value)}
         >
@@ -113,7 +113,7 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
             <button
               type="button"
               onClick={() => onFolderResolved(currentFolder.folder_path)}
-              className="whitespace-nowrap rounded-md border border-input bg-white px-3 py-2 text-sm hover:bg-slate-50"
+              className="whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground hover:bg-muted"
               title="Use every file inside this folder"
             >
               <Folder className="mr-1 inline h-3.5 w-3.5" /> Use whole folder
@@ -122,7 +122,7 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
               type="button"
               onClick={() => handleDeleteFolder(currentFolder.folder_name)}
               disabled={deleteFolder.isPending}
-              className="whitespace-nowrap rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+              className="whitespace-nowrap rounded-md border border-destructive/50 bg-background px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
               title="Delete this folder and all files inside it"
             >
               {deleteFolder.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -133,15 +133,15 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
 
       {currentFolder && (
         currentFolder.files.length > 0 ? (
-          <div className="rounded-md border border-slate-200 bg-white">
-            <p className="border-b border-slate-100 px-3 py-2 text-xs font-medium text-muted-foreground">
+          <div className="rounded-md border border-border bg-background">
+            <p className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
               Or pick one file from "{currentFolder.folder_name}"
             </p>
             <div className="max-h-40 overflow-auto">
               {currentFolder.files.map((fname: string) => (
                 <div
                   key={fname}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-emerald-50"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
                 >
                   <button
                     type="button"
@@ -155,7 +155,7 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
                     type="button"
                     onClick={() => handleDeleteFile(currentFolder.folder_name, fname)}
                     disabled={deleteFile.isPending}
-                    className="shrink-0 text-red-500 hover:text-red-700 disabled:opacity-50"
+                    className="shrink-0 text-destructive hover:text-destructive/80 disabled:opacity-50"
                     title="Delete this file"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -181,13 +181,13 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
           <button
             type="button"
             onClick={() => setShowNewFolderInput(true)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-slate-700"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <FolderPlus className="h-3.5 w-3.5" /> Or create a new folder
           </button>
         )}
 
-        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-white px-3 py-2 text-sm hover:bg-slate-50">
+        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground hover:bg-muted">
           <Upload className="h-4 w-4" />
           {upload.isPending ? "Uploading..." : "Upload file"}
           <input
@@ -200,8 +200,8 @@ export const FolderUpload = ({ connectorType, onFolderResolved, onFileResolved }
           />
         </label>
         {upload.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-        {upload.isSuccess && <span className="text-xs text-emerald-600">Uploaded: {upload.data.file_name}</span>}
-        {upload.isError && <span className="text-xs text-red-500">Upload failed</span>}
+        {upload.isSuccess && <span className="text-xs text-emerald-600 dark:text-emerald-400">Uploaded: {upload.data.file_name}</span>}
+        {upload.isError && <span className="text-xs text-destructive">Upload failed</span>}
       </div>
     </div>
   );

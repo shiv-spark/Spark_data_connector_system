@@ -11,6 +11,7 @@ class PipelineState(TypedDict):
     api_url:       Optional[str]
     api_headers:   Optional[dict]
     user_request:  str
+    model:         Optional[str]
     # results
     data:           dict
     null_result:    dict
@@ -25,3 +26,4 @@ class PipelineState(TypedDict):
     report:         dict
     ai_summary:     str
     error:          Optional[str]
+

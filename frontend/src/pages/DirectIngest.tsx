@@ -38,7 +38,6 @@ const initial = {
   bucket: "",
   key: "",
   file_type: "csv",
-  // ── Snowflake fields ──────────────────
   sf_account: "",
   sf_user: "",
   sf_password: "",
@@ -80,7 +79,7 @@ export const DirectIngest = () => {
         csv: { ...common, file_path: form.file_path },
         excel: { ...common, file_path: form.file_path },
         google_sheets: { ...common, sheet_url: form.sheet_url },
-        api: { ...common, url: form.url, ...parsedApiConfig },   // ← spread flattened onto APIRequest fields
+        api: { ...common, url: form.url, ...parsedApiConfig },
         postgres: { ...common, host: form.host, database: form.database, user: form.user, password: form.password, port: form.port, query: form.query },
         s3: { ...common, bucket: form.bucket, key: form.key, file_type: form.file_type },
         snowflake: {
@@ -118,30 +117,30 @@ export const DirectIngest = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2"><DownloadCloud className="h-5 w-5" /> Direct Ingest</h2>
-      <Card>
-        <CardHeader><CardTitle className="text-sm">Run One-Time Ingestion</CardTitle></CardHeader>
+      <h2 className="h-section flex items-center gap-2 text-foreground"><DownloadCloud className="h-5 w-5" /> Direct Ingest</h2>
+      <Card className="bg-card border-border">
+        <CardHeader><CardTitle className="text-sm text-foreground">Run One-Time Ingestion</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <label className="space-y-1 text-sm font-medium">
+              <label className="space-y-1 text-sm font-medium text-foreground">
                 Connector
-                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.connector} onChange={(e) => update("connector", e.target.value as Connector)}>
+                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground dark:bg-background dark:text-foreground" value={form.connector} onChange={(e) => update("connector", e.target.value as Connector)}>
                   {Object.entries(connectorLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
-              <label className="space-y-1 text-sm font-medium">Target table<Input value={form.table_name} onChange={(e) => update("table_name", e.target.value)} required /></label>
-              <label className="space-y-1 text-sm font-medium">
+              <label className="space-y-1 text-sm font-medium text-foreground">Target table<Input value={form.table_name} onChange={(e) => update("table_name", e.target.value)} required /></label>
+              <label className="space-y-1 text-sm font-medium text-foreground">
                 Load option
-                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.option} onChange={(e) => update("option", e.target.value)}>
+                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground dark:bg-background dark:text-foreground" value={form.option} onChange={(e) => update("option", e.target.value)}>
                   <option value="1">Append</option>
                   <option value="2">Overwrite</option>
                   <option value="3">Create new</option>
                 </select>
               </label>
-              <label className="space-y-1 text-sm font-medium">
+              <label className="space-y-1 text-sm font-medium text-foreground">
                 Sync mode
-                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
+                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground dark:bg-background dark:text-foreground" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
                   <option value="full">Full</option>
                   <option value="incremental">Incremental</option>
                 </select>
@@ -149,12 +148,12 @@ export const DirectIngest = () => {
             </div>
 
             {form.sync_mode === "incremental" && (
-              <label className="block max-w-md space-y-1 text-sm font-medium">Incremental column<Input value={form.incremental_column} onChange={(e) => update("incremental_column", e.target.value)} /></label>
+              <label className="block max-w-md space-y-1 text-sm font-medium text-foreground">Incremental column<Input value={form.incremental_column} onChange={(e) => update("incremental_column", e.target.value)} /></label>
             )}
 
             {["csv", "excel"].includes(form.connector) && (
               <div className="space-y-3">
-                <label className="block space-y-1 text-sm font-medium">
+                <label className="block space-y-1 text-sm font-medium text-foreground">
                   File path
                   <Input value={form.file_path} onChange={(e) => update("file_path", e.target.value)} placeholder="Type a path OR pick a folder below and upload" />
                 </label>
@@ -165,16 +164,16 @@ export const DirectIngest = () => {
                 />
               </div>
             )}
-                        {form.connector === "google_sheets" && (
-              <label className="block space-y-1 text-sm font-medium">Sheet URL<Input value={form.sheet_url} onChange={(e) => update("sheet_url", e.target.value)} required /></label>
+            {form.connector === "google_sheets" && (
+              <label className="block space-y-1 text-sm font-medium text-foreground">Sheet URL<Input value={form.sheet_url} onChange={(e) => update("sheet_url", e.target.value)} required /></label>
             )}
             {form.connector === "api" && (
               <div className="space-y-2">
-                <label className="block space-y-1 text-sm font-medium">API URL<Input value={form.url} onChange={(e) => update("url", e.target.value)} required /></label>
-                <label className="space-y-1 text-sm font-medium block">
+                <label className="block space-y-1 text-sm font-medium text-foreground">API URL<Input value={form.url} onChange={(e) => update("url", e.target.value)} required /></label>
+                <label className="space-y-1 text-sm font-medium block text-foreground">
                   Advanced Config (optional JSON — method, auth_type, body, pagination, etc.)
                   <textarea
-                    className="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
+                    className="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground dark:bg-background dark:text-foreground"
                     placeholder='{"method": "POST", "auth_type": "bearer", "bearer_token": "...", "pagination_type": "page"}'
                     value={form.api_config}
                     onChange={(e) => {
@@ -183,7 +182,7 @@ export const DirectIngest = () => {
                     }}
                   />
                 </label>
-                {apiConfigError && <p className="text-sm text-red-500">{apiConfigError}</p>}
+                {apiConfigError && <p className="text-sm text-red-500 dark:text-red-400">{apiConfigError}</p>}
               </div>
             )}
             {form.connector === "postgres" && (
@@ -193,7 +192,7 @@ export const DirectIngest = () => {
                 <Input placeholder="User" value={form.user} onChange={(e) => update("user", e.target.value)} required />
                 <Input placeholder="Password" type="password" value={form.password} onChange={(e) => update("password", e.target.value)} required />
                 <Input placeholder="Port" value={form.port} onChange={(e) => update("port", e.target.value)} />
-                <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={form.query} onChange={(e) => update("query", e.target.value)} required />
+                <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground md:col-span-2" placeholder="SQL query" value={form.query} onChange={(e) => update("query", e.target.value)} required />
               </div>
             )}
             {form.connector === "s3" && (
@@ -212,7 +211,7 @@ export const DirectIngest = () => {
                 <Input placeholder="Database" value={form.sf_database} onChange={(e) => update("sf_database", e.target.value)} required />
                 <Input placeholder="Schema (default PUBLIC)" value={form.sf_schema} onChange={(e) => update("sf_schema", e.target.value)} />
                 <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
-                <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={form.sf_query} onChange={(e) => update("sf_query", e.target.value)} required />
+                <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground md:col-span-2" placeholder="SQL query" value={form.sf_query} onChange={(e) => update("sf_query", e.target.value)} required />
               </div>
             )}
 
@@ -224,9 +223,9 @@ export const DirectIngest = () => {
       </Card>
 
       {(result || ingest.error) && (
-        <Card className={ingest.error ? "border-rose-200 bg-rose-50" : "border-emerald-200 bg-emerald-50"}>
+        <Card className={ingest.error ? "border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950" : "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950"}>
           <CardContent className="p-4">
-            <pre className="max-h-80 overflow-auto text-xs">{JSON.stringify(result ?? (ingest.error as any)?.response?.data ?? (ingest.error as Error).message, null, 2)}</pre>
+            <pre className="max-h-80 overflow-auto text-xs text-foreground">{JSON.stringify(result ?? (ingest.error as any)?.response?.data ?? (ingest.error as Error).message, null, 2)}</pre>
           </CardContent>
         </Card>
       )}

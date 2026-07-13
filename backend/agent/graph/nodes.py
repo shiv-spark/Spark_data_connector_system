@@ -3,7 +3,8 @@ from openai import OpenAI
 from agent.graph.state import PipelineState
 from agent.logger import get_logger
 from agent.tools.data_tools     import (fetch_pipeline_runs, fetch_pipeline_metrics,
-                                         fetch_data_by_source, fetch_full_pipeline_summary)
+                                         fetch_data_by_source, fetch_full_pipeline_summary,
+                                         fetch_table_data)
 from agent.tools.analysis_tools import (check_nulls_and_missing, check_duplicates,
                                          get_descriptive_stats, detect_outliers,
                                          get_correlation_matrix, check_data_type_issues,
@@ -49,13 +50,56 @@ def _get_model():
         return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     return os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
+def _resolve_model(state: PipelineState) -> str:
+    """Use the user-selected model if provided, else fall back to env default."""
+    override = (state.get("model") or "").strip()
+    if override:
+        return override
+    return _get_model()
+
+# def node_fetch_data(state: PipelineState) -> dict:
+#     logger.info("═══ Node: fetch_data ═══  source=%s, pipeline=%s",
+#                 state["source_type"], state.get("pipeline_name"))
+#     try:
+#         if state["source_type"] == "postgres":
+#             data = fetch_full_pipeline_summary(state.get("pipeline_name"))
+#         else:
+#             raw  = fetch_data_by_source(state["source_type"],
+#                                         file_path     = state.get("file_path"),
+#                                         sheet_url     = state.get("sheet_url"),
+#                                         pipeline_name = state.get("pipeline_name"),
+#                                         table_name    = state.get("table_name"),
+#                                         s3_path       = state.get("s3_path"),
+#                                         api_url       = state.get("api_url"),
+#                                         api_headers   = state.get("api_headers"))
+#             data = {"metrics": raw, "runs": []}
+#         logger.info("fetch_data → metrics=%d, runs=%d",
+#                     len(data.get("metrics", [])), len(data.get("runs", [])))
+#         return {"data": data}
+#     except Exception as e:
+#         logger.error("fetch_data failed: %s", e, exc_info=True)
+#         return {"data": {}, "error": str(e)}
+
 
 def node_fetch_data(state: PipelineState) -> dict:
     logger.info("═══ Node: fetch_data ═══  source=%s, pipeline=%s",
                 state["source_type"], state.get("pipeline_name"))
     try:
         if state["source_type"] == "postgres":
-            data = fetch_full_pipeline_summary(state.get("pipeline_name"))
+            table_name = state.get("table_name")
+            if table_name:
+                # Analyze the ACTUAL data table (e.g. "dash"), not the
+                # pipeline_metrics ingestion-log table. Also pull recent
+                # runs so health_check still works downstream.
+                metrics = fetch_table_data(table_name)
+                runs = fetch_pipeline_runs(state.get("pipeline_name"))
+                data = {"metrics": metrics, "runs": runs}
+                logger.info("fetch_data (postgres/table) → table=%s, rows=%d",
+                            table_name, len(metrics))
+            else:
+                # No table_name given — fall back to old behaviour
+                # (pipeline run/metrics summary only).
+                data = fetch_full_pipeline_summary(state.get("pipeline_name"))
         else:
             raw  = fetch_data_by_source(state["source_type"],
                                         file_path     = state.get("file_path"),
@@ -72,7 +116,6 @@ def node_fetch_data(state: PipelineState) -> dict:
     except Exception as e:
         logger.error("fetch_data failed: %s", e, exc_info=True)
         return {"data": {}, "error": str(e)}
-
 
 def node_null_analysis(state: PipelineState) -> dict:
     logger.info("═══ Node: null_analysis ═══")
@@ -246,7 +289,8 @@ Respond ONLY with a valid JSON array of exactly 4 objects, no markdown, no extra
             else:
                 try:
                     resp = _get_llm().chat.completions.create(
-                        model    = _get_model(),
+                        # model    = _get_model(),
+                        model    = _resolve_model(state),
                         messages = [{"role": "user", "content": decision_prompt}],
                         max_tokens = 600,
                     )
@@ -439,7 +483,8 @@ def _fallback_chart_configs(df, numeric, categ, datetime_cols):
 
 
 def node_llm_summary(state: PipelineState) -> dict:
-    model = _get_model()
+    model = _resolve_model(state)          
+    # model = _get_model()
     logger.info("═══ Node: llm_summary ═══  (calling %s)", model)
     prompt = f"""You are a senior data analyst. Write a detailed summary (min 150 words) based on these results.
 Use exact column names and numbers. End with top 3-5 prioritised recommendations.

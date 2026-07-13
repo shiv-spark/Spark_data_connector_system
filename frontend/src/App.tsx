@@ -1,5 +1,5 @@
 
-import { Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { DashboardStudio } from "@/pages/DashboardStudio";
 import { DashboardEditor } from "@/pages/DashboardEditor";
@@ -15,26 +15,7 @@ import { MultiSource } from "@/pages/MultiSource";
 import { Assistant } from "@/pages/Assistant";
 import Text2SQL from "@/pages/Text2SQL";
 import DataGenerator from "@/pages/DataGenerator";
-// import { Login } from "@/pages/Login";
-// import { UserManagement } from "@/pages/UserManagement";
-// import { AuditLog } from "@/pages/AuditLog";
 import SqlEditor from "@/pages/SqlEditor";
-// import { isAuthenticated, isAdmin } from "@/lib/auth";
-
-// // Wraps everything that needs a logged-in user. If there's no valid
-// // token, bounce to /login. <Outlet /> renders whichever nested route
-// // matched (Layout + its children below).
-// const ProtectedRoute = () => {
-//   if (!isAuthenticated()) return <Navigate to="/login" replace />;
-//   return <Outlet />;
-// };
-
-// // Wraps admin-only pages (user management, audit log). Non-admins get
-// // sent back to the dashboard rather than seeing a blank/broken page.
-// const AdminRoute = () => {
-//   if (!isAdmin()) return <Navigate to="/" replace />;
-//   return <Outlet />;
-// };
 
 
 export default function App() {

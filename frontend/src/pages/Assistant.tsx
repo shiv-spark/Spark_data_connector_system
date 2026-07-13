@@ -54,10 +54,10 @@ export const Assistant = () => {
             <Input placeholder="Model" value={model} onChange={(e) => setModel(e.target.value)} />
             <Input placeholder="Pipeline filter" value={pipelineName} onChange={(e) => setPipelineName(e.target.value)} />
           </div>
-          <div className="min-h-[360px] space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+          <div className="min-h-[360px] space-y-3 rounded-md border border-border bg-card p-4">
             {messages.length === 0 ? <p className="text-sm text-muted-foreground">Ask about failures, rows loaded, slow runs, schema changes, or pipeline logs.</p> : null}
             {messages.map((message, index) => (
-              <div key={index} className={message.role === "user" ? "ml-auto max-w-3xl rounded-md bg-slate-950 px-3 py-2 text-sm text-white" : "max-w-3xl whitespace-pre-wrap rounded-md border bg-white px-3 py-2 text-sm text-slate-800"}>
+              <div key={index} className={message.role === "user" ? "ml-auto max-w-3xl rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground dark:bg-primary dark:text-primary-foreground" : "max-w-3xl whitespace-pre-wrap rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"}>
                 {message.content}
               </div>
             ))}

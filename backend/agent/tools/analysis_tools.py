@@ -19,6 +19,36 @@ def _to_df(data: list[dict]) -> pd.DataFrame:
 
 # ─── 1. Null & Missing ────────────────────────────────────────────────────────
 
+# def check_nulls_and_missing(data: list[dict]) -> dict:
+#     """Returns null count, null %, and missing value summary per column."""
+#     logger.info("check_nulls_and_missing → %d records", len(data) if data else 0)
+#     df = _to_df(data)
+#     if df.empty:
+#         logger.error("check_nulls_and_missing: No data provided")
+#         return {"error": "No data provided"}
+
+#     total = len(df)
+#     null_counts  = df.isnull().sum().to_dict()
+#     null_pct     = (df.isnull().mean() * 100).round(2).to_dict()
+#     empty_str    = {col: int((df[col].astype(str).str.strip() == "").sum())
+#                     for col in df.select_dtypes(include="object").columns}
+
+#     critical = [col for col, pct in null_pct.items() if pct > 20]
+#     warning  = [col for col, pct in null_pct.items() if 5 < pct <= 20]
+
+#     logger.info("Null analysis complete → critical=%d, warning=%d, total_rows=%d",
+#                 len(critical), len(warning), total)
+#     logger.debug("Critical columns: %s", critical)
+#     logger.debug("Warning columns: %s", warning)
+
+#     return {
+#         "total_rows":    total,
+#         "null_counts":   null_counts,
+#         "null_pct":      null_pct,
+#         "empty_strings": empty_str,
+#         "critical_cols": critical,   # >20% null
+#         "warning_cols":  warning,    # 5–20% null
+#     }
 def check_nulls_and_missing(data: list[dict]) -> dict:
     """Returns null count, null %, and missing value summary per column."""
     logger.info("check_nulls_and_missing → %d records", len(data) if data else 0)
@@ -28,6 +58,7 @@ def check_nulls_and_missing(data: list[dict]) -> dict:
         return {"error": "No data provided"}
 
     total = len(df)
+    total_columns = len(df.columns)          # ← NEW
     null_counts  = df.isnull().sum().to_dict()
     null_pct     = (df.isnull().mean() * 100).round(2).to_dict()
     empty_str    = {col: int((df[col].astype(str).str.strip() == "").sum())
@@ -36,20 +67,20 @@ def check_nulls_and_missing(data: list[dict]) -> dict:
     critical = [col for col, pct in null_pct.items() if pct > 20]
     warning  = [col for col, pct in null_pct.items() if 5 < pct <= 20]
 
-    logger.info("Null analysis complete → critical=%d, warning=%d, total_rows=%d",
-                len(critical), len(warning), total)
+    logger.info("Null analysis complete → critical=%d, warning=%d, total_rows=%d, total_columns=%d",
+                len(critical), len(warning), total, total_columns)
     logger.debug("Critical columns: %s", critical)
     logger.debug("Warning columns: %s", warning)
 
     return {
         "total_rows":    total,
+        "total_columns": total_columns,     
         "null_counts":   null_counts,
         "null_pct":      null_pct,
         "empty_strings": empty_str,
-        "critical_cols": critical,   # >20% null
-        "warning_cols":  warning,    # 5–20% null
+        "critical_cols": critical,
+        "warning_cols":  warning,
     }
-
 
 # ─── 2. Duplicates ────────────────────────────────────────────────────────────
 
