@@ -30,8 +30,8 @@ const sourceOptions: { value: SourceType; label: string; icon: typeof Database }
   { value: "pipeline", label: "Pipeline", icon: Workflow },
   { value: "csv", label: "CSV", icon: FileSpreadsheet },
   { value: "excel", label: "Excel", icon: FileSpreadsheet },
-  { value: "postgres", label: "Postgres", icon: Database },
-  { value: "snowflake", label: "Snowflake", icon: Snowflake },
+  // { value: "postgres", label: "Postgres", icon: Database },
+  // { value: "snowflake", label: "Snowflake", icon: Snowflake },
 ];
 
 // Connection types allowed in the "Connection" dropdown. api / s3 /
@@ -356,7 +356,7 @@ export const DashboardStudio = () => {
                 </div>
               ) : sourceType === "snowflake" ? (
                 <span className="text-[12.5px] text-muted-foreground">
-                  Pick a saved Snowflake connection above, then type a table name or SQL query.
+                  Pick a saved Snowflake connection above, then type a table name .
                 </span>
               ) : (
                 <>

@@ -609,7 +609,8 @@ def dashboard_command(dashboard_id: str, body: BoardCommandRequest):
 
         if wants_chart:
             data = state.get("data", {}).get("metrics", [])
-            chart_payload = generate_onthefly_chart(data, text, model=state.get("model"))
+            existing_charts = state.get("chart_meta", [])
+            chart_payload = generate_onthefly_chart(data, text, model=state.get("model"),existing_charts=existing_charts,)
             if chart_payload.get("error"):
                 return {"status": "FAILED", "reply": chart_payload["error"], "error": chart_payload["error"]}
 
