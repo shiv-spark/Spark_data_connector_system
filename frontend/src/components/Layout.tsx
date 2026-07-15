@@ -27,6 +27,7 @@ import {
 import { fetchHealth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/ThemeProvider";
+import { UniversalSearch } from "@/components/UniversalSearch";
 
 type NavItem = { to: string; label: string; icon: typeof Sparkles; badge?: string };
 type NavGroup = { label: string; items: NavItem[] };
@@ -118,14 +119,12 @@ export const Layout = () => {
           </div>
         </div>
 
-        <div className="px-3 pb-2">
-          <button
-            className="group flex w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-left shadow-sm transition hover:border-slate-300 dark:hover:border-slate-600"
-          >
+        <div className="px-3 pb-2 opacity-60">
+          <div className="group flex w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-left shadow-sm">
             <Search className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="flex-1 text-[12px] text-muted-foreground">Quick find</span>
+            <span className="flex-1 text-[12px] text-muted-foreground">Use search above</span>
             <span className="kbd">⌘K</span>
-          </button>
+          </div>
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-2">
@@ -260,14 +259,10 @@ export const Layout = () => {
               </button>
             </div>
 
-            {/* Command palette trigger */}
-            <button className="cmdk-trigger group ml-4 hidden h-8 w-[300px] items-center gap-2 rounded-md px-2.5 text-left lg:flex xl:w-[380px]">
-              <Search className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="flex-1 text-[12.5px] text-muted-foreground group-hover:text-slate-500">
-                Search pipelines, runs, logs…
-              </span>
-              <span className="kbd">⌘K</span>
-            </button>
+            {/* Search bar */}
+            <div className="ml-4 hidden lg:block">
+              <UniversalSearch />
+            </div>
 
             {/* Right cluster */}
             <div className="ml-auto flex items-center gap-1">
@@ -301,7 +296,7 @@ export const Layout = () => {
 
               <span className="mx-1 hidden h-5 w-px bg-border md:block" />
 
-              <button className="icon-btn" title="Documentation" aria-label="Documentation">
+              {/* <button className="icon-btn" title="Documentation" aria-label="Documentation">
                 <BookOpen className="h-4 w-4" />
               </button>
               <button className="icon-btn" title="Help" aria-label="Help">
@@ -322,7 +317,7 @@ export const Layout = () => {
                   G
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
+              </button> */}
 
             </div>
           </div>

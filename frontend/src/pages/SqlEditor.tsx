@@ -10,6 +10,7 @@ import {
   History,
   ChevronDown,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import {
   executeQuery,
@@ -21,6 +22,7 @@ import {
   type QueryHistoryItem,
   type SqlError,
 } from '../lib/sql-api';
+import { AiQueryDialog } from '@/components/AiQueryDialog';
 
 interface Connection {
   id: number;
@@ -44,6 +46,7 @@ export default function SqlEditor() {
   const [currentQueryId, setCurrentQueryId] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const [showAiDialog, setShowAiDialog] = useState(false);
 
   useEffect(() => {
     loadConnections();
@@ -180,6 +183,12 @@ export default function SqlEditor() {
     setShowHistory(false);
   };
 
+  const handleInsertAiSql = (sql: string) => {
+    setQuery(sql);
+    setError(null);
+    setResults(null);
+  };
+
   const handleEditorMount = (editor: any, monaco: Monaco) => {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       handleRunQuery();
@@ -258,6 +267,15 @@ export default function SqlEditor() {
             className="px-4 py-2 bg-secondary hover:bg-secondary/80 dark:bg-secondary dark:hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-secondary-foreground transition-colors border border-border"
           >
             Format
+          </button>
+
+          <button
+            onClick={() => setShowAiDialog(true)}
+            disabled={!selectedConnection || isRunning}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-white transition-colors"
+          >
+            <Sparkles className="w-4 h-4" />
+            Generate with AI
           </button>
 
           <button
@@ -459,6 +477,14 @@ export default function SqlEditor() {
           </div>
         )}
       </div>
+
+      <AiQueryDialog
+        open={showAiDialog}
+        onOpenChange={setShowAiDialog}
+        connectionId={selectedConnection?.id ?? null}
+        connectionName={selectedConnection?.name ?? ''}
+        onInsert={handleInsertAiSql}
+      />
     </div>
   );
 }

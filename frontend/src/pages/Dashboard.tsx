@@ -150,11 +150,10 @@ export const Dashboard = () => {
   const daily = data?.daily ?? [];
   const health = data?.system_health ?? "UNKNOWN";
 
-  const totalRuns = metrics.total_runs || pipelines.reduce((sum, p) => sum + (p.total_runs ?? 0), 0);
-  const success = metrics.success || pipelines.reduce((sum, p) => sum + (p.success ?? 0), 0);
-  const failed = metrics.failed || pipelines.reduce((sum, p) => sum + (p.failed ?? 0), 0);
-  const totalRows = metrics.total_rows || daily.reduce((sum, item) => sum + (item.rows ?? 0), 0);
-  const rate = metrics.success_rate_pct ?? (totalRuns ? Math.round((success / totalRuns) * 1000) / 10 : 0);
+  const totalRuns = metrics.total_runs ?? 0;
+  const success = metrics.success ?? 0;
+  const failed = metrics.failed ?? 0;
+  const rate = metrics.success_rate_pct ?? 0;
   const failedRate = totalRuns ? Math.round((failed / totalRuns) * 1000) / 10 : 0;
   const avgDuration = metrics.avg_duration ?? 0;
 
@@ -249,13 +248,12 @@ export const Dashboard = () => {
 
       <PipelineFlow health={health} />
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Kpi value={health} label="System Health" color={healthColor} icon={Gauge} detail="Live API summary" />
         <Kpi value={fmtInt(totalRuns)} label="Total Runs" icon={Workflow} detail="All tracked jobs" />
         <Kpi value={fmtInt(success)} label="Successful" color="#059669" icon={CheckCircle2} detail={`${rate}% success rate`} />
         <Kpi value={fmtInt(failed)} label="Failed" color="#dc2626" icon={XCircle} detail={`${failedRate}% failure rate`} />
         <Kpi value={`${rate}%`} label="Reliability" icon={Activity} detail="Completed successfully" />
-        <Kpi value={fmtInt(totalRows)} label="Rows Loaded" color="#0891b2" icon={Rows3} detail="Rows processed" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

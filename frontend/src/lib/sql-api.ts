@@ -80,3 +80,56 @@ export const getSqlCapableConnections = async () => {
     c.source_type === 'postgresql' || c.source_type === 'postgres' || c.source_type === 'snowflake'
   );
 };
+
+export interface AiGenerateRequest {
+  question: string;
+  connection_id?: string;
+  tables?: string[];
+  include_samples?: boolean;
+}
+
+export interface AiGenerateResponse {
+  success: boolean;
+  sql?: string;
+  is_valid?: boolean;
+  validation_message?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  llm_latency?: number;
+  attempts?: number;
+  connection_id?: string;
+  connection_name?: string;
+  error?: string;
+}
+
+export const generateSqlFromNaturalLanguage = async (
+  params: AiGenerateRequest
+): Promise<AiGenerateResponse> => {
+  const response = await api.post<AiGenerateResponse>('/text2sql/generate', {
+    question: params.question,
+    connection_id: params.connection_id,
+    tables: params.tables,
+    include_samples: params.include_samples ?? true,
+    auto_execute: false,
+  });
+  return response.data;
+};
+
+export interface SchemaInfoResponse {
+  connection_id?: string;
+  connection_name: string;
+  db_type: string;
+  tables: string[];
+  schema_text_length: number;
+  column_count: number;
+}
+
+export const getConnectionSchemaInfo = async (
+  connectionId?: string
+): Promise<SchemaInfoResponse> => {
+  const params = new URLSearchParams();
+  if (connectionId) params.append('connection_id', connectionId);
+  const response = await api.get<SchemaInfoResponse>(`/text2sql/schema?${params.toString()}`);
+  return response.data;
+};

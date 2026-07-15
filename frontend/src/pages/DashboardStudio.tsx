@@ -9,9 +9,8 @@ import {
   ExternalLink,
   Figma,
   FileSpreadsheet,
-  Globe,
   Loader2,
-  PanelTop,
+  Snowflake,
   Sparkles,
   Wand2,
   Workflow,
@@ -23,17 +22,22 @@ import { Input } from "@/components/ui/input";
 import { fdt } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type SourceType = "pipeline" | "csv" | "excel" | "google_sheet" | "postgres" | "api" | "s3";
+// API, Google Sheets, and S3 sources are intentionally NOT offered here —
+// only Pipeline, CSV, Excel, Postgres, and Snowflake.
+type SourceType = "pipeline" | "csv" | "excel" | "postgres" | "snowflake";
 
 const sourceOptions: { value: SourceType; label: string; icon: typeof Database }[] = [
   { value: "pipeline", label: "Pipeline", icon: Workflow },
   { value: "csv", label: "CSV", icon: FileSpreadsheet },
   { value: "excel", label: "Excel", icon: FileSpreadsheet },
-  { value: "google_sheet", label: "Sheets", icon: PanelTop },
   { value: "postgres", label: "Postgres", icon: Database },
-  { value: "api", label: "API", icon: Globe },
-  { value: "s3", label: "S3", icon: Database },
+  { value: "snowflake", label: "Snowflake", icon: Snowflake },
 ];
+
+// Connection types allowed in the "Connection" dropdown. api / s3 /
+// google_sheet connections are deliberately excluded — only local files,
+// Postgres, and Snowflake connections are usable from this studio.
+const ALLOWED_CONNECTION_TYPES = new Set(["local_folder", "postgres", "snowflake"]);
 
 const ideas = [
   "Executive KPI dashboard",
@@ -61,10 +65,8 @@ export const DashboardStudio = () => {
   const [designConnectionId, setDesignConnectionId] = useState("");
   const [datasetRef, setDatasetRef] = useState("");
   const [filePath, setFilePath] = useState("");
-  const [sheetUrl, setSheetUrl] = useState("");
   const [pipelineName, setPipelineName] = useState("");
   const [selectedPipeline, setSelectedPipeline] = useState("");
-  const [apiUrl, setApiUrl] = useState("");
   const [request, setRequest] = useState("");
   const [model, setModel] = useState("");
   const [customModel, setCustomModel] = useState("");
@@ -96,8 +98,9 @@ export const DashboardStudio = () => {
     refetchInterval: 15_000,
   });
 
-  const dataConnections = (connections.data ?? []).filter(
-    (connection: any) => connection.source_type !== "figma_design",
+  // Only local files / Postgres / Snowflake connections are selectable here.
+  const dataConnections = (connections.data ?? []).filter((connection: any) =>
+    ALLOWED_CONNECTION_TYPES.has(connection.source_type),
   );
   const figmaConnections = (connections.data ?? []).filter(
     (connection: any) => connection.source_type === "figma_design",
@@ -130,47 +133,25 @@ export const DashboardStudio = () => {
             datasetRef.toLowerCase().endsWith(".xls")
             ? "excel"
             : "csv"
-          : selectedType === "s3"
-            ? "s3"
-            : selectedType || sourceType;
+          : selectedType || sourceType;
       const joinedPath =
         cfg.base_path && datasetRef
           ? `${String(cfg.base_path).replace(/[\\/]+$/, "")}/${datasetRef.replace(/^[\\/]+/, "")}`
           : filePath || datasetRef;
-      const s3Path =
-        selectedType === "s3"
-          ? `s3://${cfg.bucket}/${[cfg.prefix, datasetRef].filter(Boolean).join("/")}`.replace(
-              /([^:]\/)\/+/g,
-              "$1",
-            )
-          : null;
-      const apiResolvedUrl =
-        selectedType === "api"
-          ? `${String(cfg.base_url || "").replace(/\/+$/, "")}/${datasetRef.replace(/^\/+/, "")}`
-          : apiUrl || null;
-      const apiHeaders =
-        selectedType === "api" && cfg.auth_type && cfg.auth_type !== "none"
-          ? {
-              [cfg.header_name || "Authorization"]:
-                cfg.auth_type === "bearer" ? `Bearer ${cfg.api_key}` : cfg.api_key,
-            }
-          : null;
+
+      const isSnowflake = selectedType === "snowflake";
+      const isPostgres = selectedType === "postgres";
 
       const response = await api.post("/agent/analyze", {
         source_type: effectiveSource,
+        connection_id: connectionId ? Number(connectionId) : null,
         file_path: ["csv", "excel"].includes(effectiveSource)
           ? joinedPath || null
           : filePath || null,
-        sheet_url:
-          selectedType === "google_sheet"
-            ? cfg.sheet_url || datasetRef || null
-            : sheetUrl || null,
-        pipeline_name:
-          selectedType === "postgres" ? datasetRef || pipelineName || null : pipelineName || null,
-        table_name: selectedType === "postgres" ? datasetRef || null : null,
-        s3_path: s3Path,
-        api_url: apiResolvedUrl,
-        api_headers: apiHeaders,
+        pipeline_name: isPostgres ? datasetRef || pipelineName || null : pipelineName || null,
+        table_name: isPostgres ? datasetRef || null : null,
+        sf_query: isSnowflake && /^\s*select\s/i.test(datasetRef) ? datasetRef : null,
+        sf_table: isSnowflake && !/^\s*select\s/i.test(datasetRef) ? datasetRef || null : null,
         figma_connection_id: designConnectionId ? Number(designConnectionId) : null,
         request: effectiveRequest,
         model: effectiveModel || null,
@@ -185,7 +166,6 @@ export const DashboardStudio = () => {
       }
     },
   });
-
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setResult(null);
@@ -321,38 +301,18 @@ export const DashboardStudio = () => {
                   ))}
                 </select>
               </div>
-
-              <div className="flex items-center gap-2">
-                <span className="section-eyebrow">Model</span>
-                <select
-                  className="h-8 rounded-md border border-input bg-background px-2 pr-7 text-[12.5px] text-foreground shadow-[0_1px_0_rgba(15,23,42,0.02)] outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:shadow-[0_1px_0_rgba(0,0,0,0.1)]"
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                >
-                  <option value="">Auto (recommended)</option>
-                  {modelOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-                      {opt.label}
-                    </option>
-                  ))}
-                  <option value="custom">Custom…</option>
-                </select>
-                {model === "custom" && (
-                  <Input
-                    className="h-8 w-[200px] text-[12.5px]"
-                    placeholder="exact model id"
-                    value={customModel}
-                    onChange={(event) => setCustomModel(event.target.value)}
-                  />
-                )}
-              </div>
             </div>
 
             <div className="border-b border-border px-4 py-3">
               {connectionId ? (
                 <Input
                   className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                  placeholder="File name, S3 key, API path, or table name…"
+                  placeholder={
+                    connections.data?.find((c: any) => String(c.id) === connectionId)
+                      ?.source_type === "snowflake"
+                      ? "Table name, or a full SELECT query…"
+                      : "File name or table name…"
+                  }
                   value={datasetRef}
                   onChange={(event) => setDatasetRef(event.target.value)}
                 />
@@ -394,6 +354,10 @@ export const DashboardStudio = () => {
                     </>
                   )}
                 </div>
+              ) : sourceType === "snowflake" ? (
+                <span className="text-[12.5px] text-muted-foreground">
+                  Pick a saved Snowflake connection above, then type a table name or SQL query.
+                </span>
               ) : (
                 <>
                   {["csv", "excel"].includes(sourceType) && (
@@ -404,36 +368,12 @@ export const DashboardStudio = () => {
                       onChange={(event) => setFilePath(event.target.value)}
                     />
                   )}
-                  {sourceType === "google_sheet" && (
-                    <Input
-                      className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                      placeholder="Google Sheet CSV export URL"
-                      value={sheetUrl}
-                      onChange={(event) => setSheetUrl(event.target.value)}
-                    />
-                  )}
                   {sourceType === "postgres" && (
                     <Input
                       className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
                       placeholder="Pipeline / table name"
                       value={pipelineName}
                       onChange={(event) => setPipelineName(event.target.value)}
-                    />
-                  )}
-                  {sourceType === "api" && (
-                    <Input
-                      className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                      placeholder="https://api.example.com/v1/orders"
-                      value={apiUrl}
-                      onChange={(event) => setApiUrl(event.target.value)}
-                    />
-                  )}
-                  {sourceType === "s3" && (
-                    <Input
-                      className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                      placeholder="s3://bucket/key"
-                      value={filePath}
-                      onChange={(event) => setFilePath(event.target.value)}
                     />
                   )}
                 </>
@@ -484,6 +424,28 @@ export const DashboardStudio = () => {
                 ))}
               </div>
               <div className="flex items-center gap-2">
+                <select
+                  className="h-8 rounded-md border border-input bg-background px-2 pr-7 text-[12px] text-foreground outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15"
+                  value={model}
+                  onChange={(event) => setModel(event.target.value)}
+                >
+                  <option value="">Auto (recommended)</option>
+                  {modelOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+                      {opt.label}
+                    </option>
+                  ))}
+                  <option value="custom">Custom…</option>
+                </select>
+                {model === "custom" && (
+                  <Input
+                    className="h-8 w-[160px] text-[12px]"
+                    placeholder="exact model id"
+                    value={customModel}
+                    onChange={(event) => setCustomModel(event.target.value)}
+                  />
+                )}
+
                 <span className="hidden text-[11px] text-muted-foreground font-mono md:inline">
                   ⌘ ↵
                 </span>

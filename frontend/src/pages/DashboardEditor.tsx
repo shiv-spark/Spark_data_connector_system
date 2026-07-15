@@ -269,7 +269,8 @@ export const DashboardEditor = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
                   submit(e as unknown as FormEvent);
                 }
               }}
@@ -278,7 +279,7 @@ export const DashboardEditor = () => {
             />
             <div className="flex items-center justify-between gap-2 border-t border-border px-2 py-1.5">
               <span className="text-[10.5px] text-muted-foreground" style={mono}>
-                ⌘ ↵ to send
+                ⌘ ↵ to send · Shift + ↵ for new line
               </span>
               <button
                 type="submit"
@@ -372,7 +373,9 @@ export const DashboardEditor = () => {
               </button>
             ) : null}
             <a
-              href={`/agent/dashboard/${dashboardId}`}
+              href={`/api/agent/dashboard/${dashboardId}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2.5 text-[12px] font-semibold text-foreground shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-border hover:text-foreground"
             >
               Published view <ExternalLink className="h-3 w-3" />

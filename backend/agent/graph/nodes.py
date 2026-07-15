@@ -79,26 +79,36 @@ def _resolve_model(state: PipelineState) -> str:
 #     except Exception as e:
 #         logger.error("fetch_data failed: %s", e, exc_info=True)
 #         return {"data": {}, "error": str(e)}
-
-
 def node_fetch_data(state: PipelineState) -> dict:
     logger.info("═══ Node: fetch_data ═══  source=%s, pipeline=%s",
                 state["source_type"], state.get("pipeline_name"))
     try:
         if state["source_type"] == "postgres":
             table_name = state.get("table_name")
-            if table_name:
-                # Analyze the ACTUAL data table (e.g. "dash"), not the
-                # pipeline_metrics ingestion-log table. Also pull recent
-                # runs so health_check still works downstream.
+            pg_host    = state.get("pg_host")
+
+            if pg_host:
+                # Direct connection picked from Connections dropdown —
+                # use the REAL credentials resolved server-side.
+                from agent.tools.data_tools import fetch_table_data_direct
+                metrics = fetch_table_data_direct(
+                    host       = pg_host,
+                    port       = state.get("pg_port"),
+                    database   = state.get("pg_database"),
+                    user       = state.get("pg_user"),
+                    password   = state.get("pg_password"),
+                    table_name = table_name,
+                )
+                data = {"metrics": metrics, "runs": []}
+                logger.info("fetch_data (postgres/direct) → host=%s db=%s rows=%d",
+                            pg_host, state.get("pg_database"), len(metrics))
+            elif table_name:
                 metrics = fetch_table_data(table_name)
                 runs = fetch_pipeline_runs(state.get("pipeline_name"))
                 data = {"metrics": metrics, "runs": runs}
                 logger.info("fetch_data (postgres/table) → table=%s, rows=%d",
                             table_name, len(metrics))
             else:
-                # No table_name given — fall back to old behaviour
-                # (pipeline run/metrics summary only).
                 data = fetch_full_pipeline_summary(state.get("pipeline_name"))
         else:
             raw  = fetch_data_by_source(state["source_type"],
@@ -108,7 +118,16 @@ def node_fetch_data(state: PipelineState) -> dict:
                                         table_name    = state.get("table_name"),
                                         s3_path       = state.get("s3_path"),
                                         api_url       = state.get("api_url"),
-                                        api_headers   = state.get("api_headers"))
+                                        api_headers   = state.get("api_headers"),
+                                        sf_account    = state.get("sf_account"),
+                                        sf_user       = state.get("sf_user"),
+                                        sf_password   = state.get("sf_password"),
+                                        sf_warehouse  = state.get("sf_warehouse"),
+                                        sf_database   = state.get("sf_database"),
+                                        sf_schema     = state.get("sf_schema"),
+                                        sf_table      = state.get("sf_table"),
+                                        sf_query      = state.get("sf_query"),
+                                        sf_role       = state.get("sf_role"))
             data = {"metrics": raw, "runs": []}
         logger.info("fetch_data → metrics=%d, runs=%d",
                     len(data.get("metrics", [])), len(data.get("runs", [])))
@@ -116,6 +135,51 @@ def node_fetch_data(state: PipelineState) -> dict:
     except Exception as e:
         logger.error("fetch_data failed: %s", e, exc_info=True)
         return {"data": {}, "error": str(e)}
+
+# def node_fetch_data(state: PipelineState) -> dict:
+#     logger.info("═══ Node: fetch_data ═══  source=%s, pipeline=%s",
+#                 state["source_type"], state.get("pipeline_name"))
+#     try:
+#         if state["source_type"] == "postgres":
+#             table_name = state.get("table_name")
+#             if table_name:
+#                 # Analyze the ACTUAL data table (e.g. "dash"), not the
+#                 # pipeline_metrics ingestion-log table. Also pull recent
+#                 # runs so health_check still works downstream.
+#                 metrics = fetch_table_data(table_name)
+#                 runs = fetch_pipeline_runs(state.get("pipeline_name"))
+#                 data = {"metrics": metrics, "runs": runs}
+#                 logger.info("fetch_data (postgres/table) → table=%s, rows=%d",
+#                             table_name, len(metrics))
+#             else:
+#                 # No table_name given — fall back to old behaviour
+#                 # (pipeline run/metrics summary only).
+#                 data = fetch_full_pipeline_summary(state.get("pipeline_name"))
+#         else:
+#             raw  = fetch_data_by_source(state["source_type"],
+#                                         file_path     = state.get("file_path"),
+#                                         sheet_url     = state.get("sheet_url"),
+#                                         pipeline_name = state.get("pipeline_name"),
+#                                         table_name    = state.get("table_name"),
+#                                         s3_path       = state.get("s3_path"),
+#                                         api_url       = state.get("api_url"),
+#                                         api_headers   = state.get("api_headers"),
+#                                         sf_account    = state.get("sf_account"),     
+#                                         sf_user       = state.get("sf_user"),        # ← NEW
+#                                         sf_password   = state.get("sf_password"),    # ← NEW
+#                                         sf_warehouse  = state.get("sf_warehouse"),   # ← NEW
+#                                         sf_database   = state.get("sf_database"),    # ← NEW
+#                                         sf_schema     = state.get("sf_schema"),      # ← NEW
+#                                         sf_table      = state.get("sf_table"),       # ← NEW
+#                                         sf_query      = state.get("sf_query"),       # ← NEW
+#                                         sf_role       = state.get("sf_role"))
+#             data = {"metrics": raw, "runs": []}
+#         logger.info("fetch_data → metrics=%d, runs=%d",
+#                     len(data.get("metrics", [])), len(data.get("runs", [])))
+#         return {"data": data}
+#     except Exception as e:
+#         logger.error("fetch_data failed: %s", e, exc_info=True)
+#         return {"data": {}, "error": str(e)}
 
 def node_null_analysis(state: PipelineState) -> dict:
     logger.info("═══ Node: null_analysis ═══")

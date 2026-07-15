@@ -159,3 +159,161 @@ export const fetchDataGenSchema = async (connectionId: string, tableName: string
   const r = await api.get(`/datagen/connections/${connectionId}/schema/${tableName}`);
   return r.data;
 };
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  subtitle?: string;
+  category: 'pipelines' | 'connections' | 'dashboards' | 'metrics' | 'logs';
+  path: string;
+  icon?: string;
+}
+
+export interface SearchResults {
+  pipelines: SearchResult[];
+  connections: SearchResult[];
+  dashboards: SearchResult[];
+  metrics: SearchResult[];
+  logs: SearchResult[];
+}
+
+export const searchPipelines = async (query: string): Promise<SearchResult[]> => {
+  try {
+    const r = await api.get('/pipelines');
+    const pipelines = r.data?.pipelines || r.data || [];
+    const q = query.toLowerCase();
+    return pipelines
+      .filter((p: any) => 
+        (p.pipeline_id?.toLowerCase().includes(q)) ||
+        (p.table_name?.toLowerCase().includes(q)) ||
+        (p.status?.toLowerCase().includes(q))
+      )
+      .slice(0, 10)
+      .map((p: any) => ({
+        id: p.pipeline_id || p.id,
+        title: p.pipeline_id || p.table_name || 'Unknown Pipeline',
+        subtitle: p.table_name || p.status,
+        category: 'pipelines' as const,
+        path: `/pipelines?highlight=${encodeURIComponent(p.pipeline_id || p.id)}`,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+export const searchConnections = async (query: string): Promise<SearchResult[]> => {
+  try {
+    const r = await api.get('/connections');
+    const connections = r.data?.connections || [];
+    const q = query.toLowerCase();
+    return connections
+      .filter((c: any) =>
+        (c.name?.toLowerCase().includes(q)) ||
+        (c.source_type?.toLowerCase().includes(q))
+      )
+      .slice(0, 10)
+      .map((c: any) => ({
+        id: String(c.id),
+        title: c.name || 'Unknown Connection',
+        subtitle: c.source_type,
+        category: 'connections' as const,
+        path: `/connections?highlight=${c.id}`,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+export const searchDashboards = async (query: string): Promise<SearchResult[]> => {
+  try {
+    const r = await api.get('/agent/dashboards');
+    const dashboards = r.data?.dashboards || [];
+    const q = query.toLowerCase();
+    
+    return dashboards
+      .filter((d: any) =>
+        (d.name?.toLowerCase().includes(q)) ||
+        (d.dashboard_id?.toLowerCase().includes(q)) ||
+        (d.source_type?.toLowerCase().includes(q))
+      )
+      .slice(0, 10)
+      .map((d: any) => ({
+        id: d.dashboard_id,
+        title: d.name || d.dashboard_id,
+        subtitle: `${d.source_type || ''}${d.grade ? ` • Grade: ${d.grade}` : ''}`,
+        category: 'dashboards' as const,
+        path: `/studio/${d.dashboard_id}`,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+export const searchMetrics = async (query: string): Promise<SearchResult[]> => {
+  try {
+    const r = await api.get('/metrics/summary/all');
+    const metrics = r.data?.summary || r.data || [];
+    const q = query.toLowerCase();
+    
+    if (!Array.isArray(metrics)) return [];
+    
+    return metrics
+      .filter((m: any) =>
+        (m.pipeline_id?.toLowerCase().includes(q)) ||
+        (m.table_name?.toLowerCase().includes(q))
+      )
+      .slice(0, 10)
+      .map((m: any) => ({
+        id: m.pipeline_id || m.id,
+        title: m.pipeline_id || m.table_name || 'Unknown',
+        subtitle: `${m.total_runs || 0} runs, ${m.success || 0} success`,
+        category: 'metrics' as const,
+        path: `/metrics?pipeline=${encodeURIComponent(m.pipeline_id || '')}`,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+export const searchLogs = async (query: string): Promise<SearchResult[]> => {
+  try {
+    const r = await api.get('/logs', { params: { limit: 100 } });
+    const logs = r.data?.logs || r.data || [];
+    const q = query.toLowerCase();
+    
+    if (!Array.isArray(logs)) return [];
+    
+    return logs
+      .filter((l: any) =>
+        (l.message?.toLowerCase().includes(q)) ||
+        (l.level?.toLowerCase().includes(q)) ||
+        (l.pipeline_id?.toLowerCase().includes(q))
+      )
+      .slice(0, 10)
+      .map((l: any, idx: number) => ({
+        id: l.id || `log-${idx}`,
+        title: l.message?.substring(0, 60) || 'Log entry',
+        subtitle: `${l.level || 'INFO'} - ${l.pipeline_id || ''}`,
+        category: 'logs' as const,
+        path: `/logs`,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+export const globalSearch = async (query: string): Promise<SearchResults> => {
+  if (!query.trim()) {
+    return { pipelines: [], connections: [], dashboards: [], metrics: [], logs: [] };
+  }
+
+  const [pipelines, connections, dashboards, metrics, logs] = await Promise.all([
+    searchPipelines(query),
+    searchConnections(query),
+    searchDashboards(query),
+    searchMetrics(query),
+    searchLogs(query),
+  ]);
+
+  return { pipelines, connections, dashboards, metrics, logs };
+};

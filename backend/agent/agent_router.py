@@ -70,7 +70,7 @@ from typing import Optional
 
 class AnalyzeRequest(BaseModel):
     source_type:   str          # "csv", "excel", "postgres", "google_sheet", 
-                                # "s3", "api", "google_sheets_multi"
+    connection_id: Optional[int] = None
     pipeline_name: Optional[str] = None   # only needed for postgres
     file_path:     Optional[str] = None   # for csv / excel
     sheet_url:     Optional[str] = None   # for google_sheet
@@ -78,6 +78,15 @@ class AnalyzeRequest(BaseModel):
     s3_path:       Optional[str] = None   # for s3
     api_url:       Optional[str] = None   # for api
     api_headers:   Optional[dict] = None  # optional API auth headers
+    sf_account:    Optional[str] = None
+    sf_user:       Optional[str] = None
+    sf_password:   Optional[str] = None
+    sf_warehouse:  Optional[str] = None
+    sf_database:   Optional[str] = None
+    sf_schema:     Optional[str] = None
+    sf_table:      Optional[str] = None
+    sf_query:      Optional[str] = None
+    sf_role:       Optional[str] = None
     figma_connection_id: Optional[int] = None
     request:       str = "full analysis with report"
     model:         Optional[str] = None  
@@ -142,7 +151,6 @@ def download_report_pdf(report_id: str):
 
 
 # ─── Analyze + create dashboard ──────────────────────────────────────────────
-
 @router.post("/analyze")
 def analyze(body: AnalyzeRequest):
     logger.info("POST /analyze → source=%s pipeline=%s", body.source_type, body.pipeline_name)
@@ -150,6 +158,45 @@ def analyze(body: AnalyzeRequest):
         display_name = body.pipeline_name or ""
         if body.file_path:
             display_name = os.path.splitext(os.path.basename(body.file_path))[0]
+
+        # ── Resolve REAL credentials server-side from saved connection ──
+        resolved_pg = {}
+        resolved_sf = {}
+        if body.connection_id:
+            from agent.db import get_conn
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT config, source_type FROM saved_connections WHERE id = %s",
+                        (body.connection_id,)
+                    )
+                    row = cur.fetchone()
+            if row:
+                cfg, source_type = row
+                cfg = cfg if isinstance(cfg, dict) else json.loads(cfg)
+                if source_type == "postgres":
+                    resolved_pg = {
+                        "pg_host":     cfg.get("host"),
+                        "pg_port":     cfg.get("port", "5432"),
+                        "pg_database": cfg.get("database"),
+                        "pg_user":     cfg.get("user"),
+                        "pg_password": cfg.get("password"),
+                    }
+                elif source_type == "snowflake":
+                    resolved_sf = {
+                        "sf_account":   cfg.get("account"),
+                        "sf_user":      cfg.get("user"),
+                        "sf_password":  cfg.get("password"),
+                        "sf_warehouse": cfg.get("warehouse"),
+                        "sf_database":  cfg.get("database"),
+                        "sf_schema":    cfg.get("schema", "PUBLIC"),
+                        "sf_role":      cfg.get("role"),
+                    }
+                else:
+                    logger.warning("connection_id %s is source_type=%s, not postgres/snowflake",
+                                   body.connection_id, source_type)
+            else:
+                logger.warning("connection_id %s not found", body.connection_id)
 
         user_request = body.request
         figma_context = None
@@ -177,6 +224,21 @@ Use the Figma reference as the visual blueprint for this dashboard. Match the de
             "s3_path":       body.s3_path,
             "api_url":       body.api_url,
             "api_headers":   body.api_headers,
+            "pg_host":       resolved_pg.get("pg_host"),
+            "pg_port":       resolved_pg.get("pg_port"),
+            "pg_database":   resolved_pg.get("pg_database"),
+            "pg_user":       resolved_pg.get("pg_user"),
+            "pg_password":   resolved_pg.get("pg_password"),
+            "sf_account":    resolved_sf.get("sf_account")   or body.sf_account,
+            "sf_user":       resolved_sf.get("sf_user")      or body.sf_user,
+            "sf_password":   resolved_sf.get("sf_password")  or body.sf_password,
+            "sf_warehouse":  resolved_sf.get("sf_warehouse") or body.sf_warehouse,
+            "sf_database":   resolved_sf.get("sf_database")  or body.sf_database,
+            "sf_schema":     resolved_sf.get("sf_schema")    or body.sf_schema,
+            "sf_table":      body.sf_table,
+            "sf_query":      body.sf_query,
+            "sf_role":       resolved_sf.get("sf_role")      or body.sf_role,
+            "model":         body.model,
             "user_request":  user_request,
             "data": {}, "null_result": {}, "dup_result": {},
             "stats_result": {}, "outlier_result": {}, "corr_result": {},
@@ -193,6 +255,7 @@ Use the Figma reference as the visual blueprint for this dashboard. Match the de
             "display_name":  display_name,
             "source_type":   body.source_type,
             "source_config": {
+                "connection_id": body.connection_id,     # NEW — save for refresh later
                 "file_path":     body.file_path,
                 "sheet_url":     body.sheet_url,
                 "pipeline_name": body.pipeline_name,
@@ -216,10 +279,107 @@ Use the Figma reference as the visual blueprint for this dashboard. Match the de
             "report_url":    result.get("report", {}).get("report_url"),
             "quality_score": result.get("quality_result", {}).get("quality_score"),
             "grade":         result.get("quality_result", {}).get("grade"),
+            "error":         result.get("error"),
         }
     except Exception as e:
         logger.error("Analyze failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+# @router.post("/analyze")
+# def analyze(body: AnalyzeRequest):
+#     logger.info("POST /analyze → source=%s pipeline=%s", body.source_type, body.pipeline_name)
+#     try:
+#         display_name = body.pipeline_name or ""
+#         if body.file_path:
+#             display_name = os.path.splitext(os.path.basename(body.file_path))[0]
+
+#         user_request = body.request
+#         figma_context = None
+#         if body.figma_connection_id:
+#             try:
+#                 figma_context = build_figma_context_from_connection(body.figma_connection_id)
+#                 if figma_context:
+#                     user_request = f"""{body.request}
+
+# --- FIGMA DESIGN REFERENCE ---
+# {figma_context}
+# --- END FIGMA DESIGN REFERENCE ---
+
+# Design instruction:
+# Use the Figma reference as the visual blueprint for this dashboard. Match the design hierarchy, spacing, card structure, typography, color direction, and layout rhythm where practical while keeping charts readable and data-driven."""
+#             except Exception as ex:
+#                 logger.warning("Figma design context failed: %s", ex)
+
+#         result = pipeline_graph.invoke({
+#             "source_type":   body.source_type,
+#             "pipeline_name": body.pipeline_name,
+#             "file_path":     body.file_path,
+#             "sheet_url":     body.sheet_url,
+#             "table_name":    body.table_name,
+#             "s3_path":       body.s3_path,
+#             "api_url":       body.api_url,
+#             "api_headers":   body.api_headers,
+#             "sf_account":    body.sf_account,      
+#             "sf_user":       body.sf_user,      
+#             "sf_password":   body.sf_password,    
+#             "sf_warehouse":  body.sf_warehouse,   
+#             "sf_database":   body.sf_database,    
+#             "sf_schema":     body.sf_schema,       
+#             "sf_table":      body.sf_table,        
+#             "sf_query":      body.sf_query,        
+#             "sf_role":       body.sf_role,
+#             "model":         body.model,
+#             "user_request":  user_request,
+#             "data": {}, "null_result": {}, "dup_result": {},
+#             "stats_result": {}, "outlier_result": {}, "corr_result": {},
+#             "health_result": {}, "quality_result": {}, "charts": {},
+#             "chart_meta": [], "report": {}, "ai_summary": "", "error": None,
+#         })
+
+#         import uuid
+#         dashboard_id = str(uuid.uuid4())[:8]
+#         kpis = _build_kpis(result)
+
+#         save_dashboard(dashboard_id, {
+#             **result,
+#             "display_name":  display_name,
+#             "source_type":   body.source_type,
+#             "source_config": {
+#                 "file_path":     body.file_path,
+#                 "sheet_url":     body.sheet_url,
+#                 "pipeline_name": body.pipeline_name,
+#                 "table_name":    body.table_name,
+#                 "s3_path":       body.s3_path,
+#                 "api_url":       body.api_url,
+#                 "api_headers":   body.api_headers,
+#                 "sf_account":    body.sf_account,       
+#                 "sf_user":       body.sf_user,          
+#                 "sf_password":   body.sf_password,      
+#                 "sf_warehouse":  body.sf_warehouse,     
+#                 "sf_database":   body.sf_database,      
+#                 "sf_schema":     body.sf_schema,        
+#                 "sf_table":      body.sf_table,         
+#                 "sf_query":      body.sf_query,         
+#                 "sf_role":       body.sf_role,
+#                 "figma_connection_id": body.figma_connection_id,
+#                 "figma_context":  figma_context,
+#                 "model":          body.model,
+#             },
+#             "kpis":       kpis,
+#             "chart_meta": result.get("chart_meta", []),
+#             "data_hash":  compute_data_hash(result.get("data", {}).get("metrics", [])),
+#         })
+
+#         logger.info("Analyze complete → dashboard_id=%s", dashboard_id)
+#         return {
+#             "dashboard_id":  dashboard_id,
+#             "dashboard_url": f"/agent/dashboard/{dashboard_id}",
+#             "report_url":    result.get("report", {}).get("report_url"),
+#             "quality_score": result.get("quality_result", {}).get("quality_score"),
+#             "grade":         result.get("quality_result", {}).get("grade"),
+#         }
+#     except Exception as e:
+#         logger.error("Analyze failed: %s", e, exc_info=True)
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ─── Dashboard endpoints ──────────────────────────────────────────────────────
@@ -391,48 +551,88 @@ def apply_chart_to_dashboard(dashboard_id: str, body: ChartApplyRequest):
     }
 
 
+# @router.post("/dashboard/{dashboard_id}/command")
+# def dashboard_command(dashboard_id: str, body: BoardCommandRequest):
+#     """
+#     Free-form dashboard command. Chart prompts add/replace graphs and persist them.
+#     Other questions use the dashboard analyst chat.
+#     """
+#     state = get_dashboard(dashboard_id)
+#     if not state:
+#         raise HTTPException(status_code=404, detail="Dashboard not found")
+
+#     text = body.message.strip()
+#     lower = text.lower()
+#     wants_chart = any(word in lower for word in [
+#         "chart", "graph", "plot", "visual", "visualize", "trend",
+#         "bar", "line", "pie", "scatter", "histogram", "replace", "add"
+#     ])
+
+#     if wants_chart:
+#         data = state.get("data", {}).get("metrics", [])
+#         # chart_payload = generate_onthefly_chart(data, text)
+#         chart_payload = generate_onthefly_chart(data, text, model=state.get("model"))
+#         if chart_payload.get("error"):
+#             return {"status": "FAILED", "reply": chart_payload["error"], "error": chart_payload["error"]}
+
+#         slot = body.slot
+#         import re
+#         match = re.search(r"(?:replace|update|change)\s+(?:chart|graph)?\s*(\d+)", lower)
+#         if match:
+#             slot = int(match.group(1))
+
+#         updated, saved_slot = _save_chart_to_dashboard(dashboard_id, state, chart_payload, slot)
+#         reply = f"Done. I {'replaced' if slot else 'added'} chart {saved_slot}: {chart_payload.get('title', 'Custom chart')}."
+#         return {
+#             "status": "SUCCESS",
+#             "reply": reply,
+#             "action": "chart_update",
+#             "slot": saved_slot,
+#             "chart": chart_payload,
+#             "chart_meta": updated.get("chart_meta", []),
+#         }
+
+#     return dashboard_chat(dashboard_id, ChatRequest(message=text))
 @router.post("/dashboard/{dashboard_id}/command")
 def dashboard_command(dashboard_id: str, body: BoardCommandRequest):
-    """
-    Free-form dashboard command. Chart prompts add/replace graphs and persist them.
-    Other questions use the dashboard analyst chat.
-    """
     state = get_dashboard(dashboard_id)
     if not state:
         raise HTTPException(status_code=404, detail="Dashboard not found")
 
-    text = body.message.strip()
-    lower = text.lower()
-    wants_chart = any(word in lower for word in [
-        "chart", "graph", "plot", "visual", "visualize", "trend",
-        "bar", "line", "pie", "scatter", "histogram", "replace", "add"
-    ])
+    try:
+        text = body.message.strip()
+        lower = text.lower()
+        wants_chart = any(word in lower for word in [
+            "chart", "graph", "plot", "visual", "visualize", "trend",
+            "bar", "line", "pie", "scatter", "histogram", "replace", "add"
+        ])
 
-    if wants_chart:
-        data = state.get("data", {}).get("metrics", [])
-        chart_payload = generate_onthefly_chart(data, text)
-        if chart_payload.get("error"):
-            return {"status": "FAILED", "reply": chart_payload["error"], "error": chart_payload["error"]}
+        if wants_chart:
+            data = state.get("data", {}).get("metrics", [])
+            chart_payload = generate_onthefly_chart(data, text, model=state.get("model"))
+            if chart_payload.get("error"):
+                return {"status": "FAILED", "reply": chart_payload["error"], "error": chart_payload["error"]}
 
-        slot = body.slot
-        import re
-        match = re.search(r"(?:replace|update|change)\s+(?:chart|graph)?\s*(\d+)", lower)
-        if match:
-            slot = int(match.group(1))
+            slot = body.slot
+            import re
+            match = re.search(r"(?:replace|update|change)\s+(?:chart|graph)?\s*(\d+)", lower)
+            if match:
+                slot = int(match.group(1))
 
-        updated, saved_slot = _save_chart_to_dashboard(dashboard_id, state, chart_payload, slot)
-        reply = f"Done. I {'replaced' if slot else 'added'} chart {saved_slot}: {chart_payload.get('title', 'Custom chart')}."
-        return {
-            "status": "SUCCESS",
-            "reply": reply,
-            "action": "chart_update",
-            "slot": saved_slot,
-            "chart": chart_payload,
-            "chart_meta": updated.get("chart_meta", []),
-        }
+            updated, saved_slot = _save_chart_to_dashboard(dashboard_id, state, chart_payload, slot)
+            reply = f"Done. I {'replaced' if slot else 'added'} chart {saved_slot}: {chart_payload.get('title', 'Custom chart')}."
+            return {
+                "status": "SUCCESS", "reply": reply, "action": "chart_update",
+                "slot": saved_slot, "chart": chart_payload,
+                "chart_meta": updated.get("chart_meta", []),
+            }
 
-    return dashboard_chat(dashboard_id, ChatRequest(message=text))
+        return dashboard_chat(dashboard_id, ChatRequest(message=text))
 
+    except Exception as e:
+        logger.error("dashboard_command failed for %s: %s", dashboard_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Command failed: {str(e)}")
+    
 
 @router.post("/dashboard/{dashboard_id}/chat")
 def dashboard_chat(dashboard_id: str, body: ChatRequest):
@@ -497,11 +697,26 @@ Answer concisely. Use bullet points for lists. Be specific with column names and
         history = history[-20:]
         _chat_histories[dashboard_id] = history
 
-    llm = OpenAI(
-        base_url = "https://openrouter.ai/api/v1",
-        api_key  = os.getenv("OPENROUTER_API_KEY"),
-    )
-    MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+    # llm = OpenAI(
+    #     base_url = "https://openrouter.ai/api/v1",
+    #     api_key  = os.getenv("OPENROUTER_API_KEY"),
+    # )
+    # MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+
+    groq_key = os.getenv("GROQ_API_KEY")
+    or_key   = os.getenv("OPENROUTER_API_KEY")
+
+    if groq_key:
+        llm = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key)
+        MODEL = state.get("model") or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    elif or_key:
+        llm = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=or_key)
+        MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+    else:
+        raise HTTPException(
+            status_code=503,
+            detail="No LLM API key configured. Set GROQ_API_KEY or OPENROUTER_API_KEY in .env and restart the backend."
+        )
 
     response = llm.chat.completions.create(
         model    = MODEL,

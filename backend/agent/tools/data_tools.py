@@ -5,6 +5,8 @@ Each function returns a list of dicts ready for analysis.
 """
 
 import pandas as pd
+import psycopg2
+import psycopg2.extras
 from agent.db import query
 from agent.logger import get_logger
 
@@ -222,6 +224,98 @@ def fetch_table_data(table_name: str, limit: int = 5000) -> list[dict]:
     sql = f'SELECT * FROM "{table_name}" LIMIT %s'
     return query(sql, [limit])
 
+def fetch_table_data_direct(host: str, port: str, database: str,
+                             user: str, password: str,
+                             table_name: str = None, sql_query: str = None,
+                             limit: int = 5000) -> list[dict]:
+    """Fetch rows from an EXTERNAL Postgres connection (the one the user
+    actually picked in the Connections dropdown) — NOT the internal
+    agent/db.py database used for pipeline ingestion bookkeeping."""
+    if not sql_query:
+        if not table_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+            logger.error("Invalid or missing table_name: %r", table_name)
+            return []
+        sql_query = f'SELECT * FROM "{table_name}" LIMIT %s'
+        params = [limit]
+    else:
+        params = []
+
+    logger.info("fetch_table_data_direct(host=%s, db=%s, table=%s)", host, database, table_name)
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=host, port=int(port or 5432), dbname=database,
+            user=user, password=password, connect_timeout=10,
+        )
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql_query, params)
+            rows = [dict(r) for r in cur.fetchall()]
+        logger.info("fetch_table_data_direct → %d rows", len(rows))
+        return rows
+    except Exception as e:
+        logger.error("fetch_table_data_direct failed: %s", e, exc_info=True)
+        raise
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+def _normalize_ident(ident: str) -> str:
+    ident = (ident or "").strip()
+    if ident.startswith('"') and ident.endswith('"'):
+        return ident
+    return ident.upper()
+
+def fetch_snowflake_table(account: str, user: str, password: str, warehouse: str,
+                           database: str, schema: str = "PUBLIC",
+                           table: str = None, query: str = None,
+                           role: str = None, limit: int = 5000) -> list[dict]:
+    """Fetch rows from Snowflake — either a raw query or a table (wrapped in a LIMIT)."""
+    logger.info("fetch_snowflake_table(database=%s, schema=%s, table=%s)", database, schema, table)
+    try:
+        import snowflake.connector
+    except ImportError:
+        logger.error("snowflake-connector-python not installed")
+        raise RuntimeError("snowflake-connector-python not installed. Run: pip install snowflake-connector-python")
+
+    if not query:
+        if not table:
+            raise ValueError("Either 'query' or 'table' must be provided for snowflake source")
+        query = (
+            f'SELECT * FROM "{_normalize_ident(database)}".'
+            f'"{_normalize_ident(schema)}"."{_normalize_ident(table)}" LIMIT {limit}'
+        )
+
+    conn_params = {
+        "account": account, "user": user, "password": password,
+        "warehouse": warehouse, "database": database, "schema": schema,
+        "login_timeout": 10, "network_timeout": 15,
+    }
+    if role:
+        conn_params["role"] = role
+
+    conn = None
+    try:
+        conn = snowflake.connector.connect(**conn_params)
+        cur = conn.cursor(snowflake.connector.DictCursor)
+        cur.execute(query)
+        rows = cur.fetchall()
+        cur.close()
+        logger.info("fetch_snowflake_table → %d rows", len(rows))
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("fetch_snowflake_table failed: %s", e, exc_info=True)
+        raise
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def fetch_data_by_source(source_type, **kwargs) -> list[dict]:
     logger.info("fetch_data_by_source(source=%s)", source_type)
     logger.debug("Source kwargs: %s", kwargs)
@@ -258,6 +352,22 @@ def fetch_data_by_source(source_type, **kwargs) -> list[dict]:
             if not s3_path:
                 return []
             return _read_dataframe(s3_path).to_dict(orient="records")
+        if source_type == "snowflake":
+            logger.info("Reading Snowflake data: db=%s table=%s", kwargs.get("sf_database"), kwargs.get("sf_table"))
+            return fetch_snowflake_table(
+                account   = kwargs.get("sf_account"),
+                user      = kwargs.get("sf_user"),
+                password  = kwargs.get("sf_password"),
+                warehouse = kwargs.get("sf_warehouse"),
+                database  = kwargs.get("sf_database"),
+                schema    = kwargs.get("sf_schema") or "PUBLIC",
+                table     = kwargs.get("sf_table"),
+                query     = kwargs.get("sf_query"),
+                role      = kwargs.get("sf_role"),
+            )
+
+            # logger.error("Unsupported source type: %s", source_type)
+            # return []
 
         if source_type == "api":
             import requests
