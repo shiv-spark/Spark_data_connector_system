@@ -3403,7 +3403,8 @@ def get_logs_table(
 import shutil
 from fastapi import UploadFile, File
 
-UPLOAD_BASE_DIR = "/app/data/uploads"   # shared with Airflow via ./data host mount
+# UPLOAD_BASE_DIR = "/app/data/uploads"   # shared with Airflow via ./data host mount
+UPLOAD_BASE_DIR = os.getenv("UPLOAD_BASE_DIR", str(Path(__file__).parent / "uploads"))
 os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
 
 

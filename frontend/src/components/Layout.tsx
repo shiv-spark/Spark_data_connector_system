@@ -18,7 +18,6 @@ import {
   Network,
   Plus,
   ScrollText,
-  Search,
   Settings,
   Sparkles,
   Sun,
@@ -116,14 +115,6 @@ export const Layout = () => {
               </div>
               <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">SparkBrains · Control plane</p>
             </div>
-          </div>
-        </div>
-
-        <div className="px-3 pb-2 opacity-60">
-          <div className="group flex w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-left shadow-sm">
-            <Search className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="flex-1 text-[12px] text-muted-foreground">Use search above</span>
-            <span className="kbd">⌘K</span>
           </div>
         </div>
 

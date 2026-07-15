@@ -249,6 +249,11 @@ export const searchDashboards = async (query: string): Promise<SearchResult[]> =
   }
 };
 
+export const updateDashboardName = async (dashboardId: string, displayName: string) => {
+  const r = await api.patch(`/agent/dashboard/${dashboardId}`, { display_name: displayName });
+  return r.data;
+};
+
 export const searchMetrics = async (query: string): Promise<SearchResult[]> => {
   try {
     const r = await api.get('/metrics/summary/all');

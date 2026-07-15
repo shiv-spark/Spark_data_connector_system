@@ -29,6 +29,7 @@ import {
   MessageSquarePlus,
   Minimize2,
   Palette,
+  Pencil,
   PieChart as PieChartIcon,
   Plus,
   RefreshCw,
@@ -40,7 +41,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, updateDashboardName } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { fdt } from "@/lib/format";
 
@@ -103,6 +104,38 @@ export const DashboardEditor = () => {
     () => (meta.data ?? []).find((d: any) => d.dashboard_id === dashboardId),
     [meta.data, dashboardId],
   );
+
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editingNameValue, setEditingNameValue] = useState("");
+
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => updateDashboardName(dashboardId, name),
+    onSuccess: (data) => {
+      queryClient.setQueryData(dashboardKey, (old: DashboardData | undefined) => 
+        old ? { ...old, display_name: data.display_name } : old
+      );
+      queryClient.invalidateQueries({ queryKey: ["agent-dashboards"] });
+      setIsEditingName(false);
+    },
+  });
+
+  const startEditingName = () => {
+    setEditingNameValue(data?.display_name || summary?.name || dashboardId);
+    setIsEditingName(true);
+  };
+
+  const saveName = () => {
+    if (editingNameValue.trim()) {
+      renameMutation.mutate(editingNameValue.trim());
+    } else {
+      setIsEditingName(false);
+    }
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") saveName();
+    if (e.key === "Escape") setIsEditingName(false);
+  };
 
   const command = useMutation({
     mutationFn: async (message: string) => {
@@ -309,10 +342,27 @@ export const DashboardEditor = () => {
             >
               <ArrowLeft className="h-3.5 w-3.5" />
             </Link>
-            <div className="min-w-0">
-              <p className="truncate text-[14px] font-semibold tracking-tight text-foreground">
-                {data?.display_name || summary?.name || dashboardId}
-              </p>
+            <div className="min-w-0 flex items-center gap-2">
+              {isEditingName ? (
+                <input
+                  type="text"
+                  value={editingNameValue}
+                  onChange={(e) => setEditingNameValue(e.target.value)}
+                  onBlur={saveName}
+                  onKeyDown={handleNameKeyDown}
+                  autoFocus
+                  className="truncate text-[14px] font-semibold tracking-tight text-foreground bg-background border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              ) : (
+                <p 
+                  className="truncate text-[14px] font-semibold tracking-tight text-foreground flex items-center gap-1.5 cursor-pointer hover:text-primary transition-colors"
+                  onClick={startEditingName}
+                  title="Click to rename"
+                >
+                  {data?.display_name || summary?.name || dashboardId}
+                  <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </p>
+              )}
               <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
                   {data?.source_type || summary?.source_type || "—"}

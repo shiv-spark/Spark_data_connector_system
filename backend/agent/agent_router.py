@@ -478,6 +478,20 @@ def get_dashboard_data(dashboard_id: str):
     })
 
 
+class DashboardUpdateRequest(BaseModel):
+    display_name: str
+
+
+@router.patch("/dashboard/{dashboard_id}")
+def update_dashboard(dashboard_id: str, body: DashboardUpdateRequest):
+    state = get_dashboard(dashboard_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    
+    save_dashboard(dashboard_id, {**state, "display_name": body.display_name})
+    return {"success": True, "display_name": body.display_name}
+
+
 @router.get("/dashboard/{dashboard_id}/pipeline", response_class=HTMLResponse)
 def live_pipeline(dashboard_id: str):
     """Live pipeline page — Airflow DAG runs from Postgres."""
