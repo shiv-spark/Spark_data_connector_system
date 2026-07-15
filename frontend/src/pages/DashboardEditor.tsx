@@ -41,7 +41,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { api, updateDashboardName } from "@/lib/api";
+import { api, updateDashboardName, deleteDashboard } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { fdt } from "@/lib/format";
 
@@ -136,6 +136,14 @@ export const DashboardEditor = () => {
     if (e.key === "Enter") saveName();
     if (e.key === "Escape") setIsEditingName(false);
   };
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteDashboard(dashboardId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent-dashboards"] });
+      window.location.href = "/";
+    },
+  });
 
   const command = useMutation({
     mutationFn: async (message: string) => {
@@ -394,6 +402,19 @@ export const DashboardEditor = () => {
               title="Refresh"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", dashboard.isFetching && "animate-spin")} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Delete dashboard "${data?.display_name || summary?.name || dashboardId}"?`)) {
+                  deleteMutation.mutate();
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              className="icon-btn !h-8 !w-8 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+              title="Delete dashboard"
+            >
+              {deleteMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             </button>
             <span
               className={cn(

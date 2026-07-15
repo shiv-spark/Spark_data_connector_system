@@ -13,7 +13,8 @@ from agent.logger            import get_logger
 from agent.graph.graph       import pipeline_graph
 from agent.graph.onthefly    import generate_onthefly_chart
 from agent.dashboard_store   import (save_dashboard, get_dashboard,
-                                      list_dashboards, compute_data_hash)
+                                      list_dashboards, compute_data_hash,
+                                      delete_dashboard)
 from agent.tools.report_tools import (get_report_html, export_pdf, list_reports)
 from agent.figma_design       import build_figma_context_from_connection
 from fastapi.templating      import Jinja2Templates
@@ -786,6 +787,15 @@ def delete_chart(dashboard_id: str, slot: int):
 
     save_dashboard(dashboard_id, {**state, "charts": charts, "chart_meta": chart_meta})
     return {"status": "SUCCESS", "deleted_slot": slot, "chart_meta": chart_meta}
+
+
+@router.delete("/dashboard/{dashboard_id}")
+def delete_full_dashboard(dashboard_id: str):
+    """Delete the entire dashboard."""
+    deleted = delete_dashboard(dashboard_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    return {"status": "SUCCESS", "deleted_dashboard_id": dashboard_id}
 
 
 @router.get("/dashboard/{dashboard_id}/pipeline-data")

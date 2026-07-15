@@ -16,6 +16,7 @@ import { Assistant } from "@/pages/Assistant";
 import Text2SQL from "@/pages/Text2SQL";
 import DataGenerator from "@/pages/DataGenerator";
 import SqlEditor from "@/pages/SqlEditor";
+import { Settings } from "@/pages/Settings";
 
 
 export default function App() {
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/text2sql"     element={<Text2SQL />} />
         <Route path="/datagenerator" element={<DataGenerator />} />
         <Route path="/sql-editor"   element={<SqlEditor />} />
+        <Route path="/settings"     element={<Settings />} />
       </Route>
     </Routes>
   );

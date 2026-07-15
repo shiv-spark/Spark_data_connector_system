@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
@@ -27,6 +27,7 @@ import { fetchHealth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/ThemeProvider";
 import { UniversalSearch } from "@/components/UniversalSearch";
+import { UserMenu } from "@/components/UserMenu";
 
 type NavItem = { to: string; label: string; icon: typeof Sparkles; badge?: string };
 type NavGroup = { label: string; items: NavItem[] };
@@ -192,15 +193,7 @@ export const Layout = () => {
         </div>
 
         <div className="flex items-center justify-between border-t border-border px-3 py-2">
-          <button className="flex items-center gap-2 rounded-md px-1.5 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800">
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-700 text-[10px] font-bold text-white shadow-[inset_0_0_0_1px_rgba(15,23,42,0.12)]">
-              G
-            </span>
-            <div className="flex flex-col items-start leading-tight">
-              <span className="text-[11.5px] font-semibold text-slate-800 dark:text-slate-200">Gaurav</span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400">Owner</span>
-            </div>
-          </button>
+          <UserMenu />
           <div className="flex items-center gap-1">
             <button
               className="icon-btn !h-7 !w-7"
@@ -213,9 +206,9 @@ export const Layout = () => {
                 <Sun className="h-3.5 w-3.5" />
               )}
             </button>
-            <button className="icon-btn !h-7 !w-7" title="Settings">
+            <Link to="/settings" className="icon-btn !h-7 !w-7" title="Settings">
               <Settings className="h-3.5 w-3.5" />
-            </button>
+            </Link>
           </div>
         </div>
       </aside>
@@ -229,13 +222,6 @@ export const Layout = () => {
                 <span className="ws-mark h-5 w-5 rounded-[5px] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.12)]" />
                 <span className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">SparkBrains</span>
                 <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400 transition group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-              </button>
-
-              <span className="select-none text-slate-300 dark:text-slate-600">/</span>
-
-              <button className="group inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800">
-                <span className="text-[13px] font-medium text-slate-700 dark:text-slate-300">data-pipeline</span>
-                <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition group-hover:text-slate-600 dark:group-hover:text-slate-300" />
               </button>
 
               <span className="select-none text-slate-300 dark:text-slate-600">/</span>

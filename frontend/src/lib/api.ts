@@ -254,6 +254,11 @@ export const updateDashboardName = async (dashboardId: string, displayName: stri
   return r.data;
 };
 
+export const deleteDashboard = async (dashboardId: string) => {
+  const r = await api.delete(`/agent/dashboard/${dashboardId}`);
+  return r.data;
+};
+
 export const searchMetrics = async (query: string): Promise<SearchResult[]> => {
   try {
     const r = await api.get('/metrics/summary/all');
