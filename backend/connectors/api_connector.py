@@ -11,15 +11,7 @@ from requests.auth import HTTPBasicAuth
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _extract_records(data):
-    """
-    Find the actual list-of-records inside any JSON API response shape.
 
-    Handles:
-      1. Already a flat list:      [ {...}, {...} ]
-      2. Wrapped in a known key:   { "data": [...] } / { "results": [...] } / { "items": [...] }
-      3. Wrapped in an unknown key: { "carts": [...] }  -> first list-valued key found
-      4. A single object:          { ... }  -> wrapped as one-row list
-    """
     if isinstance(data, list):
         return data
 
@@ -39,12 +31,7 @@ def _extract_records(data):
 
 
 def _find_plain_struct_columns(df: pl.DataFrame):
-    """
-    Return names of columns whose dtype is a bare Struct (not wrapped in a
-    List) — e.g. dimensions: {width, height, depth}. These represent a
-    single row's nested object, not multiple records, so they should be
-    unnested (spread into prefixed columns) rather than exploded.
-    """
+
     return [
         name for name, dtype in zip(df.columns, df.dtypes)
         if isinstance(dtype, pl.Struct)
@@ -52,12 +39,7 @@ def _find_plain_struct_columns(df: pl.DataFrame):
 
 
 def _unnest_plain_struct_columns(df: pl.DataFrame) -> pl.DataFrame:
-    """
-    Unnest bare Struct columns into prefixed flat columns, e.g.
-    dimensions: {width, height} -> dimensions.width, dimensions.height.
-    Unlike List(Struct), no explode is needed since there's exactly one
-    struct value per row already.
-    """
+   
     struct_cols = _find_plain_struct_columns(df)
     for col in struct_cols:
         struct_df = df.select(col).unnest(col)
@@ -76,14 +58,7 @@ def _find_nested_list_columns(df: pl.DataFrame):
 
 
 def _find_simple_list_columns(df: pl.DataFrame):
-    """
-    Return names of columns whose dtype is a List of a simple (non-Struct)
-    type — e.g. List(String) like ["beauty", "skincare"], List(Int64), etc.
-    These aren't "nested records" (no exploding makes sense — each row still
-    represents one entity), so they're converted to a delimited string
-    instead so any downstream DB insert gets a clean TEXT value rather than
-    a raw list/array object it can't adapt.
-    """
+
     simple_list_cols = []
     for name, dtype in zip(df.columns, df.dtypes):
         if isinstance(dtype, pl.List):
@@ -94,11 +69,7 @@ def _find_simple_list_columns(df: pl.DataFrame):
 
 
 def _stringify_simple_list_columns(df: pl.DataFrame, delimiter: str = ", ") -> pl.DataFrame:
-    """
-    Convert List(non-Struct) columns into a single delimited string per row,
-    e.g. ["beauty", "skincare"] -> "beauty, skincare". Null-safe: a null
-    list becomes a null string, not the literal text "null".
-    """
+
     simple_list_cols = _find_simple_list_columns(df)
     if not simple_list_cols:
         return df
@@ -109,19 +80,7 @@ def _stringify_simple_list_columns(df: pl.DataFrame, delimiter: str = ", ") -> p
         )
     return df
 def _flatten_dataframe(df: pl.DataFrame, max_depth: int = 5) -> pl.DataFrame:
-    """
-    Recursively explode + unnest any List(Struct) columns so every nested
-    record becomes its own row, with nested fields prefixed by the parent
-    column name to avoid collisions (e.g. products.id, products.price).
 
-    Caps recursion at max_depth to avoid runaway expansion on pathological
-    or self-referential schemas.
-
-    After struct-lists are resolved, any remaining simple lists (e.g.
-    tags: ["beauty", "skincare"]) are converted to delimited strings —
-    they represent a single row's property, not nested records, so they
-    should not be exploded or left as raw array objects.
-    """
     depth = 0
     while depth < max_depth:
         nested_cols = _find_nested_list_columns(df)
@@ -149,11 +108,6 @@ def _records_to_dataframe(records, flatten: bool = True) -> pl.DataFrame:
     if flatten:
         df = _flatten_dataframe(df)
     return df
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Small generic helpers — dot-path digging + nested body mutation
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _dig(data, path):
     """
@@ -234,16 +188,7 @@ def _build_auth(
     query_param_name: str = "api_key",
     extra_headers: dict = None,
 ):
-    """
-    Returns (headers: dict, requests_auth: HTTPBasicAuth|None, auth_params: dict)
 
-      - "none"            : no auth added
-      - "api_key_header"  : arbitrary header name = api_key
-                             (e.g. header_name="x-Gateway-APIKey")
-      - "bearer"          : Authorization: "<bearer_prefix> <bearer_token>"
-      - "basic"           : HTTP Basic auth (user/password) via requests' auth=
-      - "api_key_query"   : api_key sent as a URL query parameter instead of a header
-    """
     if auth_type not in VALID_AUTH_TYPES:
         raise ValueError(f"Unknown auth_type '{auth_type}'. Valid: {sorted(VALID_AUTH_TYPES)}")
 
@@ -383,10 +328,10 @@ def api_connector(
     step_size: int = 1000,
 ):
     """
-    Generic REST API connector supporting:
+    Generic REST API connector :
       - GET or POST (or any HTTP method requests supports)
-      - 4 auth methods: api_key_header, bearer, basic, api_key_query (or none)
-      - 3 pagination strategies: page, offset_limit, body_bounds (or none)
+      - auth methods: api_key_header, bearer, basic, api_key_query (or none)
+      - pagination strategies: page, offset_limit, body_bounds (or none)
       - retry with backoff on transient failures
       - flexible response shapes via records_path + the existing
         auto-detecting _extract_records fallback

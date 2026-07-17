@@ -11,6 +11,7 @@ from utils.dag_generator import (
     CONTAINER_DATASET_PATH,
     _safe_id,
     _fix_path,
+    _validate_query_shape,
 )
 
 project_root = Path(__file__).parent.parent.parent
@@ -64,14 +65,20 @@ def validate_source(src: dict, index: int) -> list:
             errors.append(f"{label} (s3): s3_key is required and cannot be empty.")
 
     elif ct == "postgres":
-        for field in ("src_pg_host", "src_pg_db", "src_pg_user", "src_pg_password", "pg_query"):
+        for field in ("src_pg_host", "src_pg_db", "src_pg_user", "src_pg_password"):
             if not _clean(src.get(field)):
                 errors.append(f"{label} (postgres): {field} is required and cannot be empty.")
+        query_error = _validate_query_shape("postgres", src.get("pg_query"))
+        if query_error:
+            errors.append(f"{label}: {query_error}")
 
     elif ct == "snowflake":
-        for field in ("sf_account", "sf_user", "sf_password", "sf_warehouse", "sf_database", "sf_query"):
+        for field in ("sf_account", "sf_user", "sf_password", "sf_warehouse", "sf_database"):
             if not _clean(src.get(field)):
                 errors.append(f"{label} (snowflake): {field} is required and cannot be empty.")
+        query_error = _validate_query_shape("snowflake", src.get("sf_query"))
+        if query_error:
+            errors.append(f"{label}: {query_error}")
 
     return errors
 

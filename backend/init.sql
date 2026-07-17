@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     records_count  INTEGER DEFAULT 0,
     error          TEXT
 );
-
 -- Pipeline Logs
 CREATE TABLE IF NOT EXISTS pipeline_logs (
     id       SERIAL PRIMARY KEY,
@@ -18,6 +17,7 @@ CREATE TABLE IF NOT EXISTS pipeline_logs (
     level    VARCHAR(10),
     message  TEXT
 );
+
 
 -- Pipeline Metrics
 CREATE TABLE IF NOT EXISTS pipeline_metrics (

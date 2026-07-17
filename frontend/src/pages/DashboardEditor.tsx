@@ -107,6 +107,7 @@ export const DashboardEditor = () => {
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const renameMutation = useMutation({
     mutationFn: (name: string) => updateDashboardName(dashboardId, name),
@@ -116,12 +117,22 @@ export const DashboardEditor = () => {
       );
       queryClient.invalidateQueries({ queryKey: ["agent-dashboards"] });
       setIsEditingName(false);
+      setRenameError(null);
+    },
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      if (detail?.error) {
+        setRenameError(detail.error);
+      } else {
+        setRenameError("Failed to rename dashboard");
+      }
     },
   });
 
   const startEditingName = () => {
     setEditingNameValue(data?.display_name || summary?.name || dashboardId);
     setIsEditingName(true);
+    setRenameError(null);
   };
 
   const saveName = () => {
@@ -352,15 +363,20 @@ export const DashboardEditor = () => {
             </Link>
             <div className="min-w-0 flex items-center gap-2">
               {isEditingName ? (
-                <input
-                  type="text"
-                  value={editingNameValue}
-                  onChange={(e) => setEditingNameValue(e.target.value)}
-                  onBlur={saveName}
-                  onKeyDown={handleNameKeyDown}
-                  autoFocus
-                  className="truncate text-[14px] font-semibold tracking-tight text-foreground bg-background border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                />
+                <div className="flex flex-col gap-0.5">
+                  <input
+                    type="text"
+                    value={editingNameValue}
+                    onChange={(e) => { setEditingNameValue(e.target.value); setRenameError(null); }}
+                    onBlur={saveName}
+                    onKeyDown={handleNameKeyDown}
+                    autoFocus
+                    className="truncate text-[14px] font-semibold tracking-tight text-foreground bg-background border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  {renameError && (
+                    <p className="text-[11px] text-red-500">{renameError}</p>
+                  )}
+                </div>
               ) : (
                 <p 
                   className="truncate text-[14px] font-semibold tracking-tight text-foreground flex items-center gap-1.5 cursor-pointer hover:text-primary transition-colors"

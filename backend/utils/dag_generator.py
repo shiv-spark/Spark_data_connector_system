@@ -45,6 +45,22 @@ def _fix_path(val):
     val = val.strip().strip('"').strip("'")
     return val.replace("\\", "/")
 
+def _validate_query_shape(connector_type: str, query) -> str | None:
+
+    if not query or not str(query).strip():
+        return f"{connector_type}: query is empty."
+
+    q = str(query).strip()
+    match = re.match(r'(?is)^select\s+.+\s+from\s+(.+?)\s*;?\s*$', q)
+    if not match:
+        return f"{connector_type}: query does not look like a valid 'SELECT ... FROM <table>' statement: {q!r}"
+
+    target = match.group(1).strip()
+
+    if not re.match(r'^("[^"]+"|\'[^\']+\'|[A-Za-z_][\w$]*(\.[A-Za-z_][\w$]*){0,2})$', target):
+        return f"{connector_type}: query's FROM target is not a valid table reference: {target!r}"
+
+    return None
 
 def validate_pipeline_config(config: dict) -> list:
     config["folder_path"]     = _clean(config.get("folder_path"))
@@ -79,9 +95,12 @@ def validate_pipeline_config(config: dict) -> list:
         errors.append("incremental: incremental_column required — e.g. 'updated_at' or 'id'")
 
     if ct == "postgres":
-        for field in ("src_pg_host", "src_pg_db", "src_pg_user", "src_pg_password", "pg_query"):
+        for field in ("src_pg_host", "src_pg_db", "src_pg_user", "src_pg_password"):
             if not config.get(field):
                 errors.append(f"postgres: {field} required.")
+        query_error = _validate_query_shape("postgres", config.get("pg_query"))
+        if query_error:
+            errors.append(query_error)
 
     if ct == "s3":
         if not config.get("s3_bucket"):
@@ -90,9 +109,12 @@ def validate_pipeline_config(config: dict) -> list:
             errors.append("s3: s3_key required.")
 
     if ct == "snowflake":
-        for field in ("sf_account", "sf_user", "sf_password", "sf_warehouse", "sf_database", "sf_query"):
+        for field in ("sf_account", "sf_user", "sf_password", "sf_warehouse", "sf_database"):
             if not config.get(field):
                 errors.append(f"snowflake: {field} required.")
+        query_error = _validate_query_shape("snowflake", config.get("sf_query"))
+        if query_error:
+            errors.append(query_error)
 
     if config.get("option", "1") not in VALID_OPTIONS:
         errors.append("option '1' (append), '2' (overwrite), or '3' (create new) required.")
@@ -231,7 +253,7 @@ with DAG(
     start_date        = pendulum.datetime(2024, 1, 1, tz=TIMEZONE),
     schedule_interval = SCHEDULE,
     catchup           = False,
-    tags              = ["connector", CONNECTOR_TYPE],
+    # tags              = ["connector", CONNECTOR_TYPE],
 ) as dag:
     PythonOperator(
         task_id         = "run_connector",
@@ -414,6 +436,16 @@ def edit_dag_file(pipeline_name: str, updates: dict) -> dict:
 
     if not os.path.exists(file_path):
         return {"status": "FAILED", "error": f"Pipeline 'pipeline_{pipeline_id}' not found."}
+
+    # ── Validate any query-shaped field BEFORE writing anything ──────────
+    if "pg_query" in updates and updates["pg_query"] is not None:
+        err = _validate_query_shape("postgres", updates["pg_query"])
+        if err:
+            return {"status": "FAILED", "error": err}
+    if "sf_query" in updates and updates["sf_query"] is not None:
+        err = _validate_query_shape("snowflake", updates["sf_query"])
+        if err:
+            return {"status": "FAILED", "error": err}
 
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()

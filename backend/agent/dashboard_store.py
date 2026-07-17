@@ -38,6 +38,8 @@ def _get_conn() -> psycopg2.extensions.connection:
     global _conn
     if _conn is None or _conn.closed:
         _conn = psycopg2.connect(**DB_CONFIG, connect_timeout=5)
+    elif _conn.get_transaction_status() == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+        _conn.rollback()
     return _conn
 
 
@@ -71,28 +73,79 @@ def _load_all_from_db():
             _store[row["dashboard_id"]] = state
 
 
+# def save_dashboard(dashboard_id: str, state: dict):
+#     """Save dashboard state to both memory and DB."""
+#     conn = _get_conn()
+#     state_with_time = {
+#         **state,
+#         "last_updated": datetime.utcnow().isoformat(),
+#     }
+#     _store[dashboard_id] = state_with_time
+#     with conn.cursor() as cur:
+#         cur.execute("""
+#             INSERT INTO saved_dashboards (dashboard_id, state, last_updated)
+#             VALUES (%s, %s, NOW())
+#             ON CONFLICT (dashboard_id) DO UPDATE SET
+#                 state = EXCLUDED.state,
+#                 last_updated = NOW()
+#         """, (dashboard_id, json.dumps(state, default=str)))
+#         conn.commit()
+
+
+def _sanitize_for_json(obj):
+    import math
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
+
 def save_dashboard(dashboard_id: str, state: dict):
     """Save dashboard state to both memory and DB."""
     conn = _get_conn()
+    clean_state = _sanitize_for_json(state)
     state_with_time = {
-        **state,
+        **clean_state,
         "last_updated": datetime.utcnow().isoformat(),
     }
-    _store[dashboard_id] = state_with_time
-    with conn.cursor() as cur:
-        cur.execute("""
-            INSERT INTO saved_dashboards (dashboard_id, state, last_updated)
-            VALUES (%s, %s, NOW())
-            ON CONFLICT (dashboard_id) DO UPDATE SET
-                state = EXCLUDED.state,
-                last_updated = NOW()
-        """, (dashboard_id, json.dumps(state, default=str)))
-        conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO saved_dashboards (dashboard_id, state, last_updated)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (dashboard_id) DO UPDATE SET
+                    state = EXCLUDED.state,
+                    last_updated = NOW()
+            """, (dashboard_id, json.dumps(clean_state, default=str)))
+            conn.commit()
+        _store[dashboard_id] = state_with_time
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def get_dashboard(dashboard_id: str) -> dict | None:
     """Get dashboard from memory (already loaded from DB on startup)."""
     return _store.get(dashboard_id)
+
+
+def get_dashboard_by_name(name: str) -> str | None:
+    """Get dashboard_id by name (case-insensitive). Returns None if not found."""
+    name_lower = name.lower()
+    for did, s in _store.items():
+        if s.get("display_name", "").lower() == name_lower:
+            return did
+    return None
+
+
+def get_all_dashboard_names() -> list[str]:
+    """Get all dashboard names (case-normalized for comparison)."""
+    return [
+        {"dashboard_id": did, "name": s.get("display_name", did)}
+        for did, s in _store.items()
+    ]
 
 
 def list_dashboards() -> list[dict]:
@@ -110,16 +163,29 @@ def list_dashboards() -> list[dict]:
     ]
 
 
+# def delete_dashboard(dashboard_id: str) -> bool:
+#     """Delete a dashboard from both memory and DB."""
+#     conn = _get_conn()
+#     if dashboard_id in _store:
+#         del _store[dashboard_id]
+#     with conn.cursor() as cur:
+#         cur.execute("DELETE FROM saved_dashboards WHERE dashboard_id = %s", (dashboard_id,))
+#         conn.commit()
+#         return cur.rowcount > 0
+
 def delete_dashboard(dashboard_id: str) -> bool:
     """Delete a dashboard from both memory and DB."""
     conn = _get_conn()
     if dashboard_id in _store:
         del _store[dashboard_id]
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM saved_dashboards WHERE dashboard_id = %s", (dashboard_id,))
-        conn.commit()
-        return cur.rowcount > 0
-
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM saved_dashboards WHERE dashboard_id = %s", (dashboard_id,))
+            conn.commit()
+            return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        raise
 
 def compute_data_hash(data: list[dict]) -> str:
     """Hash the data to detect changes on refresh."""

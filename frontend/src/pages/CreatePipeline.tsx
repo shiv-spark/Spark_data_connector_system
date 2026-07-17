@@ -1,8 +1,6 @@
-
 // import { FormEvent, useState, useEffect } from "react";
 // import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // import { Loader2, PlusCircle, Link2, Link2Off, Check, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from "lucide-react";
-// // import { Loader2, PlusCircle, Link2, Link2Off, Check, ChevronLeft, ChevronRight } from "lucide-react";
 // import { api } from "@/lib/api";
 // import { Button } from "@/components/ui/button";
 // import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +39,15 @@
 //   { id: 3, label: "Schedule" },
 //   { id: 4, label: "Review & Create" },
 // ];
+
+// // Build a SELECT query from a plain table reference. Auto-quotes the
+// // identifier unless the user already typed something that looks quoted
+// // or schema-qualified (contains a dot or a quote character).
+// const buildSelectQuery = (tableRef: string) => {
+//   const t = tableRef.trim();
+//   if (!t) return "";
+//   return /["'.]/.test(t) ? `SELECT * FROM ${t}` : `SELECT * FROM "${t}"`;
+// };
 
 // const base = {
 //   pipeline_name: "",
@@ -85,6 +92,12 @@
 //   const [connectionError, setConnectionError] = useState<string>("");
 //   const [currentStep, setCurrentStep] = useState(1);
 //   const [stepError, setStepError] = useState<string>("");
+
+//   // ── Table-vs-query mode for Postgres / Snowflake ──────────────────────
+//   const [pgMode, setPgMode] = useState<"table" | "query">("table");
+//   const [pgTableInput, setPgTableInput] = useState("");
+//   const [sfMode, setSfMode] = useState<"table" | "query">("table");
+//   const [sfTableInput, setSfTableInput] = useState("");
 
 //   const update = (key: keyof typeof base, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -135,6 +148,10 @@
 //     setSelectedConnectionId("");
 //     setUseExistingConnection(false);
 //     setConnectionError("");
+//     setPgMode("table");
+//     setPgTableInput("");
+//     setSfMode("table");
+//     setSfTableInput("");
 //   }, [form.connector_type]);
 
 //   const create = useMutation({
@@ -167,23 +184,27 @@
 //       return response.data;
 //     },
 //     onSuccess: (data) => {
-//         setResult(data);
-//         qc.invalidateQueries({ queryKey: ["pipelines"] });
-//         qc.invalidateQueries({ queryKey: ["dashboard"] });
+//       setResult(data);
+//       qc.invalidateQueries({ queryKey: ["pipelines"] });
+//       qc.invalidateQueries({ queryKey: ["dashboard"] });
 
-//         // Reset the whole form so the user can immediately create another
-//         // pipeline without manually going Back through every step, and
-//         // without accidentally resubmitting the same pipeline_name (which
-//         // the backend rejects as "already exists").
-//         setForm(base);
-//         setSchedule(defaultSchedule);
-//         setUseExistingConnection(false);
-//         setSelectedConnectionId("");
-//         setConnectionError("");
-//         setApiConfigError("");
-//         setStepError("");
-//         setCurrentStep(1);
-//       },
+//       // Reset the whole form so the user can immediately create another
+//       // pipeline without manually going Back through every step, and
+//       // without accidentally resubmitting the same pipeline_name (which
+//       // the backend rejects as "already exists").
+//       setForm(base);
+//       setSchedule(defaultSchedule);
+//       setUseExistingConnection(false);
+//       setSelectedConnectionId("");
+//       setConnectionError("");
+//       setApiConfigError("");
+//       setStepError("");
+//       setCurrentStep(1);
+//       setPgMode("table");
+//       setPgTableInput("");
+//       setSfMode("table");
+//       setSfTableInput("");
+//     },
 //   });
 
 //   // ── Step validation — checked before allowing "Next" ─────────────────
@@ -203,13 +224,22 @@
 //         }
 //         if (form.connector_type === "google_sheets" && !form.sheet_url.trim()) return "Sheet URL is required.";
 //         if (form.connector_type === "api" && !form.api_url.trim()) return "API URL is required.";
-//         if (form.connector_type === "postgres" && (!form.src_pg_host || !form.src_pg_db || !form.src_pg_user || !form.pg_query)) {
-//           return "Host, database, user, and query are required for Postgres.";
+//         if (form.connector_type === "postgres" && (!form.src_pg_host || !form.src_pg_db || !form.src_pg_user)) {
+//           return "Host, database, and user are required for Postgres.";
 //         }
 //         if (form.connector_type === "s3" && (!form.s3_bucket || !form.s3_key)) return "Bucket and key are required for S3.";
-//         if (form.connector_type === "snowflake" && (!form.sf_account || !form.sf_user || !form.sf_warehouse || !form.sf_database || !form.sf_query)) {
-//           return "Account, user, warehouse, database, and query are required for Snowflake.";
+//         if (form.connector_type === "snowflake" && (!form.sf_account || !form.sf_user || !form.sf_warehouse || !form.sf_database)) {
+//           return "Account, user, warehouse, and database are required for Snowflake.";
 //         }
+//       }
+//       // Table/query validation applies regardless of new vs. saved connection.
+//       if (form.connector_type === "postgres") {
+//         if (pgMode === "table" && !pgTableInput.trim()) return "Table name is required for Postgres.";
+//         if (pgMode === "query" && !form.pg_query.trim()) return "SQL query is required for Postgres.";
+//       }
+//       if (form.connector_type === "snowflake") {
+//         if (sfMode === "table" && !sfTableInput.trim()) return "Table name is required for Snowflake.";
+//         if (sfMode === "query" && !form.sf_query.trim()) return "SQL query is required for Snowflake.";
 //       }
 //       if (form.connector_type === "api" && form.api_config.trim()) {
 //         try {
@@ -266,7 +296,7 @@
 
 //   return (
 //     <div className="space-y-5">
-//       <h2 className="h-section flex items-center gap-2"><PlusCircle className="h-5 w-5" /> Create Pipeline</h2>
+//       <h2 className="h-section flex items-center gap-2 text-foreground"><PlusCircle className="h-5 w-5" /> Create Pipeline</h2>
 
 //       {/* ── Stepper ─────────────────────────────────────────────────── */}
 //       <Card>
@@ -282,24 +312,28 @@
 //                   <span
 //                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors ${
 //                       step.id === currentStep
-//                         ? "border-emerald-600 bg-emerald-600 text-white"
+//                         ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500"
 //                         : step.id < currentStep
-//                         ? "border-emerald-600 bg-emerald-50 text-emerald-600"
-//                         : "border-slate-300 bg-white text-slate-400 group-hover:border-slate-400"
+//                         ? "border-emerald-600 bg-emerald-50 text-emerald-600 dark:border-emerald-500 dark:bg-emerald-950 dark:text-emerald-400"
+//                         : "border-border bg-card text-muted-foreground group-hover:border-muted-foreground dark:border-border dark:bg-card dark:text-muted-foreground"
 //                     }`}
 //                   >
 //                     {step.id < currentStep ? <Check className="h-4 w-4" /> : step.id}
 //                   </span>
 //                   <span
 //                     className={`hidden text-sm font-medium sm:block ${
-//                       step.id === currentStep ? "text-slate-950" : step.id < currentStep ? "text-emerald-700" : "text-slate-400"
+//                       step.id === currentStep
+//                         ? "text-foreground"
+//                         : step.id < currentStep
+//                         ? "text-emerald-700 dark:text-emerald-400"
+//                         : "text-muted-foreground"
 //                     }`}
 //                   >
 //                     {step.label}
 //                   </span>
 //                 </button>
 //                 {idx < STEPS.length - 1 && (
-//                   <div className={`mx-3 h-0.5 flex-1 ${step.id < currentStep ? "bg-emerald-600" : "bg-slate-200"}`} />
+//                   <div className={`mx-3 h-0.5 flex-1 ${step.id < currentStep ? "bg-emerald-600 dark:bg-emerald-500" : "bg-border"}`} />
 //                 )}
 //               </div>
 //             ))}
@@ -309,7 +343,7 @@
 
 //       <Card>
 //         <CardHeader>
-//           <CardTitle className="text-sm">
+//           <CardTitle className="text-sm text-foreground">
 //             Step {currentStep} of {STEPS.length}: {STEPS[currentStep - 1].label}
 //           </CardTitle>
 //         </CardHeader>
@@ -320,33 +354,33 @@
 //             {currentStep === 1 && (
 //               <div className="space-y-4">
 //                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-//                   <label className="space-y-1 text-sm font-medium">
+//                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Pipeline name
 //                     <Input value={form.pipeline_name} onChange={(e) => update("pipeline_name", e.target.value)} placeholder="e.g. daily_sales_sync" required />
 //                   </label>
-//                   <label className="space-y-1 text-sm font-medium">
+//                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Connector
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.connector_type} onChange={(e) => update("connector_type", e.target.value as Connector)}>
+//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.connector_type} onChange={(e) => update("connector_type", e.target.value as Connector)}>
 //                       {(Object.keys(CONNECTOR_LABELS) as Connector[]).map((c) => (
 //                         <option key={c} value={c}>{CONNECTOR_LABELS[c]}</option>
 //                       ))}
 //                     </select>
 //                   </label>
-//                   <label className="space-y-1 text-sm font-medium">
+//                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Target table
 //                     <Input value={form.table_name} onChange={(e) => update("table_name", e.target.value)} placeholder="e.g. sales_data" required />
 //                   </label>
-//                   <label className="space-y-1 text-sm font-medium">
+//                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Load option
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.option} onChange={(e) => update("option", e.target.value)}>
+//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.option} onChange={(e) => update("option", e.target.value)}>
 //                       <option value="1">Append</option>
 //                       <option value="2">Overwrite</option>
 //                       <option value="3">Create new</option>
 //                     </select>
 //                   </label>
-//                   <label className="space-y-1 text-sm font-medium">
+//                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Sync mode
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
+//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
 //                       <option value="full">Full</option>
 //                       <option value="incremental">Incremental</option>
 //                     </select>
@@ -354,9 +388,9 @@
 //                 </div>
 
 //                 {form.option === "3" && (
-//                   <label className="block max-w-md space-y-1 text-sm font-medium">
+//                   <label className="block max-w-md space-y-1 text-sm font-medium text-foreground">
 //                     After first run
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.after_first_run} onChange={(e) => update("after_first_run", e.target.value)}>
+//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.after_first_run} onChange={(e) => update("after_first_run", e.target.value)}>
 //                       <option value="">Select...</option>
 //                       <option value="1">Then append</option>
 //                       <option value="2">Then overwrite</option>
@@ -364,7 +398,7 @@
 //                   </label>
 //                 )}
 //                 {form.sync_mode === "incremental" && (
-//                   <label className="block max-w-md space-y-1 text-sm font-medium">
+//                   <label className="block max-w-md space-y-1 text-sm font-medium text-foreground">
 //                     Incremental column
 //                     <Input value={form.incremental_column} onChange={(e) => update("incremental_column", e.target.value)} placeholder="e.g. updated_at" />
 //                   </label>
@@ -376,9 +410,9 @@
 //             {currentStep === 2 && (
 //               <div className="space-y-4">
 //                 {SUPPORTS_CONNECTIONS.includes(form.connector_type) && (
-//                   <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+//                   <div className="rounded-md border border-border bg-card p-4 dark:border-border dark:bg-card">
 //                     <div className="flex items-center gap-4">
-//                       <label className="flex items-center gap-2 text-sm font-medium">
+//                       <label className="flex items-center gap-2 text-sm font-medium text-foreground">
 //                         <input
 //                           type="radio"
 //                           name="connectionMode"
@@ -392,7 +426,7 @@
 //                         <Link2Off className="h-4 w-4" />
 //                         New Connection
 //                       </label>
-//                       <label className="flex items-center gap-2 text-sm font-medium">
+//                       <label className="flex items-center gap-2 text-sm font-medium text-foreground">
 //                         <input
 //                           type="radio"
 //                           name="connectionMode"
@@ -408,10 +442,10 @@
 //                         {connections.isLoading ? (
 //                           <p className="text-sm text-muted-foreground">Loading connections...</p>
 //                         ) : filteredConnections.length === 0 ? (
-//                           <p className="text-sm text-red-500">No saved connections for this connector type. Please create a new connection.</p>
+//                           <p className="text-sm text-red-500 dark:text-red-400">No saved connections for this connector type. Please create a new connection.</p>
 //                         ) : (
 //                           <select
-//                             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+//                             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
 //                             value={selectedConnectionId}
 //                             onChange={(e) => {
 //                               setSelectedConnectionId(e.target.value);
@@ -425,7 +459,7 @@
 //                             ))}
 //                           </select>
 //                         )}
-//                         {connectionError && <p className="mt-2 text-sm text-red-500">{connectionError}</p>}
+//                         {connectionError && <p className="mt-2 text-sm text-red-500 dark:text-red-400">{connectionError}</p>}
 //                       </div>
 //                     )}
 //                   </div>
@@ -452,10 +486,10 @@
 //                     {form.connector_type === "api" && (
 //                       <div className="space-y-2">
 //                         <Input placeholder="API URL" value={form.api_url} onChange={(e) => update("api_url", e.target.value)} />
-//                         <label className="space-y-1 text-sm font-medium block">
+//                         <label className="space-y-1 text-sm font-medium block text-foreground">
 //                           Advanced Config (optional JSON — method, auth_type, body, pagination, etc.)
 //                           <textarea
-//                             className="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
+//                             className="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground"
 //                             placeholder={`{\n  "method": "GET",\n  "records_path": "products"\n}`}
 //                             value={form.api_config}
 //                             onChange={(e) => {
@@ -464,9 +498,13 @@
 //                             }}
 //                           />
 //                         </label>
-//                         {apiConfigError && <p className="text-sm text-red-500">{apiConfigError}</p>}
+//                         {apiConfigError && <p className="text-sm text-red-500 dark:text-red-400">{apiConfigError}</p>}
 //                       </div>
 //                     )}
+
+//                     {/* ── Postgres credentials — shown only for a brand-new connection.
+//                          For a saved connection, host/user/password already live on the
+//                          saved_connections row and are resolved server-side. ── */}
 //                     {form.connector_type === "postgres" && (
 //                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 //                         <Input placeholder="Host" value={form.src_pg_host} onChange={(e) => update("src_pg_host", e.target.value)} />
@@ -474,9 +512,9 @@
 //                         <Input placeholder="User" value={form.src_pg_user} onChange={(e) => update("src_pg_user", e.target.value)} />
 //                         <Input placeholder="Password" type="password" value={form.src_pg_password} onChange={(e) => update("src_pg_password", e.target.value)} />
 //                         <Input placeholder="Port" value={form.src_pg_port} onChange={(e) => update("src_pg_port", e.target.value)} />
-//                         <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={form.pg_query} onChange={(e) => update("pg_query", e.target.value)} />
 //                       </div>
 //                     )}
+
 //                     {form.connector_type === "s3" && (
 //                       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 //                         <Input placeholder="Bucket" value={form.s3_bucket} onChange={(e) => update("s3_bucket", e.target.value)} />
@@ -484,6 +522,8 @@
 //                         <Input placeholder="File type" value={form.s3_file_type} onChange={(e) => update("s3_file_type", e.target.value)} />
 //                       </div>
 //                     )}
+
+//                     {/* ── Snowflake credentials — same rule as Postgres above ── */}
 //                     {form.connector_type === "snowflake" && (
 //                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 //                         <Input placeholder="Account (e.g. XROJPNQ-RO43084)" value={form.sf_account} onChange={(e) => update("sf_account", e.target.value)} />
@@ -493,10 +533,83 @@
 //                         <Input placeholder="Database" value={form.sf_database} onChange={(e) => update("sf_database", e.target.value)} />
 //                         <Input placeholder="Schema (default PUBLIC)" value={form.sf_schema} onChange={(e) => update("sf_schema", e.target.value)} />
 //                         <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
-//                         <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="SQL query" value={form.sf_query} onChange={(e) => update("sf_query", e.target.value)} />
 //                       </div>
 //                     )}
 //                   </>
+//                 )}
+
+//                 {/* ── Postgres — Table name / Custom SQL query toggle ──
+//                      Always shown when connector is Postgres, regardless of
+//                      whether credentials come from a new or saved connection. ── */}
+//                 {form.connector_type === "postgres" && (
+//                   <div className="space-y-2">
+//                     <div className="flex items-center gap-4 text-sm font-medium text-foreground">
+//                       <label className="flex items-center gap-1.5 cursor-pointer">
+//                         <input type="radio" name="pgMode" checked={pgMode === "table"} onChange={() => setPgMode("table")} />
+//                         Table name
+//                       </label>
+//                       <label className="flex items-center gap-1.5 cursor-pointer">
+//                         <input type="radio" name="pgMode" checked={pgMode === "query"} onChange={() => setPgMode("query")} />
+//                         Custom SQL query
+//                       </label>
+//                     </div>
+
+//                     {pgMode === "table" ? (
+//                       <Input
+//                         placeholder="e.g. public.orders or orders"
+//                         value={pgTableInput}
+//                         onChange={(e) => {
+//                           const v = e.target.value;
+//                           setPgTableInput(v);
+//                           update("pg_query", buildSelectQuery(v));
+//                         }}
+//                       />
+//                     ) : (
+//                       <textarea
+//                         className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+//                         placeholder="SQL query"
+//                         value={form.pg_query}
+//                         onChange={(e) => update("pg_query", e.target.value)}
+//                       />
+//                     )}
+//                   </div>
+//                 )}
+
+//                 {/* ── Snowflake — Table name / Custom SQL query toggle ──
+//                      Always shown when connector is Snowflake, regardless of
+//                      whether credentials come from a new or saved connection. ── */}
+//                 {form.connector_type === "snowflake" && (
+//                   <div className="space-y-2">
+//                     <div className="flex items-center gap-4 text-sm font-medium text-foreground">
+//                       <label className="flex items-center gap-1.5 cursor-pointer">
+//                         <input type="radio" name="sfMode" checked={sfMode === "table"} onChange={() => setSfMode("table")} />
+//                         Table name
+//                       </label>
+//                       <label className="flex items-center gap-1.5 cursor-pointer">
+//                         <input type="radio" name="sfMode" checked={sfMode === "query"} onChange={() => setSfMode("query")} />
+//                         Custom SQL query
+//                       </label>
+//                     </div>
+
+//                     {sfMode === "table" ? (
+//                       <Input
+//                         placeholder="e.g. SCHEMA.TABLE or TABLE"
+//                         value={sfTableInput}
+//                         onChange={(e) => {
+//                           const v = e.target.value;
+//                           setSfTableInput(v);
+//                           update("sf_query", buildSelectQuery(v));
+//                         }}
+//                       />
+//                     ) : (
+//                       <textarea
+//                         className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+//                         placeholder="SQL query"
+//                         value={form.sf_query}
+//                         onChange={(e) => update("sf_query", e.target.value)}
+//                       />
+//                     )}
+//                   </div>
 //                 )}
 //               </div>
 //             )}
@@ -511,18 +624,30 @@
 //             {/* ══════════════════ STEP 4 — REVIEW & CREATE ══════════════════ */}
 //             {currentStep === 4 && (
 //               <div className="space-y-4">
-//                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
-//                   <h3 className="mb-3 font-semibold text-slate-950">Review your pipeline</h3>
+//                 <div className="rounded-md border border-border bg-card p-4 text-sm dark:border-border dark:bg-card">
+//                   <h3 className="mb-3 font-semibold text-foreground">Review your pipeline</h3>
 //                   <dl className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
-//                     <div><dt className="text-muted-foreground">Pipeline name</dt><dd className="font-medium">{form.pipeline_name || "—"}</dd></div>
-//                     <div><dt className="text-muted-foreground">Connector</dt><dd className="font-medium">{CONNECTOR_LABELS[form.connector_type]}</dd></div>
-//                     <div><dt className="text-muted-foreground">Target table</dt><dd className="font-medium">{form.table_name || "—"}</dd></div>
-//                     <div><dt className="text-muted-foreground">Load option</dt><dd className="font-medium">{ "1": "Append", "2": "Overwrite", "3": "Create new" }[form.option]}</dd></div>
-//                     <div><dt className="text-muted-foreground">Sync mode</dt><dd className="font-medium capitalize">{form.sync_mode}</dd></div>
-//                     <div><dt className="text-muted-foreground">Schedule</dt><dd className="font-medium">{buildCron(schedule)} ({schedule.timezone})</dd></div>
+//                     <div><dt className="text-muted-foreground">Pipeline name</dt><dd className="font-medium text-foreground">{form.pipeline_name || "—"}</dd></div>
+//                     <div><dt className="text-muted-foreground">Connector</dt><dd className="font-medium text-foreground">{CONNECTOR_LABELS[form.connector_type]}</dd></div>
+//                     <div><dt className="text-muted-foreground">Target table</dt><dd className="font-medium text-foreground">{form.table_name || "—"}</dd></div>
+//                     <div><dt className="text-muted-foreground">Load option</dt><dd className="font-medium text-foreground">{{ "1": "Append", "2": "Overwrite", "3": "Create new" }[form.option]}</dd></div>
+//                     <div><dt className="text-muted-foreground">Sync mode</dt><dd className="font-medium text-foreground capitalize">{form.sync_mode}</dd></div>
+//                     <div><dt className="text-muted-foreground">Schedule</dt><dd className="font-medium text-foreground">{buildCron(schedule)} ({schedule.timezone})</dd></div>
+//                     {form.connector_type === "postgres" && (
+//                       <div className="md:col-span-2">
+//                         <dt className="text-muted-foreground">Postgres query</dt>
+//                         <dd className="font-medium text-foreground font-mono text-xs break-all">{form.pg_query || "—"}</dd>
+//                       </div>
+//                     )}
+//                     {form.connector_type === "snowflake" && (
+//                       <div className="md:col-span-2">
+//                         <dt className="text-muted-foreground">Snowflake query</dt>
+//                         <dd className="font-medium text-foreground font-mono text-xs break-all">{form.sf_query || "—"}</dd>
+//                       </div>
+//                     )}
 //                     <div className="md:col-span-2">
 //                       <dt className="text-muted-foreground">Source</dt>
-//                       <dd className="font-medium">
+//                       <dd className="font-medium text-foreground">
 //                         {useExistingConnection
 //                           ? `Saved connection: ${filteredConnections.find((c: any) => String(c.id) === selectedConnectionId)?.name || selectedConnectionId}`
 //                           : form.file_path || form.folder_path || form.sheet_url || form.api_url || form.src_pg_host || form.s3_bucket || form.sf_account || "—"}
@@ -532,15 +657,15 @@
 //                 </div>
 
 //                 <p className="text-sm text-muted-foreground">
-//                   Everything look right? Click <span className="font-medium text-slate-950">Create Pipeline</span> below to finish.
+//                   Everything look right? Click <span className="font-medium text-foreground">Create Pipeline</span> below to finish.
 //                 </p>
 //               </div>
 //             )}
 
-//             {stepError && <p className="text-sm text-red-500">{stepError}</p>}
+//             {stepError && <p className="text-sm text-red-500 dark:text-red-400">{stepError}</p>}
 
 //             {/* ══════════════════ NAVIGATION ══════════════════ */}
-//             <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+//             <div className="flex items-center justify-between border-t border-border pt-4 dark:border-border">
 //               <Button type="button" variant="outline" onClick={goBack} disabled={currentStep === 1}>
 //                 <ChevronLeft className="h-4 w-4" /> Back
 //               </Button>
@@ -560,35 +685,39 @@
 //       </Card>
 
 //       {result && (
-//   <Card className="border-emerald-200 bg-emerald-50">
-//     <CardContent className="flex items-start gap-3 p-4">
-//       <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-//       <div className="space-y-1">
-//         <p className="font-medium text-emerald-900">Pipeline created successfully</p>
-//         <p className="text-sm text-emerald-800">
-//           <span className="font-medium">{result.dag_id}</span> is set up and will start running on schedule.
-//         </p>
-//         {result.message && <p className="text-xs text-emerald-700">{result.message}</p>}
-//       </div>
-//     </CardContent>
-//   </Card>
-// )}
+//         <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
+//           <CardContent className="flex items-start gap-3 p-4">
+//             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+//             <div className="space-y-1">
+//               <p className="font-medium text-emerald-900 dark:text-emerald-200">Pipeline created successfully</p>
+//               <p className="text-sm text-emerald-800 dark:text-emerald-300">
+//                 <span className="font-medium">{result.dag_id}</span> is set up and will start running on schedule.
+//               </p>
+//               {result.message && <p className="text-xs text-emerald-700 dark:text-emerald-400">{result.message}</p>}
+//             </div>
+//           </CardContent>
+//         </Card>
+//       )}
 
-// {create.error && (
-//   <Card className="border-rose-200 bg-rose-50">
-//     <CardContent className="flex items-start gap-3 p-4">
-//       <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
-//       <div className="space-y-1">
-//         <p className="font-medium text-rose-900">Couldn't create pipeline</p>
-//         <p className="text-sm text-rose-800">
-//           {(create.error as any)?.response?.data?.detail?.error
-//             || (create.error as any)?.response?.data?.detail
-//             || (create.error as Error).message}
-//         </p>
-//       </div>
-//     </CardContent>
-//   </Card>
-// )}
+//       {create.error && (
+//         <Card className="border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950">
+//           <CardContent className="flex items-start gap-3 p-4">
+//             <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+//             <div className="space-y-1">
+//               <p className="font-medium text-rose-900 dark:text-rose-200">Couldn't create pipeline</p>
+//               <p className="text-sm text-rose-800 dark:text-rose-300">
+//                 {(create.error as any)?.response?.data?.detail?.error
+//                   || (create.error as any)?.response?.data?.detail
+//                   || (create.error as Error).message}
+//               </p>
+//             </div>
+//           </CardContent>
+//         </Card>
+//       )}
+//     </div>
+//   );
+// };
+
 import { FormEvent, useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, PlusCircle, Link2, Link2Off, Check, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from "lucide-react";
@@ -630,6 +759,25 @@ const STEPS = [
   { id: 3, label: "Schedule" },
   { id: 4, label: "Review & Create" },
 ];
+
+// For Postgres — respects exact case as typed (Postgres folds unquoted
+// identifiers to lowercase by default, so typing lowercase "orders" and
+// quoting it as "orders" matches what Postgres actually stored).
+const buildSelectQuery = (tableRef: string) => {
+  const t = tableRef.trim();
+  if (!t) return "";
+  return /["'.]/.test(t) ? `SELECT * FROM ${t}` : `SELECT * FROM "${t}"`;
+};
+
+// For Snowflake — unquoted identifiers default to UPPERCASE storage, so
+// auto-uppercase the typed table name unless the user already quoted it
+// or used a schema-qualified reference (contains a dot or quote char).
+const buildSnowflakeSelectQuery = (tableRef: string) => {
+  const t = tableRef.trim();
+  if (!t) return "";
+  if (/["'.]/.test(t)) return `SELECT * FROM ${t}`;
+  return `SELECT * FROM "${t.toUpperCase()}"`;
+};
 
 const base = {
   pipeline_name: "",
@@ -674,6 +822,12 @@ export const CreatePipeline = () => {
   const [connectionError, setConnectionError] = useState<string>("");
   const [currentStep, setCurrentStep] = useState(1);
   const [stepError, setStepError] = useState<string>("");
+
+  // ── Table-vs-query mode for Postgres / Snowflake ──────────────────────
+  const [pgMode, setPgMode] = useState<"table" | "query">("table");
+  const [pgTableInput, setPgTableInput] = useState("");
+  const [sfMode, setSfMode] = useState<"table" | "query">("table");
+  const [sfTableInput, setSfTableInput] = useState("");
 
   const update = (key: keyof typeof base, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -724,6 +878,10 @@ export const CreatePipeline = () => {
     setSelectedConnectionId("");
     setUseExistingConnection(false);
     setConnectionError("");
+    setPgMode("table");
+    setPgTableInput("");
+    setSfMode("table");
+    setSfTableInput("");
   }, [form.connector_type]);
 
   const create = useMutation({
@@ -743,8 +901,23 @@ export const CreatePipeline = () => {
         }
       }
 
+      // ── Force-resolve the final query at submit time — never rely on
+      // onChange having fired correctly, this guarantees correctness even
+      // if a stale value from a previous session survived in `form`. ──
+      const finalPgQuery =
+        form.connector_type === "postgres"
+          ? (pgMode === "table" ? buildSelectQuery(pgTableInput) : form.pg_query)
+          : form.pg_query;
+
+      const finalSfQuery =
+        form.connector_type === "snowflake"
+          ? (sfMode === "table" ? buildSnowflakeSelectQuery(sfTableInput) : form.sf_query)
+          : form.sf_query;
+
       const payload = {
         ...form,
+        pg_query: finalPgQuery,
+        sf_query: finalSfQuery,
         api_config: parsedApiConfig,
         schedule: buildCron(schedule),
         timezone: schedule.timezone,
@@ -760,6 +933,10 @@ export const CreatePipeline = () => {
       qc.invalidateQueries({ queryKey: ["pipelines"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
 
+      // Reset the whole form so the user can immediately create another
+      // pipeline without manually going Back through every step, and
+      // without accidentally resubmitting the same pipeline_name (which
+      // the backend rejects as "already exists").
       setForm(base);
       setSchedule(defaultSchedule);
       setUseExistingConnection(false);
@@ -768,9 +945,14 @@ export const CreatePipeline = () => {
       setApiConfigError("");
       setStepError("");
       setCurrentStep(1);
+      setPgMode("table");
+      setPgTableInput("");
+      setSfMode("table");
+      setSfTableInput("");
     },
   });
 
+  // ── Step validation — checked before allowing "Next" ─────────────────
   const validateStep = (step: number): string => {
     if (step === 1) {
       if (!form.pipeline_name.trim()) return "Pipeline name is required.";
@@ -787,13 +969,22 @@ export const CreatePipeline = () => {
         }
         if (form.connector_type === "google_sheets" && !form.sheet_url.trim()) return "Sheet URL is required.";
         if (form.connector_type === "api" && !form.api_url.trim()) return "API URL is required.";
-        if (form.connector_type === "postgres" && (!form.src_pg_host || !form.src_pg_db || !form.src_pg_user || !form.pg_query)) {
-          return "Host, database, user, and query are required for Postgres.";
+        if (form.connector_type === "postgres" && (!form.src_pg_host || !form.src_pg_db || !form.src_pg_user)) {
+          return "Host, database, and user are required for Postgres.";
         }
         if (form.connector_type === "s3" && (!form.s3_bucket || !form.s3_key)) return "Bucket and key are required for S3.";
-        if (form.connector_type === "snowflake" && (!form.sf_account || !form.sf_user || !form.sf_warehouse || !form.sf_database || !form.sf_query)) {
-          return "Account, user, warehouse, database, and query are required for Snowflake.";
+        if (form.connector_type === "snowflake" && (!form.sf_account || !form.sf_user || !form.sf_warehouse || !form.sf_database)) {
+          return "Account, user, warehouse, and database are required for Snowflake.";
         }
+      }
+      // Table/query validation applies regardless of new vs. saved connection.
+      if (form.connector_type === "postgres") {
+        if (pgMode === "table" && !pgTableInput.trim()) return "Table name is required for Postgres.";
+        if (pgMode === "query" && !form.pg_query.trim()) return "SQL query is required for Postgres.";
+      }
+      if (form.connector_type === "snowflake") {
+        if (sfMode === "table" && !sfTableInput.trim()) return "Table name is required for Snowflake.";
+        if (sfMode === "query" && !form.sf_query.trim()) return "SQL query is required for Snowflake.";
       }
       if (form.connector_type === "api" && form.api_config.trim()) {
         try {
@@ -823,6 +1014,7 @@ export const CreatePipeline = () => {
   };
 
   const goToStep = (step: number) => {
+    // Only allow jumping backward, or forward if all steps in between are valid
     if (step < currentStep) {
       setStepError("");
       setCurrentStep(step);
@@ -851,12 +1043,17 @@ export const CreatePipeline = () => {
     <div className="space-y-5">
       <h2 className="h-section flex items-center gap-2 text-foreground"><PlusCircle className="h-5 w-5" /> Create Pipeline</h2>
 
+      {/* ── Stepper ─────────────────────────────────────────────────── */}
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center">
             {STEPS.map((step, idx) => (
               <div key={step.id} className="flex flex-1 items-center last:flex-none">
-                <button type="button" onClick={() => goToStep(step.id)} className="flex items-center gap-2 group">
+                <button
+                  type="button"
+                  onClick={() => goToStep(step.id)}
+                  className="flex items-center gap-2 group"
+                >
                   <span
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors ${
                       step.id === currentStep
@@ -870,10 +1067,10 @@ export const CreatePipeline = () => {
                   </span>
                   <span
                     className={`hidden text-sm font-medium sm:block ${
-                      step.id === currentStep 
-                        ? "text-foreground" 
-                        : step.id < currentStep 
-                        ? "text-emerald-700 dark:text-emerald-400" 
+                      step.id === currentStep
+                        ? "text-foreground"
+                        : step.id < currentStep
+                        ? "text-emerald-700 dark:text-emerald-400"
                         : "text-muted-foreground"
                     }`}
                   >
@@ -898,6 +1095,7 @@ export const CreatePipeline = () => {
         <CardContent>
           <form onSubmit={submit} className="space-y-5">
 
+            {/* ══════════════════ STEP 1 — BASIC INFO ══════════════════ */}
             {currentStep === 1 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -953,6 +1151,7 @@ export const CreatePipeline = () => {
               </div>
             )}
 
+            {/* ══════════════════ STEP 2 — SOURCE CONFIG ══════════════════ */}
             {currentStep === 2 && (
               <div className="space-y-4">
                 {SUPPORTS_CONNECTIONS.includes(form.connector_type) && (
@@ -1047,6 +1246,10 @@ export const CreatePipeline = () => {
                         {apiConfigError && <p className="text-sm text-red-500 dark:text-red-400">{apiConfigError}</p>}
                       </div>
                     )}
+
+                    {/* ── Postgres credentials — shown only for a brand-new connection.
+                         For a saved connection, host/user/password already live on the
+                         saved_connections row and are resolved server-side. ── */}
                     {form.connector_type === "postgres" && (
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <Input placeholder="Host" value={form.src_pg_host} onChange={(e) => update("src_pg_host", e.target.value)} />
@@ -1054,9 +1257,9 @@ export const CreatePipeline = () => {
                         <Input placeholder="User" value={form.src_pg_user} onChange={(e) => update("src_pg_user", e.target.value)} />
                         <Input placeholder="Password" type="password" value={form.src_pg_password} onChange={(e) => update("src_pg_password", e.target.value)} />
                         <Input placeholder="Port" value={form.src_pg_port} onChange={(e) => update("src_pg_port", e.target.value)} />
-                        <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground md:col-span-2" placeholder="SQL query" value={form.pg_query} onChange={(e) => update("pg_query", e.target.value)} />
                       </div>
                     )}
+
                     {form.connector_type === "s3" && (
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                         <Input placeholder="Bucket" value={form.s3_bucket} onChange={(e) => update("s3_bucket", e.target.value)} />
@@ -1064,6 +1267,8 @@ export const CreatePipeline = () => {
                         <Input placeholder="File type" value={form.s3_file_type} onChange={(e) => update("s3_file_type", e.target.value)} />
                       </div>
                     )}
+
+                    {/* ── Snowflake credentials — same rule as Postgres above ── */}
                     {form.connector_type === "snowflake" && (
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <Input placeholder="Account (e.g. XROJPNQ-RO43084)" value={form.sf_account} onChange={(e) => update("sf_account", e.target.value)} />
@@ -1073,20 +1278,95 @@ export const CreatePipeline = () => {
                         <Input placeholder="Database" value={form.sf_database} onChange={(e) => update("sf_database", e.target.value)} />
                         <Input placeholder="Schema (default PUBLIC)" value={form.sf_schema} onChange={(e) => update("sf_schema", e.target.value)} />
                         <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
-                        <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground md:col-span-2" placeholder="SQL query" value={form.sf_query} onChange={(e) => update("sf_query", e.target.value)} />
                       </div>
                     )}
                   </>
                 )}
+
+                {/* ── Postgres — Table name / Custom SQL query toggle ──
+                     Always shown when connector is Postgres, regardless of
+                     whether credentials come from a new or saved connection. ── */}
+                {form.connector_type === "postgres" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-4 text-sm font-medium text-foreground">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="pgMode" checked={pgMode === "table"} onChange={() => setPgMode("table")} />
+                        Table name
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="pgMode" checked={pgMode === "query"} onChange={() => setPgMode("query")} />
+                        Custom SQL query
+                      </label>
+                    </div>
+
+                    {pgMode === "table" ? (
+                      <Input
+                        placeholder="e.g. public.orders or orders"
+                        value={pgTableInput}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPgTableInput(v);
+                          update("pg_query", buildSelectQuery(v));
+                        }}
+                      />
+                    ) : (
+                      <textarea
+                        className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                        placeholder="SQL query"
+                        value={form.pg_query}
+                        onChange={(e) => update("pg_query", e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* ── Snowflake — Table name / Custom SQL query toggle ──
+                     Always shown when connector is Snowflake, regardless of
+                     whether credentials come from a new or saved connection. ── */}
+                {form.connector_type === "snowflake" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-4 text-sm font-medium text-foreground">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="sfMode" checked={sfMode === "table"} onChange={() => setSfMode("table")} />
+                        Table name
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="sfMode" checked={sfMode === "query"} onChange={() => setSfMode("query")} />
+                        Custom SQL query
+                      </label>
+                    </div>
+
+                    {sfMode === "table" ? (
+                      <Input
+                        placeholder="e.g. SCHEMA.TABLE or TABLE"
+                        value={sfTableInput}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSfTableInput(v);
+                          update("sf_query", buildSnowflakeSelectQuery(v));
+                        }}
+                      />
+                    ) : (
+                      <textarea
+                        className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                        placeholder="SQL query"
+                        value={form.sf_query}
+                        onChange={(e) => update("sf_query", e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
+            {/* ══════════════════ STEP 3 — SCHEDULE ══════════════════ */}
             {currentStep === 3 && (
               <div className="space-y-4">
                 <SchedulerFields value={schedule} onChange={setSchedule} />
               </div>
             )}
 
+            {/* ══════════════════ STEP 4 — REVIEW & CREATE ══════════════════ */}
             {currentStep === 4 && (
               <div className="space-y-4">
                 <div className="rounded-md border border-border bg-card p-4 text-sm dark:border-border dark:bg-card">
@@ -1098,6 +1378,22 @@ export const CreatePipeline = () => {
                     <div><dt className="text-muted-foreground">Load option</dt><dd className="font-medium text-foreground">{{ "1": "Append", "2": "Overwrite", "3": "Create new" }[form.option]}</dd></div>
                     <div><dt className="text-muted-foreground">Sync mode</dt><dd className="font-medium text-foreground capitalize">{form.sync_mode}</dd></div>
                     <div><dt className="text-muted-foreground">Schedule</dt><dd className="font-medium text-foreground">{buildCron(schedule)} ({schedule.timezone})</dd></div>
+                    {form.connector_type === "postgres" && (
+                      <div className="md:col-span-2">
+                        <dt className="text-muted-foreground">Postgres query</dt>
+                        <dd className="font-medium text-foreground font-mono text-xs break-all">
+                          {(pgMode === "table" ? buildSelectQuery(pgTableInput) : form.pg_query) || "—"}
+                        </dd>
+                      </div>
+                    )}
+                    {form.connector_type === "snowflake" && (
+                      <div className="md:col-span-2">
+                        <dt className="text-muted-foreground">Snowflake query</dt>
+                        <dd className="font-medium text-foreground font-mono text-xs break-all">
+                          {(sfMode === "table" ? buildSnowflakeSelectQuery(sfTableInput) : form.sf_query) || "—"}
+                        </dd>
+                      </div>
+                    )}
                     <div className="md:col-span-2">
                       <dt className="text-muted-foreground">Source</dt>
                       <dd className="font-medium text-foreground">
@@ -1117,6 +1413,7 @@ export const CreatePipeline = () => {
 
             {stepError && <p className="text-sm text-red-500 dark:text-red-400">{stepError}</p>}
 
+            {/* ══════════════════ NAVIGATION ══════════════════ */}
             <div className="flex items-center justify-between border-t border-border pt-4 dark:border-border">
               <Button type="button" variant="outline" onClick={goBack} disabled={currentStep === 1}>
                 <ChevronLeft className="h-4 w-4" /> Back

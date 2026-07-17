@@ -14,7 +14,8 @@ from agent.graph.graph       import pipeline_graph
 from agent.graph.onthefly    import generate_onthefly_chart
 from agent.dashboard_store   import (save_dashboard, get_dashboard,
                                       list_dashboards, compute_data_hash,
-                                      delete_dashboard)
+                                      delete_dashboard, get_dashboard_by_name,
+                                      get_all_dashboard_names)
 from agent.tools.report_tools import (get_report_html, export_pdf, list_reports)
 from agent.figma_design       import build_figma_context_from_connection
 from fastapi.templating      import Jinja2Templates
@@ -159,6 +160,19 @@ def analyze(body: AnalyzeRequest):
         display_name = body.pipeline_name or ""
         if body.file_path:
             display_name = os.path.splitext(os.path.basename(body.file_path))[0]
+        
+        existing_id = get_dashboard_by_name(display_name)
+        if existing_id:
+            existing_state = get_dashboard(existing_id)
+            existing_name = existing_state.get("display_name", existing_id) if existing_state else existing_id
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "A dashboard with this name already exists",
+                    "existing_dashboard_id": existing_id,
+                    "existing_name": existing_name,
+                }
+            )
 
         # ── Resolve REAL credentials server-side from saved connection ──
         resolved_pg = {}
@@ -488,6 +502,19 @@ def update_dashboard(dashboard_id: str, body: DashboardUpdateRequest):
     state = get_dashboard(dashboard_id)
     if not state:
         raise HTTPException(status_code=404, detail="Dashboard not found")
+    
+    existing_id = get_dashboard_by_name(body.display_name)
+    if existing_id and existing_id != dashboard_id:
+        existing_state = get_dashboard(existing_id)
+        existing_name = existing_state.get("display_name", existing_id) if existing_state else existing_id
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "A dashboard with this name already exists",
+                "existing_dashboard_id": existing_id,
+                "existing_name": existing_name,
+            }
+        )
     
     save_dashboard(dashboard_id, {**state, "display_name": body.display_name})
     return {"success": True, "display_name": body.display_name}

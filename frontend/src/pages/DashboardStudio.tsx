@@ -165,6 +165,16 @@ export const DashboardStudio = () => {
         navigate(`/studio/${data.dashboard_id}`);
       }
     },
+    onError: (err: any) => {
+    const detail = err?.response?.data?.detail;
+    if (detail?.error) {
+      setResult({ error: detail.error, existing_name: detail.existing_name });
+    } else if (typeof detail === "string") {
+      setResult({ error: detail });                          // ← plain string 500 error bhi dikhao
+    } else {
+      setResult({ error: "Failed to create dashboard" });
+    }
+  },
   });
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -512,6 +522,16 @@ export const DashboardStudio = () => {
                 Open in studio <ArrowUpRight className="h-3.5 w-3.5" />
               </a>
             ) : null}
+            {result?.error && (
+              <div className="mt-2 rounded-md bg-red-50 p-3 text-[12px] text-red-700 dark:bg-red-950 dark:text-red-300">
+                <p className="font-semibold">{result.error}</p>
+                {result.existing_name && (
+                  <p className="mt-1 text-red-600 dark:text-red-400">
+                    A dashboard named "{result.existing_name}" already exists. Please use a different name.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-background/70 p-2 text-[11px] text-muted-foreground ring-1 ring-inset ring-border font-mono">
             {JSON.stringify(
