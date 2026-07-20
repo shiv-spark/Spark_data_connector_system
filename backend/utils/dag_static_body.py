@@ -698,12 +698,13 @@ def run_connector(**context):
             "SF_QUERY":           SF_QUERY,
         }
 
-        _process_one_source(cfg)
+        result_status = _process_one_source(cfg)
 
         if OPTION == "3" and AFTER_FIRST_RUN in ("1", "2"):
             _update_option_in_dag(AFTER_FIRST_RUN)
 
-        _log_run_end(dag_run_id, "SUCCESS")
+        # _log_run_end(dag_run_id, "SUCCESS")
+        _log_run_end(dag_run_id, result_status)
         print("Pipeline completed!")
         _send_email("success", dag_run_id=dag_run_id)
 

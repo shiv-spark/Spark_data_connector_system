@@ -62,6 +62,7 @@ export const DashboardStudio = () => {
   const navigate = useNavigate();
   const [sourceType, setSourceType] = useState<SourceType>("pipeline");
   const [connectionId, setConnectionId] = useState("");
+  const [activeMode, setActiveMode] = useState<"source" | "connection">("source");
   const [designConnectionId, setDesignConnectionId] = useState("");
   const [datasetRef, setDatasetRef] = useState("");
   const [filePath, setFilePath] = useState("");
@@ -70,6 +71,7 @@ export const DashboardStudio = () => {
   const [request, setRequest] = useState("");
   const [model, setModel] = useState("");
   const [customModel, setCustomModel] = useState("");
+  const [dashboardName, setDashboardName] = useState("");
   const [result, setResult] = useState<any>(null);
 
   const autoMode = request.trim().length === 0;
@@ -118,6 +120,7 @@ export const DashboardStudio = () => {
           request: effectiveRequest,
           figma_connection_id: designConnectionId ? Number(designConnectionId) : null,
           model: effectiveModel || null,
+          display_name: dashboardName.trim(),
         });
         return response.data;
       }
@@ -155,6 +158,7 @@ export const DashboardStudio = () => {
         figma_connection_id: designConnectionId ? Number(designConnectionId) : null,
         request: effectiveRequest,
         model: effectiveModel || null,
+        display_name: dashboardName.trim(),
       });
       return response.data;
     },
@@ -178,6 +182,10 @@ export const DashboardStudio = () => {
   });
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (!dashboardName.trim()) {
+      setResult({ error: "Please enter a dashboard name" });
+      return;
+    }
     setResult(null);
     analyze.mutate();
   };
@@ -253,13 +261,17 @@ export const DashboardStudio = () => {
               <span className="section-eyebrow shrink-0">Source</span>
               <div className="flex flex-wrap items-center gap-1.5">
                 {sourceOptions.map(({ value, label, icon: Icon }) => {
-                  const active = !connectionId && sourceType === value;
+                  const active = activeMode === "source" && sourceType === value;
                   return (
                     <button
                       key={value}
                       type="button"
-                      disabled={!!connectionId}
-                      onClick={() => setSourceType(value)}
+                      disabled={activeMode === "connection"}
+                      onClick={() => {
+                        setSourceType(value);
+                        setConnectionId("");
+                        setActiveMode("source");
+                      }}
                       className={cn(
                         "inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition",
                         active
@@ -280,9 +292,16 @@ export const DashboardStudio = () => {
               <div className="flex items-center gap-2">
                 <span className="section-eyebrow">Connection</span>
                 <select
-                  className="h-8 rounded-md border border-input bg-background px-2 pr-7 text-[12.5px] text-foreground shadow-[0_1px_0_rgba(15,23,42,0.02)] outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:shadow-[0_1px_0_rgba(0,0,0,0.1)]"
+                  disabled={activeMode === "source"}
+                  className={cn(
+                    "h-8 rounded-md border border-input bg-background px-2 pr-7 text-[12.5px] text-foreground shadow-[0_1px_0_rgba(15,23,42,0.02)] outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:shadow-[0_1px_0_rgba(0,0,0,0.1)]",
+                    activeMode === "source" && "opacity-40 cursor-not-allowed",
+                  )}
                   value={connectionId}
-                  onChange={(event) => setConnectionId(event.target.value)}
+                  onChange={(event) => {
+                    setConnectionId(event.target.value);
+                    setActiveMode(event.target.value ? "connection" : "source");
+                  }}
                 >
                   <option value="">— None —</option>
                   {dataConnections.map((connection: any) => (
@@ -388,6 +407,18 @@ export const DashboardStudio = () => {
                   )}
                 </>
               )}
+            </div>
+
+            <div className="border-b border-border px-4 py-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="section-eyebrow">Dashboard Name</span>
+              </div>
+              <Input
+                className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
+                placeholder="Enter a name for your dashboard..."
+                value={dashboardName}
+                onChange={(event) => setDashboardName(event.target.value)}
+              />
             </div>
 
             <div className="px-4 pb-3 pt-3">

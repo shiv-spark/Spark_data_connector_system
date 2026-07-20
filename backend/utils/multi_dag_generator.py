@@ -259,6 +259,8 @@ def run_multi_source(**context):
     dag_run_id = _log_run_start()
     results    = []
     any_failed = False
+    any_skipped = False
+    any_success = False
 
     try:
         for i, src in enumerate(SOURCES, 1):
@@ -267,6 +269,11 @@ def run_multi_source(**context):
                 status = _process_one_source(src, source_label=label)
                 results.append((label, status))
                 print(f"[{label}] -> {status}")
+                if status == "SUCCESS":
+                    any_success = True
+                elif status == "SKIPPED":
+                    any_skipped = True
+
             except Exception as e:
                 print(f"[{label}] FAILED: {e}")
                 results.append((label, "FAILED"))
@@ -275,10 +282,17 @@ def run_multi_source(**context):
         if any_failed:
             failed_list = [lbl for lbl, st in results if st == "FAILED"]
             raise Exception(f"Source(s) failed: {failed_list}")
+        
+        overall_status = "SUCCESS" if any_success else "SKIPPED"
+        _log_run_end(dag_run_id, overall_status)
+        print(f"All sources processed. Overall status: {overall_status}")
 
-        _log_run_end(dag_run_id, "SUCCESS")
-        print("All sources processed successfully!")
-        _send_email("success", dag_run_id=dag_run_id)
+        if overall_status == "SUCCESS":
+            _send_email("success", dag_run_id=dag_run_id)
+
+        # _log_run_end(dag_run_id, "SUCCESS")
+        # print("All sources processed successfully!")
+        # _send_email("success", dag_run_id=dag_run_id)
 
     except Exception as e:
         _log_run_end(dag_run_id, "FAILED", str(e))

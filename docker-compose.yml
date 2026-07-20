@@ -1,6 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Universal Data Connector — full stack
-# Run:  docker compose up -d
 # ─────────────────────────────────────────────────────────────────────────────
 services:
 
@@ -94,7 +93,10 @@ services:
   # Airflow — init
   # ═══════════════════════════════════════════════════════════════════════════
   airflow-init:
-    image: apache/airflow:2.7.0
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: data_connector_airflow:latest
     container_name: airflow_init
     depends_on:
       postgres:
@@ -119,8 +121,12 @@ services:
   # Airflow — webserver
   # ═══════════════════════════════════════════════════════════════════════════
   airflow-webserver:
-    image: apache/airflow:2.7.0
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: data_connector_airflow:latest
     container_name: airflow_webserver
+    user: "0:0"
     env_file:
       - .env
     ports:
@@ -132,6 +138,7 @@ services:
       - ./Dataset:/opt/airflow/dataset                 # same Windows folder as backend
       - airflow_logs:/opt/airflow/logs
       - ${WINDOWS_DOCUMENTS:-./Dataset}:/opt/airflow/dataset_win
+      - ${WINDOWS_DOWNLOADS:-./data/uploads}:/app/uploads
     depends_on:
       - airflow-init
     environment:
@@ -139,7 +146,6 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       AIRFLOW__API__AUTH_BACKENDS:         airflow.api.auth.backend.basic_auth
       AIRFLOW__WEBSERVER__SECRET_KEY:      ${AIRFLOW__WEBSERVER__SECRET_KEY}
-      _PIP_ADDITIONAL_REQUIREMENTS:        "boto3 polars openpyxl pandas"
       AWS_ACCESS_KEY_ID:                   ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY:               ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION:                          ${AWS_REGION}
@@ -159,8 +165,12 @@ services:
   # Airflow — scheduler
   # ═══════════════════════════════════════════════════════════════════════════
   airflow-scheduler:
-    image: apache/airflow:2.7.0
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: data_connector_airflow:latest
     container_name: airflow_scheduler
+    user: "0:0"
     env_file:
       - .env
     volumes:
@@ -170,6 +180,7 @@ services:
       - ./Dataset:/opt/airflow/dataset                 # same Windows folder as backend
       - airflow_logs:/opt/airflow/logs
       - ${WINDOWS_DOCUMENTS:-./Dataset}:/opt/airflow/dataset_win
+      - ${WINDOWS_DOWNLOADS:-./data/uploads}:/app/uploads
     depends_on:
       - airflow-webserver
     environment:
@@ -177,7 +188,6 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       AIRFLOW__API__AUTH_BACKENDS:         airflow.api.auth.backend.basic_auth
       AIRFLOW__WEBSERVER__SECRET_KEY:      ${AIRFLOW__WEBSERVER__SECRET_KEY}
-      _PIP_ADDITIONAL_REQUIREMENTS:        "boto3 polars openpyxl pandas"
       AWS_ACCESS_KEY_ID:                   ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY:               ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION:                          ${AWS_REGION}
@@ -186,40 +196,39 @@ services:
     networks:
       - connector_net
     restart: unless-stopped
-  
 
   # dbt:
   #   build:
   #     context: .
   #     dockerfile: Dockerfile.dbt
-
+  #
   #   container_name: data_connector_dbt
-
+  #
   #   working_dir: /usr/app/dbt
-
+  #
   #   volumes:
   #     - ./dbt:/usr/app/dbt
-
+  #
   #   env_file:
   #     - .env
-
+  #
   #   environment:
   #     DB_HOST: postgres
   #     DB_PORT: 5432
   #     DB_USER: ${DB_USER}
   #     DB_PASSWORD: ${DB_PASSWORD}
   #     DB_NAME: ${DB_NAME}
-
+  #
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
-
+  #
   #   networks:
   #     - connector_net
-
+  #
   #   stdin_open: true
   #   tty: true
-
+  #
   #   restart: unless-stopped
 
 volumes:
@@ -231,4 +240,3 @@ volumes:
 networks:
   connector_net:
     driver: bridge
-
