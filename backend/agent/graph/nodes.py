@@ -330,6 +330,7 @@ Rules:
 - If strong correlations exist, include a scatter plot for the strongest pair
 - Prefer charts that show business/analytical value over generic ones
 - For pie charts, only use categorical columns with 2-10 unique values
+- NEVER use an ID-like column (customer_id, order_id, etc.) or any column with more than 20 unique values as a bar/pie chart's category axis — it will be unreadable. Aggregate or pick a lower-cardinality column instead.
 
 Respond ONLY with a valid JSON array of exactly 4 objects, no markdown, no extra text:
 [
@@ -385,10 +386,19 @@ Respond ONLY with a valid JSON array of exactly 4 objects, no markdown, no extra
                 fig    = go.Figure()
 
                 try:
+                    # if ctype == "bar" and xcol and ycol and xcol in df and ycol in df:
+                    #     grp = df.groupby(xcol)[ycol].sum().reset_index().sort_values(ycol, ascending=False).head(15)
+                    #     fig.add_trace(go.Bar(
+                    #         x=grp[xcol], y=grp[ycol],
+                    #         marker=dict(color="#10b981", line=dict(width=0)),
+                    #         text=grp[ycol].round(1), textposition="outside",
+                    #         textfont=dict(color="#64748b", size=10),
+                    #         hovertemplate="<b>%{x}</b><br>%{y:,}<extra></extra>",
+                    #     ))
                     if ctype == "bar" and xcol and ycol and xcol in df and ycol in df:
-                        grp = df.groupby(xcol)[ycol].sum().reset_index().sort_values(ycol, ascending=False).head(15)
+                        grp = df.groupby(xcol)[ycol].sum().reset_index().sort_values(ycol, ascending=False).head(10)
                         fig.add_trace(go.Bar(
-                            x=grp[xcol], y=grp[ycol],
+                            x=grp[xcol].astype(str).str.slice(0, 20), y=grp[ycol],
                             marker=dict(color="#10b981", line=dict(width=0)),
                             text=grp[ycol].round(1), textposition="outside",
                             textfont=dict(color="#64748b", size=10),
@@ -405,7 +415,11 @@ Respond ONLY with a valid JSON array of exactly 4 objects, no markdown, no extra
                             hovertemplate="%{x}<br><b>%{y:,}</b><extra></extra>",
                         ))
 
+                    # elif ctype == "pie" and xcol and xcol in df:
+                    #     counts = df[xcol].value_counts().head(10)
                     elif ctype == "pie" and xcol and xcol in df:
+                        if df[xcol].nunique(dropna=True) > 12:
+                            continue
                         counts = df[xcol].value_counts().head(10)
                         fig.add_trace(go.Pie(
                             labels=counts.index, values=counts.values, hole=0.55,
@@ -421,7 +435,14 @@ Respond ONLY with a valid JSON array of exactly 4 objects, no markdown, no extra
                             hovertemplate="<b>%{x}</b>, <b>%{y}</b><extra></extra>",
                         ))
 
+                    # elif ctype == "histogram" and xcol and xcol in df:
+                    #     fig.add_trace(go.Histogram(
+                    #         x=df[xcol], nbinsx=30,
+                    #         marker=dict(color="#14b8a6", line=dict(width=0)),
+                    #     ))
                     elif ctype == "histogram" and xcol and xcol in df:
+                        if xcol not in numeric:
+                            continue
                         fig.add_trace(go.Histogram(
                             x=df[xcol], nbinsx=30,
                             marker=dict(color="#14b8a6", line=dict(width=0)),
@@ -436,6 +457,23 @@ Respond ONLY with a valid JSON array of exactly 4 objects, no markdown, no extra
                         ))
                     else:
                         continue
+
+                    # Set clear axis titles so viewers know what each axis means
+                    x_label = xcol.replace("_", " ").title() if xcol else None
+                    y_label = ycol.replace("_", " ").title() if ycol else None
+                    if ctype in ("bar", "line", "scatter") and x_label:
+                        fig.update_xaxes(title_text=x_label)
+                    if ctype in ("bar", "line", "scatter") and y_label:
+                        fig.update_yaxes(title_text=y_label)
+                    if ctype == "histogram" and x_label:
+                        fig.update_xaxes(title_text=x_label)
+                        fig.update_yaxes(title_text="Count")
+                    if ctype == "box" and y_label:
+                        fig.update_yaxes(title_text=y_label)
+                    if ctype in ("bar", "pie") and not ycol and x_label:
+                        # count-based bar/pie (value_counts style) — y is always a count
+                        fig.update_yaxes(title_text="Count")
+
 
                     _apply_theme(fig, title=title, height=320)
                     llm_charts[f"chart_{slot}"] = fig_to_html(fig)

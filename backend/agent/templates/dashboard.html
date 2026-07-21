@@ -111,7 +111,7 @@ html.dark .section{background:var(--surface);border-color:var(--border)}
 html.dark .section-title h3{color:var(--ink)}
 html.dark .chart{background:linear-gradient(180deg,var(--surface) 0%,var(--surface-2) 100%);border-color:var(--border)}
 html.dark .chart:hover{border-color:rgba(16,185,129,0.40)}
-html.dark .slot{background:rgba(30,41,59,0.92);color:var(--brand-400)}
+html.dark .slot{background:var(--brand-500);color:#0f172a}
 html.dark .chart-meta{border-color:var(--border)}
 html.dark .table-wrap{border-color:var(--border)}
 html.dark thead{background:var(--surface-3)}
@@ -217,7 +217,7 @@ body{
 .toggle-theme:hover{background:var(--surface-2);color:var(--ink)}
 
 /* layout */
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 400px;min-height:calc(100vh - 56px)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) min(400px, 28vw);min-height:calc(100vh - 56px)}
 .main{padding:24px 28px 40px;overflow:auto}
 .side{
   border-left:1px solid var(--border);
@@ -248,7 +248,7 @@ body{
   background:linear-gradient(180deg,rgb(15,23,42) 0%,rgb(30,41,59) 100%);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
 }
-.hero p{margin-top:8px;color:var(--muted);font-size:13.5px;line-height:1.6;max-width:760px}
+.hero p{margin-top:8px;color:var(--muted);font-size:14.5px;line-height:1.7;max-width:900px}
 
 /* KPIs */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
@@ -286,7 +286,7 @@ body{
 .section-title .meta{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-2);letter-spacing:.04em}
 
 /* charts */
-.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:14px}
 .chart{
   position:relative;overflow:hidden;
   background:linear-gradient(180deg,#ffffff 0%,#fafbfd 100%);
@@ -295,19 +295,18 @@ body{
   transition:box-shadow 160ms ease,transform 160ms ease,border-color 160ms ease;
 }
 .chart:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);border-color:rgba(16,185,129,0.30)}
-.chart-wrap{position:relative;min-height:340px;padding:8px 6px 4px}
+.chart-wrap{position:relative;min-height:420px;padding:36px 6px 4px}
 .chart-wrap img{width:100%;display:block}
 .chart-wrap > div{width:100% !important}
 .chart-wrap .js-plotly-plot,.chart-wrap .plot-container,.chart-wrap .plotly-graph-div{
-  width:100% !important;height:320px !important;
+  width:100% !important;height:400px !important;
 }
 .slot{
-  position:absolute;top:10px;left:10px;z-index:2;
-  font-family:var(--font-mono);font-size:10px;font-weight:500;letter-spacing:.06em;
-  color:var(--brand-700);background:rgba(255,255,255,0.92);
-  padding:3px 7px;border-radius:5px;
-  box-shadow:inset 0 0 0 1px rgba(16,185,129,0.30);
-  backdrop-filter:blur(4px);
+  position:absolute;top:8px;left:8px;z-index:3;
+  font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.06em;
+  color:#fff;background:var(--brand-600);
+  padding:3px 8px;border-radius:5px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.15);
 }
 .chart-meta{padding:12px 14px 14px;border-top:1px solid var(--border)}
 .chart-title{font-size:13px;font-weight:600;color:var(--ink);letter-spacing:-0.005em}

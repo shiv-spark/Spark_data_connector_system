@@ -1,5 +1,4 @@
 """
-dashboard_store.py
 Dashboard state persistence using PostgreSQL.
 Uses saved_dashboards table to store dashboard state as JSON.
 """
@@ -71,25 +70,6 @@ def _load_all_from_db():
             state = dict(row["state"])
             state["last_updated"] = row["last_updated"].isoformat() if row["last_updated"] else None
             _store[row["dashboard_id"]] = state
-
-
-# def save_dashboard(dashboard_id: str, state: dict):
-#     """Save dashboard state to both memory and DB."""
-#     conn = _get_conn()
-#     state_with_time = {
-#         **state,
-#         "last_updated": datetime.utcnow().isoformat(),
-#     }
-#     _store[dashboard_id] = state_with_time
-#     with conn.cursor() as cur:
-#         cur.execute("""
-#             INSERT INTO saved_dashboards (dashboard_id, state, last_updated)
-#             VALUES (%s, %s, NOW())
-#             ON CONFLICT (dashboard_id) DO UPDATE SET
-#                 state = EXCLUDED.state,
-#                 last_updated = NOW()
-#         """, (dashboard_id, json.dumps(state, default=str)))
-#         conn.commit()
 
 
 def _sanitize_for_json(obj):

@@ -1,5 +1,4 @@
 """
-logger.py
 Centralized logging configuration for the agent module.
 
 Levels:

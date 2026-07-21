@@ -54,12 +54,22 @@ def _apply_theme(fig, *, title: str | None = None, height: int | None = None):
         ),
         height=height,
     )
+    # fig.update_xaxes(
+    #     showgrid=False,
+    #     zeroline=False,
+    #     linecolor=_AXIS_LINE,
+    #     tickfont=dict(color=_MUTED, size=11),
+    #     title_font=dict(color=_MUTED, size=11),
+    # )
     fig.update_xaxes(
         showgrid=False,
         zeroline=False,
         linecolor=_AXIS_LINE,
         tickfont=dict(color=_MUTED, size=11),
         title_font=dict(color=_MUTED, size=11),
+        tickangle=-30,
+        automargin=True,
+        nticks=15,
     )
     fig.update_yaxes(
         showgrid=True, gridcolor=_GRID,
