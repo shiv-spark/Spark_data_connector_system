@@ -448,7 +448,6 @@ tbody tr:last-child td{border-bottom:none}
         <h1>Insights, shaped by your data</h1>
         <p id="summary">Loading analysis summary…</p>
       </div>
-      <div id="quality"></div>
     </div>
 
     <div class="kpis" id="kpis"></div>
@@ -620,7 +619,6 @@ async function fetchData(){
     const res=await fetch(`/api/agent/dashboard/${DASHBOARD_ID}/data`);
     const data=await res.json();
     document.getElementById("summary").textContent=data.ai_summary||"No summary available yet.";
-    renderQuality(data.quality_result||{});
     document.getElementById("updated").textContent="updated · "+new Date().toLocaleTimeString();
     renderKPIs(data.kpis);
     renderQualityCharts(data.charts||{});

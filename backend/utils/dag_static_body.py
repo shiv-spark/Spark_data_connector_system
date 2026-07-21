@@ -239,6 +239,34 @@ def _save_url_record(url, dest_folder, prefix="url"):
         json.dump({"url": url, "timestamp": ts, "pipeline": PIPELINE_ID}, fh, indent=2)
     print(f"URL record saved: {dest}")
 
+def _log_skip_metrics(table_name, connector_type, file_name=None, reason=""):
+    """
+    Directly logs a SKIPPED entry to pipeline_metrics for hash/URL dedup
+    skips and path-not-found skips — these never call the backend
+    /ingest_* API, so load_to_db()'s own log_pipeline_metrics() never
+    runs for them. Without this, dashboard's pipeline_metrics-based
+    charts never show these skips even though airflow_pipeline_runs does.
+    """
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO pipeline_metrics (
+                pipeline_id, table_name, rows_inserted, rows_skipped,
+                rows_failed, duration_sec, evolved_columns, match_pct,
+                file_name, connector_type, option, status, error_message
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            PIPELINE_ID, table_name, 0, 1, 0, 0.0, [], 100.0,
+            file_name, connector_type, None, "SKIPPED", reason,
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"Skip metrics logged — {file_name or 'source'} | {reason}")
+    except Exception as e:
+        print(f"Skip metrics log failed: {e}")
+
 
 def _ingest_file(container_file, endpoint, option, table_name, sync_mode, incremental_column):
     """
@@ -400,6 +428,7 @@ def _process_one_source(cfg, source_label=None):
             print(f"Path resolved: {container_path}")
             if not os.path.exists(container_path):
                 print(f"Path not found: {container_path} — skipping.")
+                _log_skip_metrics(table_name, connector_type, container_path, "Path not found")
                 return "SKIPPED"
             if os.path.isfile(container_path):
                 candidate_files = [container_path]
@@ -410,6 +439,7 @@ def _process_one_source(cfg, source_label=None):
                 ]
                 if not files_in_dir:
                     print("No matching files found — skipping.")
+                    _log_skip_metrics(table_name, connector_type, container_path, "No matching files found in folder")
                     return "SKIPPED"
                 candidate_files = [os.path.join(container_path, f) for f in files_in_dir]
             else:
@@ -422,6 +452,7 @@ def _process_one_source(cfg, source_label=None):
             print(f"File resolved: {container_file}")
             if not os.path.exists(container_file):
                 print(f"File not found: {container_file} — skipping.")
+                _log_skip_metrics(table_name, connector_type, container_file, "File not found")
                 return "SKIPPED"
             candidate_files = [container_file]
         else:
@@ -434,6 +465,7 @@ def _process_one_source(cfg, source_label=None):
 
             if _hash_already_processed(file_hash, processed_dir):
                 print(f"SKIP: {os.path.basename(container_file)} (same content, already in DB)")
+                _log_skip_metrics(table_name, connector_type, os.path.basename(container_file), "Already processed (hash match)")
                 continue
 
             print(f"Processing: {os.path.basename(container_file)}")
@@ -455,6 +487,7 @@ def _process_one_source(cfg, source_label=None):
         if not sheet_url:
             raise ValueError(f"[{label}] SHEET_URL required.")
         if _url_already_handled(sheet_url, processed_dir, failed_dir):
+            _log_skip_metrics(table_name, connector_type, sheet_url[:50], "URL already processed")
             return "SKIPPED"
         payload = {
             "sheet_url":          sheet_url,
@@ -476,6 +509,7 @@ def _process_one_source(cfg, source_label=None):
         if not api_url:
             raise ValueError(f"[{label}] API_URL required.")
         if _url_already_handled(api_url, processed_dir, failed_dir):
+            _log_skip_metrics(table_name, connector_type, api_url[:50], "URL already processed")
             return "SKIPPED"
 
         payload = {
@@ -540,6 +574,7 @@ def _process_one_source(cfg, source_label=None):
 
             if not all_keys:
                 print(f"No .{s3_file_type} files in s3://{s3_bucket}/{s3_key} — skipping.")
+                _log_skip_metrics(table_name, connector_type, s3_key, "No matching files found")
                 return "SKIPPED"
 
             print(f"Found {len(all_keys)} file(s) in S3 folder")
@@ -550,6 +585,7 @@ def _process_one_source(cfg, source_label=None):
                 file_name = s3_file_key.split("/")[-1]
 
                 if _url_already_handled(s3_url, processed_dir, failed_dir):
+                    _log_skip_metrics(table_name, connector_type, file_name, "URL already processed")
                     print(f"SKIP: {file_name} (already processed)")
                     continue
 
@@ -581,6 +617,7 @@ def _process_one_source(cfg, source_label=None):
             s3_url = f"s3://{s3_bucket}/{s3_key}"
             if _url_already_handled(s3_url, processed_dir, failed_dir):
                 print(f"SKIP: {s3_key} (already processed)")
+                _log_skip_metrics(table_name, connector_type, s3_key, "Already processed")
                 return "SKIPPED"
 
             payload = {
