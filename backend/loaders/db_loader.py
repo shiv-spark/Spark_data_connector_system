@@ -138,7 +138,13 @@ def create_table(cursor, df, table_name):
         cursor.execute(create_query)
         print(f"Table '{table_name}' created successfully")
     except Exception as e:
-        # ── Conflict detail print karo ───────────────
+        # Concurrent CREATE TABLE IF NOT EXISTS calls can race on Postgres's
+        # internal pg_type catalog even though IF NOT EXISTS is used — if
+        # that's what happened, the table now exists (created by the other
+        # transaction), so just continue instead of failing the whole run.
+        if "pg_type_typname_nsp_index" in str(e):
+            print(f"Table '{table_name}' was created concurrently by another process — continuing.")
+            return
         print(f"Table create failed: {e}")
         raise
 

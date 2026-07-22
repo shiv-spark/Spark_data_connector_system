@@ -393,6 +393,8 @@ def _process_one_source(cfg, source_label=None):
     s3_bucket    = cfg.get("S3_BUCKET")
     s3_key       = cfg.get("S3_KEY")
     s3_file_type = cfg.get("S3_FILE_TYPE", "csv")
+    s3_access_key  = cfg.get("S3_ACCESS_KEY")
+    s3_secret_key  = cfg.get("S3_SECRET_KEY")
 
     src_pg_host     = cfg.get("SRC_PG_HOST")
     src_pg_db       = cfg.get("SRC_PG_DB")
@@ -555,8 +557,8 @@ def _process_one_source(cfg, source_label=None):
         import boto3
         s3_client = boto3.client(
             "s3",
-            aws_access_key_id     = os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY"),
+            aws_access_key_id     = s3_access_key or os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key = s3_secret_key or os.getenv("AWS_SECRET_ACCESS_KEY"),
             region_name           = os.getenv("AWS_REGION", "us-east-1"),
         )
 
@@ -594,6 +596,8 @@ def _process_one_source(cfg, source_label=None):
                     "bucket":             s3_bucket,
                     "key":                s3_file_key,
                     "file_type":          s3_file_type,
+                    "access_key":     s3_access_key,  
+                    "secret_key":     s3_secret_key,
                     "option":             option,
                     "table_name":         table_name,
                     "sync_mode":          sync_mode,
@@ -606,7 +610,7 @@ def _process_one_source(cfg, source_label=None):
                     print(f"SUCCESS: {file_name} → processed/")
                 else:
                     _save_url_record(s3_url, failed_dir, prefix=f"s3_failed_{file_name}")
-                    print(f"FAILED: {file_name} → failed/")
+                    print(f"FAILED: {file_name} → failed/ | Reason: {res.text[:500]}") 
                     any_failed = True
 
             if any_failed:
@@ -624,6 +628,8 @@ def _process_one_source(cfg, source_label=None):
                 "bucket":             s3_bucket,
                 "key":                s3_key,
                 "file_type":          s3_file_type,
+                "access_key":     s3_access_key,  
+                "secret_key":     s3_secret_key,
                 "option":             option,
                 "table_name":         table_name,
                 "sync_mode":          sync_mode,
@@ -635,7 +641,7 @@ def _process_one_source(cfg, source_label=None):
                 print(f"SUCCESS: {s3_key} → processed/")
             else:
                 _save_url_record(s3_url, failed_dir, prefix="s3_failed")
-                print(f"FAILED: {s3_key} → failed/")
+                print(f"FAILED: {s3_key} → failed/ | Reason: {res.text[:500]}")
                 raise Exception(f"[{label}] S3 ingestion failed: {res.text}")
             return "SUCCESS"
 
@@ -719,6 +725,8 @@ def run_connector(**context):
             "S3_BUCKET":          S3_BUCKET,
             "S3_KEY":             S3_KEY,
             "S3_FILE_TYPE":       S3_FILE_TYPE,
+            "S3_ACCESS_KEY":      S3_ACCESS_KEY,
+            "S3_SECRET_KEY":      S3_SECRET_KEY,
             "SRC_PG_HOST":        SRC_PG_HOST,
             "SRC_PG_DB":          SRC_PG_DB,
             "SRC_PG_USER":        SRC_PG_USER,

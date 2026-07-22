@@ -45,21 +45,25 @@ def _fix_path(val):
     val = val.strip().strip('"').strip("'")
     return val.replace("\\", "/")
 
-def _validate_query_shape(connector_type: str, query) -> str | None:
+# def _validate_query_shape(connector_type: str, query) -> str | None:
 
+#     if not query or not str(query).strip():
+#         return f"{connector_type}: query is empty."
+
+#     q = str(query).strip()
+#     match = re.match(r'(?is)^select\s+.+\s+from\s+(.+?)\s*;?\s*$', q)
+#     if not match:
+#         return f"{connector_type}: query does not look like a valid 'SELECT ... FROM <table>' statement: {q!r}"
+
+#     target = match.group(1).strip()
+
+#     if not re.match(r'^("[^"]+"|\'[^\']+\'|[A-Za-z_][\w$]*(\.[A-Za-z_][\w$]*){0,2})$', target):
+#         return f"{connector_type}: query's FROM target is not a valid table reference: {target!r}"
+
+#     return None
+def _validate_query_shape(connector_type: str, query) -> str | None:
     if not query or not str(query).strip():
         return f"{connector_type}: query is empty."
-
-    q = str(query).strip()
-    match = re.match(r'(?is)^select\s+.+\s+from\s+(.+?)\s*;?\s*$', q)
-    if not match:
-        return f"{connector_type}: query does not look like a valid 'SELECT ... FROM <table>' statement: {q!r}"
-
-    target = match.group(1).strip()
-
-    if not re.match(r'^("[^"]+"|\'[^\']+\'|[A-Za-z_][\w$]*(\.[A-Za-z_][\w$]*){0,2})$', target):
-        return f"{connector_type}: query's FROM target is not a valid table reference: {target!r}"
-
     return None
 
 def validate_pipeline_config(config: dict) -> list:
@@ -157,6 +161,8 @@ def _render_template(cfg: dict) -> str:
     s3_bucket    = cfg.get("s3_bucket")    or None
     s3_key       = cfg.get("s3_key")       or None
     s3_file_type = cfg.get("s3_file_type") or "csv"
+    s3_access_key  = cfg.get("s3_access_key") or None
+    s3_secret_key  = cfg.get("s3_secret_key") or None
 
     sf_account   = cfg.get("sf_account")   or None
     sf_user      = cfg.get("sf_user")      or None
@@ -200,6 +206,8 @@ def _render_template(cfg: dict) -> str:
         f"S3_BUCKET       = {q(s3_bucket)}",
         f"S3_KEY          = {q(s3_key)}",
         f'S3_FILE_TYPE    = "{s3_file_type}"',
+        f"S3_ACCESS_KEY   = {q(s3_access_key)}",
+        f"S3_SECRET_KEY   = {q(s3_secret_key)}",
         f"SF_ACCOUNT      = {q(sf_account)}",
         f"SF_USER         = {q(sf_user)}",
         f"SF_PASSWORD     = {q(sf_password)}",
@@ -253,6 +261,7 @@ with DAG(
     start_date        = pendulum.datetime(2024, 1, 1, tz=TIMEZONE),
     schedule_interval = SCHEDULE,
     catchup           = False,
+    max_active_runs   = 1,
     # tags              = ["connector", CONNECTOR_TYPE],
 ) as dag:
     PythonOperator(
@@ -382,6 +391,7 @@ def list_dag_files() -> list:
                 "s3_bucket":    read_var(content, "S3_BUCKET"),
                 "s3_key":       read_var(content, "S3_KEY"),
                 "s3_file_type": read_var(content, "S3_FILE_TYPE", "csv"),
+                "s3_access_key": read_var(content, "S3_ACCESS_KEY"),
 
                 # ── Snowflake ─────────────────────────────────────────────────
                 "sf_account":   read_var(content, "SF_ACCOUNT"),
@@ -398,6 +408,7 @@ def list_dag_files() -> list:
                 # the real password back to the browser.
                 "has_src_pg_password": read_var(content, "SRC_PG_PASSWORD") is not None,
                 "has_sf_password":     read_var(content, "SF_PASSWORD") is not None,
+                "has_s3_secret_key":   read_var(content, "S3_SECRET_KEY") is not None,
             })
     return result
 # def list_dag_files() -> list:
@@ -485,6 +496,8 @@ def edit_dag_file(pipeline_name: str, updates: dict) -> dict:
         "s3_bucket":          "S3_BUCKET",
         "s3_key":             "S3_KEY",
         "s3_file_type":       "S3_FILE_TYPE",
+        "s3_access_key":      "S3_ACCESS_KEY",
+        "s3_secret_key":      "S3_SECRET_KEY",
         "sf_account":         "SF_ACCOUNT",
         "sf_user":            "SF_USER",
         "sf_password":        "SF_PASSWORD",

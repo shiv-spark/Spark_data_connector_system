@@ -588,19 +588,41 @@ def node_llm_summary(state: PipelineState) -> dict:
     model = _resolve_model(state)          
     # model = _get_model()
     logger.info("═══ Node: llm_summary ═══  (calling %s)", model)
-    prompt = f"""You are a senior data analyst. Write a detailed summary (min 150 words) based on these results.
-Use exact column names and numbers. End with top 3-5 prioritised recommendations.
+    prompt = f"""You are a Senior Data Analyst presenting insights to business stakeholders. 
+    Write a clear, engaging, and easy-to-understand summary (minimum 150 words) based on the analysis results below. 
+    Your goal is to explain what the data is saying and what actions the business should take, without confusing the reader with technical jargon.
 
-Quality Score: {state['quality_result']}
-Null Analysis: {state['null_result']}
-Duplicates:    {state['dup_result']}
-Stats:         {state['stats_result']}
-Outliers:      {state['outlier_result']}
-Correlations:  {state['corr_result']}
-Health:        {state['health_result']}
+    **Data Results:**
+    Quality Score: {state['quality_result']}
+    Null Analysis: {state['null_result']}
+    Duplicates:    {state['dup_result']}
+    Stats:         {state['stats_result']}
+    Outliers:      {state['outlier_result']}
+    Correlations:  {state['corr_result']}
+    Health:        {state['health_result']}
 
-Cover: overview, null issues, duplicates, stats insights, outliers, correlations, recommendations.
-DO NOT use generic statements. Be specific with column names and percentages."""
+    **Follow these guidelines strictly:**
+    1. **Tell a Story, Don't Just List:** Do not write a robotic list like "1. Null Analysis, 2. Duplicates". Instead, weave the insights into a flowing narrative. 
+    2. **Translate Jargon:** Explain technical things simply. For example, instead of saying "36 outliers found via IQR", say "We noticed 36 unusually high values in the 'total_value' column, which means..."
+    3. **Be Specific:** Use exact column names and numbers, but explain what those numbers mean for the business (e.g., "A correlation of 0.99 between 'price_per_unit' and 'price_per_unit_sold' means these two columns are practically identical").
+    4. **Structure the Summary:**
+    - **The Big Picture:** Start with a 1-2 sentence overview of data health.
+    - **What Stands Out:** Highlight the most important findings (missing data, unusual spikes/outliers, strong connections between numbers).
+    - **Action Plan:** End with 3-5 prioritized recommendations. Frame them as business actions (e.g., "Clean up the X column because...", "Investigate Y to understand Z").
+    """
+#     prompt = f"""You are a senior data analyst. Write a detailed summary (min 150 words) based on these results.
+# Use exact column names and numbers. End with top 3-5 prioritised recommendations.
+
+# Quality Score: {state['quality_result']}
+# Null Analysis: {state['null_result']}
+# Duplicates:    {state['dup_result']}
+# Stats:         {state['stats_result']}
+# Outliers:      {state['outlier_result']}
+# Correlations:  {state['corr_result']}
+# Health:        {state['health_result']}
+
+# Cover: overview, null issues, duplicates, stats insights, outliers, correlations, recommendations.
+# DO NOT use generic statements. Be specific with column names and percentages."""
 
     logger.debug("LLM prompt (first 500 chars): %.500s", prompt)
 

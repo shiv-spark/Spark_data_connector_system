@@ -38,6 +38,8 @@ const initial = {
   bucket: "",
   key: "",
   file_type: "csv",
+  s3_access_key: "",
+  s3_secret_key: "",
   sf_account: "",
   sf_user: "",
   sf_password: "",
@@ -81,7 +83,14 @@ export const DirectIngest = () => {
         google_sheets: { ...common, sheet_url: form.sheet_url },
         api: { ...common, url: form.url, ...parsedApiConfig },
         postgres: { ...common, host: form.host, database: form.database, user: form.user, password: form.password, port: form.port, query: form.query },
-        s3: { ...common, bucket: form.bucket, key: form.key, file_type: form.file_type },
+        s3: {
+          ...common,
+          bucket: form.bucket,
+          key: form.key,
+          file_type: form.file_type,
+          access_key: form.s3_access_key || null,
+          secret_key: form.s3_secret_key || null,
+        },
         snowflake: {
           ...common,
           account: form.sf_account,
@@ -200,6 +209,8 @@ export const DirectIngest = () => {
                 <Input placeholder="Bucket" value={form.bucket} onChange={(e) => update("bucket", e.target.value)} required />
                 <Input placeholder="Key" value={form.key} onChange={(e) => update("key", e.target.value)} required />
                 <Input placeholder="File type" value={form.file_type} onChange={(e) => update("file_type", e.target.value)} />
+                <Input placeholder="Access key ID" value={form.s3_access_key} onChange={(e) => update("s3_access_key", e.target.value)} />
+                <Input placeholder="Secret access key" type="password" value={form.s3_secret_key} onChange={(e) => update("s3_secret_key", e.target.value)} />
               </div>
             )}
             {form.connector === "snowflake" && (

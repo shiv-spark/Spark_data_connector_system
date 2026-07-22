@@ -884,8 +884,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
 
 const SUPPORTS_CONNECTIONS = ["csv", "excel", "google_sheets", "api", "postgres", "s3", "snowflake"];
 
-const SECRET_FIELDS: Array<keyof Source> = ["src_pg_password", "sf_password"];
-
+const SECRET_FIELDS: Array<keyof Source> = ["src_pg_password", "sf_password", "s3_secret_key"];
 const STEPS = [
   { id: 1, label: "Basic Info" },
   { id: 2, label: "Sources" },
@@ -922,6 +921,8 @@ type Source = {
   s3_bucket: string;
   s3_key: string;
   s3_file_type: string;
+  s3_access_key: string;
+  s3_secret_key: string;
   src_pg_host: string;
   src_pg_db: string;
   src_pg_user: string;
@@ -954,6 +955,8 @@ const blankSource = (): Source => ({
   s3_bucket: "",
   s3_key: "",
   s3_file_type: "csv",
+  s3_access_key: "",
+  s3_secret_key: "",
   src_pg_host: "",
   src_pg_db: "",
   src_pg_user: "",
@@ -1031,6 +1034,8 @@ export const MultiSource = () => {
         updateSource(index, "s3_bucket", cfg.bucket || "");
         updateSource(index, "s3_key", cfg.prefix || "");
         updateSource(index, "s3_file_type", cfg.file_type || "csv");
+        updateSource(index, "s3_access_key", "");
+        updateSource(index, "s3_secret_key", "");
       } else if (connectorType === "snowflake") {
         updateSource(index, "sf_account", cfg.account || "");
         updateSource(index, "sf_user", cfg.user || "");
@@ -1066,6 +1071,8 @@ export const MultiSource = () => {
     updateSource(index, "s3_bucket", "");
     updateSource(index, "s3_key", "");
     updateSource(index, "s3_file_type", "csv");
+    updateSource(index, "s3_access_key", "");
+    updateSource(index, "s3_secret_key", "");
     updateSource(index, "src_pg_host", "");
     updateSource(index, "src_pg_db", "");
     updateSource(index, "src_pg_user", "");
@@ -1485,9 +1492,24 @@ export const MultiSource = () => {
                       )}
                       {source.connector_type === "s3" && (
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                          <Input placeholder="Bucket" value={source.s3_bucket} onChange={(e) => updateSource(index, "s3_bucket", e.target.value)} required={fieldsRequired} />
-                          <Input placeholder="Key" value={source.s3_key} onChange={(e) => updateSource(index, "s3_key", e.target.value)} required={fieldsRequired} />
+                          <Input placeholder="Bucket" value={source.s3_bucket} onChange={(e) => updateSource(index, "s3_bucket", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                          <Input placeholder="Key" value={source.s3_key} onChange={(e) => updateSource(index, "s3_key", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
                           <Input placeholder="File type" value={source.s3_file_type} onChange={(e) => updateSource(index, "s3_file_type", e.target.value)} />
+                          <Input
+                            placeholder="Access key ID"
+                            value={source.s3_access_key}
+                            onChange={(e) => updateSource(index, "s3_access_key", e.target.value)}
+                            required={fieldsRequired}
+                            disabled={connState.useExisting}
+                          />
+                          <Input
+                            type="password"
+                            placeholder={connState.useExisting ? "(using saved connection)" : "Secret access key"}
+                            value={connState.useExisting ? "" : source.s3_secret_key}
+                            onChange={(e) => updateSource(index, "s3_secret_key", e.target.value)}
+                            required={fieldsRequired}
+                            disabled={connState.useExisting}
+                          />
                         </div>
                       )}
 

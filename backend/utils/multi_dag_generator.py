@@ -151,6 +151,8 @@ def _build_source_entry(src: dict, index: int, table_name: str, sync_mode: str,
         entry["S3_BUCKET"]    = _clean(src.get("s3_bucket"))
         entry["S3_KEY"]       = _clean(src.get("s3_key"))
         entry["S3_FILE_TYPE"] = src.get("s3_file_type", "csv")
+        entry["S3_ACCESS_KEY"] = _clean(src.get("s3_access_key"))
+        entry["S3_SECRET_KEY"] = _clean(src.get("s3_secret_key"))
 
     elif ct == "postgres":
         entry["SRC_PG_HOST"]     = _clean(src.get("src_pg_host"))
@@ -307,6 +309,7 @@ with DAG(
     start_date        = pendulum.datetime(2024, 1, 1, tz=TIMEZONE),
     schedule_interval = SCHEDULE,
     catchup           = False,
+    max_active_runs   = 1,
     tags              = ["multi-source", "connector"],
 ) as dag:
     PythonOperator(

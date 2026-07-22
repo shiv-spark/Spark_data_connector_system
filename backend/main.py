@@ -1313,6 +1313,8 @@ class CreatePipelineRequest(BaseModel):
     s3_bucket:       Optional[str] = None
     s3_key:          Optional[str] = None
     s3_file_type:    Optional[str] = "csv"
+    s3_access_key:   Optional[str] = None
+    s3_secret_key:   Optional[str] = None
     # ── Snowflake fields ─────────────────
     sf_account:      Optional[str] = None
     sf_user:         Optional[str] = None
@@ -1472,6 +1474,8 @@ class SourceConfig(BaseModel):
     s3_bucket:      Optional[str] = None
     s3_key:         Optional[str] = None
     s3_file_type:   Optional[str] = "csv"
+    s3_access_key:  Optional[str] = None
+    s3_secret_key:  Optional[str] = None
     src_pg_host:    Optional[str] = None
     src_pg_db:      Optional[str] = None
     src_pg_user:    Optional[str] = None
@@ -1536,6 +1540,8 @@ def _resolve_source_connection(source: SourceConfig) -> dict:
         merged["s3_bucket"] = config.get("bucket", "")
         merged["s3_key"] = config.get("prefix", "")
         merged["s3_file_type"] = config.get("file_type", "csv")
+        merged["s3_access_key"] = config.get("access_key", "")
+        merged["s3_secret_key"] = config.get("secret_key", "")
     elif source.connector_type == "snowflake":
         merged["sf_account"] = config.get("account", "")
         merged["sf_user"] = config.get("user", "")
@@ -1639,6 +1645,8 @@ class EditPipelineRequest(BaseModel):
     s3_bucket:          Optional[str] = None
     s3_key:             Optional[str] = None
     s3_file_type:       Optional[str] = None
+    s3_access_key:      Optional[str] = None
+    s3_secret_key:      Optional[str] = None
     # snowflake
     sf_account:         Optional[str] = None
     sf_user:            Optional[str] = None

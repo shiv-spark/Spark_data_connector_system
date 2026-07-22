@@ -801,6 +801,8 @@ const base = {
   s3_bucket: "",
   s3_key: "",
   s3_file_type: "csv",
+  s3_access_key: "",
+  s3_secret_key: "",
   sf_account: "",
   sf_user: "",
   sf_password: "",
@@ -855,6 +857,8 @@ export const CreatePipeline = () => {
         update("s3_bucket", cfg.bucket || "");
         update("s3_key", cfg.prefix || "");
         update("s3_file_type", cfg.file_type || "csv");
+        update("s3_access_key", "");
+        update("s3_secret_key", "");
       } else if (form.connector_type === "snowflake") {
         update("sf_account", cfg.account || "");
         update("sf_user", cfg.user || "");
@@ -973,6 +977,7 @@ export const CreatePipeline = () => {
           return "Host, database, and user are required for Postgres.";
         }
         if (form.connector_type === "s3" && (!form.s3_bucket || !form.s3_key)) return "Bucket and key are required for S3.";
+        if (form.connector_type === "s3" && (!form.s3_access_key || !form.s3_secret_key)) return "Access key and secret key are required for a new S3 connection.";
         if (form.connector_type === "snowflake" && (!form.sf_account || !form.sf_user || !form.sf_warehouse || !form.sf_database)) {
           return "Account, user, warehouse, and database are required for Snowflake.";
         }
@@ -1265,6 +1270,8 @@ export const CreatePipeline = () => {
                         <Input placeholder="Bucket" value={form.s3_bucket} onChange={(e) => update("s3_bucket", e.target.value)} />
                         <Input placeholder="Key" value={form.s3_key} onChange={(e) => update("s3_key", e.target.value)} />
                         <Input placeholder="File type" value={form.s3_file_type} onChange={(e) => update("s3_file_type", e.target.value)} />
+                        <Input placeholder="Access key ID" value={form.s3_access_key} onChange={(e) => update("s3_access_key", e.target.value)} />
+                        <Input placeholder="Secret access key" type="password" value={form.s3_secret_key} onChange={(e) => update("s3_secret_key", e.target.value)} />
                       </div>
                     )}
 
