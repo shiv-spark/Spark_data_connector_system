@@ -412,6 +412,13 @@ tbody tr:last-child td{border-bottom:none}
   .hero{grid-template-columns:1fr}
   .hero h1{font-size:22px}
 }
+@media print {
+  .topbar,.side,.btn,.toggle-theme{display:none !important}
+  .layout{display:block !important}
+  .main{padding:0 !important;overflow:visible !important}
+  .chart-wrap{min-height:300px !important}
+  .chart-wrap .js-plotly-plot,.chart-wrap .plot-container,.chart-wrap .plotly-graph-div{height:350px !important}
+}
 </style>
 </head>
 <body>
@@ -702,7 +709,7 @@ function initTheme(){
 }
 
 function downloadPdf(){
-  window.open(`/api/agent/dashboard/${DASHBOARD_ID}/export/pdf`, "_blank");
+  window.print();
 }
 
 async function downloadImage(){
