@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{{ display_name }} — AI Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -426,6 +427,14 @@ tbody tr:last-child td{border-bottom:none}
   <div class="top-actions">
     <span class="env-pill"><span class="live-ring"></span>Live</span>
     <span class="src-pill">{{ source_type }}</span>
+    <button class="btn" onclick="downloadPdf()" title="Download as PDF">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      PDF
+    </button>
+    <button class="btn" onclick="downloadImage()" title="Download as Image">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      Image
+    </button>
     <button class="btn toggle-theme" onclick="toggleTheme()" title="Toggle dark/light mode">
       <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -691,6 +700,25 @@ function initTheme(){
   }
   updateThemeIcons(isDark);
 }
+
+function downloadPdf(){
+  window.open(`/api/agent/dashboard/${DASHBOARD_ID}/export/pdf`, "_blank");
+}
+
+async function downloadImage(){
+  const main=document.querySelector(".main");
+  if(!main||!window.html2canvas)return;
+  try{
+    const canvas=await html2canvas(main,{useCORS:true,scale:2,backgroundColor:null});
+    const link=document.createElement("a");
+    link.download=`{{ display_name }}.png`;
+    link.href=canvas.toDataURL("image/png");
+    link.click();
+  }catch(e){
+    alert("Failed to download image. Please try PDF instead.");
+  }
+}
+
 initTheme();
 
 fetchData();

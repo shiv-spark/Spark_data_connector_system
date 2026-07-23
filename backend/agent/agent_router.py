@@ -436,6 +436,142 @@ def view_dashboard(dashboard_id: str):
     }))
 
 
+def _render_dashboard_html(dashboard_id: str, state: dict) -> str:
+    """Render full dashboard HTML including KPIs, summary, and charts."""
+    display_name = state.get("display_name", dashboard_id)
+    source_type = state.get("source_type", "unknown")
+    kpis = state.get("kpis", [])
+    ai_summary = state.get("ai_summary")
+    chart_meta = state.get("chart_meta", [])
+    charts = state.get("charts", {})
+
+    kpis_html = ""
+    if kpis:
+        kpis_parts = []
+        for kpi in kpis[:4]:
+            label = kpi.get("label", "")
+            value = kpi.get("value", "")
+            hint = kpi.get("hint", "")
+            hint_html = f"<div style='font-size: 11px; color: #6b7280; margin-top: 4px;'>{hint}</div>" if hint else ""
+            kpis_parts.append(f'''
+            <div class="kpi" style="background: linear-gradient(to bottom, #f0fdf4, #fff); border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
+                <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">{label}</div>
+                <div style="font-size: 24px; font-weight: 600; color: #111; margin-top: 4px;">{value}</div>
+                {hint_html}
+            </div>
+            ''')
+        kpis_html = f'''
+        <div class="kpis" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+            {''.join(kpis_parts)}
+        </div>
+        '''
+
+    summary_html = ""
+    if ai_summary:
+        summary_html = f'''
+        <div class="summary" style="background: linear-gradient(to bottom, #f0fdf4, #fff); border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 20px;">
+            <div style="font-size: 11px; color: #059669; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Agent Summary</div>
+            <div style="font-size: 13px; color: #111; line-height: 1.6;">{ai_summary}</div>
+        </div>
+        '''
+
+    charts_html = ""
+    if chart_meta:
+        charts_html = '<div class="charts" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">'
+        for meta in chart_meta:
+            slot = meta.get("slot")
+            chart_key = f"chart_{slot}"
+            chart_html = charts.get(chart_key, "")
+            if chart_html:
+                title = meta.get("title", f"Chart {slot}")
+                desc = meta.get("description", "")
+                desc_html = f"<div style='font-size: 11px; color: #6b7280; margin-top: 2px;'>{desc}</div>" if desc else ""
+                charts_html += f'''
+                <div class="chart-card" style="border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; background: #fff;">
+                    <div class="chart-header" style="border-bottom: 1px solid #e5e7eb; padding: 8px 12px; background: linear-gradient(to bottom, #f9fafb, #f3f4f6);">
+                        <div style="font-size: 13px; font-weight: 600; color: #111;">{title}</div>
+                        {desc_html}
+                    </div>
+                    <div class="chart-body" style="padding: 8px; min-height: 200px;">
+                        {chart_html}
+                    </div>
+                </div>
+                '''
+        charts_html += '</div>'
+
+    html = f'''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{display_name}</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #fff; color: #111; padding: 24px; }}
+        .header {{ margin-bottom: 24px; }}
+        .header h1 {{ font-size: 24px; font-weight: 700; color: #111; }}
+        .header .meta {{ font-size: 12px; color: #6b7280; margin-top: 4px; }}
+        @media print {{
+            body {{ padding: 0; }}
+            .chart-card {{ break-inside: avoid; page-break-inside: avoid; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{display_name}</h1>
+        <div class="meta">Source: {source_type}</div>
+    </div>
+    {kpis_html}
+    {summary_html}
+    {charts_html}
+    <script>
+        window.onload = function() {{
+            setTimeout(function() {{
+                var plots = document.querySelectorAll('.js-plotly-plot');
+                plots.forEach(function(plot) {{
+                    if (window.Plotly) {{
+                        try {{ window.Plotly.Plots.resize(plot); }} catch(e) {{}}
+                    }}
+                }});
+            }}, 1500);
+        }};
+    </script>
+</body>
+</html>
+    '''
+    return html
+
+
+@router.get("/dashboard/{dashboard_id}/export/pdf")
+def export_dashboard_pdf(dashboard_id: str):
+    """Export full dashboard as PDF."""
+    state = get_dashboard(dashboard_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    try:
+        from weasyprint import HTML
+        import tempfile
+    except ImportError:
+        raise HTTPException(status_code=500, detail="PDF export not available. Install weasyprint: pip install weasyprint")
+
+    html_content = _render_dashboard_html(dashboard_id, state)
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        pdf_path = f.name
+
+    HTML(string=html_content).write_pdf(pdf_path)
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"{state.get('display_name', dashboard_id)}.pdf"
+    )
+
+
 @router.get("/dashboard/{dashboard_id}/data")
 def get_dashboard_data(dashboard_id: str):
     state = get_dashboard(dashboard_id)

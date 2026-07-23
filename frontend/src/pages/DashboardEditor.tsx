@@ -40,6 +40,8 @@ import {
   Table2,
   Trash2,
   User,
+  Download,
+  FileImage,
   Wand2,
   X,
 } from "lucide-react";
@@ -72,7 +74,7 @@ type DashboardData = {
 const COLS = 12;
 const ROW_HEIGHT = 36;
 const DEFAULT_W = 6;
-const DEFAULT_H = 8;
+const DEFAULT_H = 5;
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -820,7 +822,7 @@ const ChartCard = ({
     <>
       <div
         ref={wrapRef}
-        className="group/card relative flex h-full flex-col overflow-hidden rounded-[14px] border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_-6px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-border hover:shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.16)]"
+        className="group/card relative flex min-h-[140px] flex-col overflow-hidden rounded-[14px] border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_-6px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-border hover:shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.16)]"
       >
         {/* Top accent strip */}
         <div
@@ -1095,7 +1097,7 @@ const ChartCard = ({
         {/* Chart body */}
         <ChartCanvasMount
           html={html}
-          className="flex-1 w-full overflow-hidden p-2 [&_*]:max-w-full"
+          className="flex-1 w-full overflow-hidden p-2 [&_*]:max-w-full [&_.plotly]:!h-auto [&_.plotly]:!min-h-[100px]"
         />
       </div>
 

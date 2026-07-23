@@ -87,7 +87,6 @@ def _fig_to_html(fig) -> str:
         full_html=False,
         include_plotlyjs=False,
         config={"displayModeBar": False, "responsive": True},
-        default_height="320px",
     )
 
 

@@ -309,7 +309,6 @@ Rules:
     chart_html = fig.to_html(
         full_html=False, include_plotlyjs=False,
         config={"displayModeBar": False, "responsive": True},
-        default_height="320px",
     )
 
     return {
