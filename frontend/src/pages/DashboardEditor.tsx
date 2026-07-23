@@ -44,7 +44,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { api, updateDashboardName, deleteDashboard } from "@/lib/api";
+import { api, updateDashboardName, deleteDashboard, renameChart, updateChartDescription } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { fdt } from "@/lib/format";
 
@@ -268,6 +268,20 @@ export const DashboardEditor = () => {
   const deleteChart = useMutation({
     mutationFn: async (slot: number) => {
       await api.delete(`/agent/dashboard/${dashboardId}/chart/${slot}`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKey }),
+  });
+
+  const renameChartMutation = useMutation({
+    mutationFn: async ({ slot, title }: { slot: number; title: string }) => {
+      await renameChart(dashboardId, slot, title);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKey }),
+  });
+
+  const updateChartDescMutation = useMutation({
+    mutationFn: async ({ slot, description }: { slot: number; description: string }) => {
+      await updateChartDescription(dashboardId, slot, description);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKey }),
   });
@@ -553,6 +567,8 @@ export const DashboardEditor = () => {
                             deleting={deleteChart.isPending && deleteChart.variables === slot}
                             onCommand={(text, targetSlot) => command.mutate({ message: text, slot: targetSlot })}
                             busy={command.isPending}
+                            renameChart={renameChartMutation.mutate}
+                            updateChartDesc={updateChartDescMutation.mutate}
                           />
                         </div>
                       );
@@ -745,6 +761,8 @@ const ChartCard = ({
   deleting,
   onCommand,
   busy,
+  renameChart,
+  updateChartDesc,
 }: {
   slot: number;
   html: string;
@@ -753,9 +771,13 @@ const ChartCard = ({
   deleting?: boolean;
   onCommand: (text: string, slot?: number) => void;
   busy?: boolean;
+  renameChart?: (props: { slot: number; title: string }) => void;
+  updateChartDesc?: (props: { slot: number; description: string }) => void;
 }) => {
-  const [open, setOpen] = useState<null | "type" | "theme" | "refine">(null);
+  const [open, setOpen] = useState<null | "type" | "theme" | "refine" | "rename" | "description">(null);
   const [refineText, setRefineText] = useState("");
+  const [renameText, setRenameText] = useState("");
+  const [descText, setDescText] = useState("");
   const [expanded, setExpanded] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -826,6 +848,21 @@ const ChartCard = ({
           onMouseDown={(e) => e.stopPropagation()}
           className="absolute right-2.5 top-11 z-20 flex items-center gap-1 rounded-md border border-border bg-card/95 p-1 opacity-0 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_24px_-12px_rgba(15,23,42,0.18)] backdrop-blur transition-opacity duration-150 group-hover/card:opacity-100 focus-within:opacity-100"
         >
+          {/* Rename popover */}
+          <ToolbarButton
+            label="Rename"
+            active={open === "rename"}
+            onClick={() => { setOpen(open === "rename" ? null : "rename"); setRenameText(titleLabel); }}
+            icon={Pencil}
+          />
+          {/* Description popover */}
+          <ToolbarButton
+            label="Description"
+            active={open === "description"}
+            onClick={() => { setOpen(open === "description" ? null : "description"); setDescText(meta?.description || ""); }}
+            icon={MessageSquarePlus}
+          />
+          <span className="mx-0.5 h-4 w-px bg-border" />
           {/* Type popover */}
           <ToolbarButton
             label="Chart type"
@@ -968,6 +1005,75 @@ const ChartCard = ({
                 >
                   <Sparkles className="h-3 w-3" />
                   Apply
+                </button>
+              </div>
+            </form>
+          </PopoverPanel>
+        )}
+
+        {open === "rename" && (
+          <PopoverPanel>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const t = renameText.trim();
+                if (!t) return;
+                renameChart?.({ slot, title: t });
+                setOpen(null);
+              }}
+              className="space-y-2"
+            >
+              <input
+                autoFocus
+                type="text"
+                value={renameText}
+                onChange={(e) => setRenameText(e.target.value)}
+                placeholder="Enter chart name"
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:border-input dark:focus:border-emerald-500"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10.5px] text-muted-foreground" style={mono}>
+                  renames this chart
+                </span>
+                <button
+                  type="submit"
+                  disabled={!renameText.trim()}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-gradient-to-b from-emerald-500 to-emerald-600 px-2.5 text-[12px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),inset_0_0_0_1px_rgba(4,120,87,0.55),0_1px_2px_rgba(4,120,87,0.3)] transition hover:brightness-[1.06] disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </PopoverPanel>
+        )}
+
+        {open === "description" && (
+          <PopoverPanel wide>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateChartDesc?.({ slot, description: descText });
+                setOpen(null);
+              }}
+              className="space-y-2"
+            >
+              <textarea
+                autoFocus
+                rows={3}
+                value={descText}
+                onChange={(e) => setDescText(e.target.value)}
+                placeholder="Add a description for this chart..."
+                className="w-full resize-none rounded-md border border-input bg-background px-2 py-1.5 text-[12.5px] leading-5 text-foreground outline-none placeholder:text-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:border-input dark:focus:border-emerald-500"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10.5px] text-muted-foreground" style={mono}>
+                  updates chart description
+                </span>
+                <button
+                  type="submit"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-gradient-to-b from-emerald-500 to-emerald-600 px-2.5 text-[12px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),inset_0_0_0_1px_rgba(4,120,87,0.55),0_1px_2px_rgba(4,120,87,0.3)] transition hover:brightness-[1.06]"
+                >
+                  Save
                 </button>
               </div>
             </form>

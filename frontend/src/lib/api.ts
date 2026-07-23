@@ -259,6 +259,16 @@ export const deleteDashboard = async (dashboardId: string) => {
   return r.data;
 };
 
+export const renameChart = async (dashboardId: string, slot: number, title: string) => {
+  const r = await api.patch(`/agent/dashboard/${dashboardId}/chart/${slot}`, { title });
+  return r.data;
+};
+
+export const updateChartDescription = async (dashboardId: string, slot: number, description: string) => {
+  const r = await api.patch(`/agent/dashboard/${dashboardId}/chart/${slot}`, { description });
+  return r.data;
+};
+
 export const searchMetrics = async (query: string): Promise<SearchResult[]> => {
   try {
     const r = await api.get('/metrics/summary/all');

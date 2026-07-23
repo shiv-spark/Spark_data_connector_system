@@ -850,6 +850,35 @@ def delete_chart(dashboard_id: str, slot: int):
     return {"status": "SUCCESS", "deleted_slot": slot, "chart_meta": chart_meta}
 
 
+class ChartUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+@router.patch("/dashboard/{dashboard_id}/chart/{slot}")
+def update_chart(dashboard_id: str, slot: int, body: ChartUpdateRequest):
+    """Update chart title and/or description."""
+    state = get_dashboard(dashboard_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    chart_meta = list(state.get("chart_meta", []) or [])
+    updated = False
+    for meta in chart_meta:
+        if meta.get("slot") == slot:
+            if body.title is not None:
+                meta["title"] = body.title
+                updated = True
+            if body.description is not None:
+                meta["description"] = body.description
+                updated = True
+
+    if updated:
+        save_dashboard(dashboard_id, {**state, "chart_meta": chart_meta})
+
+    return {"status": "SUCCESS", "chart_meta": chart_meta}
+
+
 @router.delete("/dashboard/{dashboard_id}")
 def delete_full_dashboard(dashboard_id: str):
     """Delete the entire dashboard."""
