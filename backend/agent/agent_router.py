@@ -2,7 +2,7 @@
 """
 FastAPI routes that expose the agent and report endpoints.
 """
-
+import re
 import traceback
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
@@ -647,27 +647,62 @@ def dashboard_command(dashboard_id: str, body: BoardCommandRequest):
             "chart", "graph", "plot", "visual", "visualize", "trend",
             "bar", "line", "pie", "scatter", "histogram", "replace", "add"
         ])
-
         if wants_chart:
             data = state.get("data", {}).get("metrics", [])
             existing_charts = state.get("chart_meta", [])
-            chart_payload = generate_onthefly_chart(data, text, model=state.get("model"),existing_charts=existing_charts,)
+
+            slot = body.slot
+            if slot is None:
+                match = re.search(r"(?:replace|update|change)\s+(?:chart|graph)?\s*(\d+)", lower)
+                if match:
+                    slot = int(match.group(1))
+
+            target_chart = None
+            if slot is not None:
+                target_chart = next((m for m in existing_charts if m.get("slot") == slot), None)
+
+            chart_payload = generate_onthefly_chart(
+                data, text, model=state.get("model"),
+                existing_charts=existing_charts,
+                target_chart=target_chart,
+            )
             if chart_payload.get("error"):
                 return {"status": "FAILED", "reply": chart_payload["error"], "error": chart_payload["error"]}
 
-            slot = body.slot
-            import re
-            match = re.search(r"(?:replace|update|change)\s+(?:chart|graph)?\s*(\d+)", lower)
-            if match:
-                slot = int(match.group(1))
-
             updated, saved_slot = _save_chart_to_dashboard(dashboard_id, state, chart_payload, slot)
-            reply = f"Done. I {'replaced' if slot else 'added'} chart {saved_slot}: {chart_payload.get('title', 'Custom chart')}."
+            reply = f"Done. I {'updated' if slot else 'added'} chart {saved_slot}: {chart_payload.get('title', 'Custom chart')}."
             return {
                 "status": "SUCCESS", "reply": reply, "action": "chart_update",
                 "slot": saved_slot, "chart": chart_payload,
                 "chart_meta": updated.get("chart_meta", []),
             }
+
+        # if wants_chart:
+        #     data = state.get("data", {}).get("metrics", [])
+        #     existing_charts = state.get("chart_meta", [])
+        #     chart_payload = generate_onthefly_chart(data, text, model=state.get("model"),existing_charts=existing_charts,)
+        #     if chart_payload.get("error"):
+        #         return {"status": "FAILED", "reply": chart_payload["error"], "error": chart_payload["error"]}
+
+        #     slot = body.slot
+        #     if slot is None:
+        #         match = re.search(r"(?:replace|update|change)\s+(?:chart|graph)?\s*(\d+)", lower)
+        #         if match:
+        #             slot = int(match.group(1))
+
+        #     # slot = body.slot
+        #     # import re
+        #     # match = re.search(r"(?:replace|update|change)\s+(?:chart|graph)?\s*(\d+)", lower)
+        #     # if match:
+        #     #     slot = int(match.group(1))
+
+        #     updated, saved_slot = _save_chart_to_dashboard(dashboard_id, state, chart_payload, slot)
+        #     reply = f"Done. I {'replaced' if slot else 'added'} chart {saved_slot}: {chart_payload.get('title', 'Custom chart')}."
+        #     return {
+        #         "status": "SUCCESS", "reply": reply, "action": "chart_update",
+        #         "slot": saved_slot, "chart": chart_payload,
+        #         "chart_meta": updated.get("chart_meta", []),
+        #     }
 
         return dashboard_chat(dashboard_id, ChatRequest(message=text))
 
