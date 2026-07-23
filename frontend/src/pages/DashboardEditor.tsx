@@ -27,8 +27,7 @@ import {
   LineChart as LineChartIcon,
   Loader2,
   Maximize2,
-  PanelRightClose,
-  PanelRightOpen,
+  MessageSquare,
   MessageSquarePlus,
   Minimize2,
   Palette,
@@ -88,7 +87,7 @@ export const DashboardEditor = () => {
   const { dashboardId = "" } = useParams<{ dashboardId: string }>();
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
-  const [chatVisible, setChatVisible] = useState(true);
+  const [chatVisible, setChatVisible] = useState(false);
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -306,14 +305,24 @@ export const DashboardEditor = () => {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => clearChat.mutate()}
-            className="icon-btn !h-7 !w-7"
-            title="Clear conversation"
-          >
-            <Eraser className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setChatVisible((v) => !v)}
+              className="icon-btn !h-7 !w-7"
+              title={chatVisible ? "Minimize chat" : "Expand chat"}
+            >
+              {chatVisible ? <Minimize2 className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => clearChat.mutate()}
+              className="icon-btn !h-7 !w-7"
+              title="Clear conversation"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         <div ref={chatScrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
@@ -415,14 +424,17 @@ export const DashboardEditor = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setChatVisible((v) => !v)}
-              className="icon-btn !h-8 !w-8"
-              title={chatVisible ? "Hide dashboard agent" : "Show dashboard agent"}
-            >
-              {chatVisible ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
-            </button>
+            
+            {!chatVisible && (
+              <button
+                type="button"
+                onClick={() => setChatVisible(true)}
+                className="icon-btn !h-8 !w-8"
+                title="Open dashboard agent"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
               type="button"
               disabled={command.isPending}
