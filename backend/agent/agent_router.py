@@ -15,7 +15,8 @@ from agent.graph.onthefly    import generate_onthefly_chart
 from agent.dashboard_store   import (save_dashboard, get_dashboard,
                                       list_dashboards, compute_data_hash,
                                       delete_dashboard, get_dashboard_by_name,
-                                      get_all_dashboard_names)
+                                      get_all_dashboard_names,
+                                      list_history, rewind_dashboard)
 from agent.tools.report_tools import (get_report_html, export_pdf, list_reports)
 from agent.figma_design       import build_figma_context_from_connection
 from fastapi.templating      import Jinja2Templates
@@ -651,7 +652,7 @@ def update_dashboard(dashboard_id: str, body: DashboardUpdateRequest):
             }
         )
     
-    save_dashboard(dashboard_id, {**state, "display_name": body.display_name})
+    save_dashboard(dashboard_id, {**state, "display_name": body.display_name}, label="Renamed dashboard")
     return {"success": True, "display_name": body.display_name}
 
 
@@ -691,7 +692,13 @@ def _next_chart_slot(state: dict) -> int:
     return max(used, default=0) + 1
 
 
-def _save_chart_to_dashboard(dashboard_id: str, state: dict, chart_payload: dict, slot: Optional[int] = None):
+def _save_chart_to_dashboard(
+    dashboard_id: str,
+    state: dict,
+    chart_payload: dict,
+    slot: Optional[int] = None,
+    label: Optional[str] = None,
+):
     slot = slot or _next_chart_slot(state)
     charts = dict(state.get("charts", {}) or {})
     chart_meta = list(state.get("chart_meta", []) or [])
@@ -711,7 +718,7 @@ def _save_chart_to_dashboard(dashboard_id: str, state: dict, chart_payload: dict
         **state,
         "charts": charts,
         "chart_meta": chart_meta,
-    })
+    }, label=label or f"Added chart {slot}")
     return get_dashboard(dashboard_id), slot
 
 
@@ -805,7 +812,10 @@ def dashboard_command(dashboard_id: str, body: BoardCommandRequest):
             if chart_payload.get("error"):
                 return {"status": "FAILED", "reply": chart_payload["error"], "error": chart_payload["error"]}
 
-            updated, saved_slot = _save_chart_to_dashboard(dashboard_id, state, chart_payload, slot)
+            short = text if len(text) <= 60 else text[:57].rstrip() + "…"
+            updated, saved_slot = _save_chart_to_dashboard(
+                dashboard_id, state, chart_payload, slot, label=f"Agent: {short}"
+            )
             reply = f"Done. I {'updated' if slot else 'added'} chart {saved_slot}: {chart_payload.get('title', 'Custom chart')}."
             return {
                 "status": "SUCCESS", "reply": reply, "action": "chart_update",
@@ -967,8 +977,40 @@ def save_layout(dashboard_id: str, body: LayoutUpdateRequest):
         if item:
             meta["layout"] = {"x": item.x, "y": item.y, "w": item.w, "h": item.h}
 
-    save_dashboard(dashboard_id, {**state, "chart_meta": chart_meta})
+    save_dashboard(dashboard_id, {**state, "chart_meta": chart_meta}, label="Rearranged layout")
     return {"status": "SUCCESS", "chart_meta": chart_meta}
+
+
+@router.get("/dashboard/{dashboard_id}/history")
+def dashboard_history(dashboard_id: str):
+    """Version log for a dashboard, newest first."""
+    if not get_dashboard(dashboard_id):
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    return {"history": list_history(dashboard_id)}
+
+
+@router.post("/dashboard/{dashboard_id}/undo")
+def dashboard_undo(dashboard_id: str):
+    """Step back one change. Returns 409 when there is nothing left to undo."""
+    if not get_dashboard(dashboard_id):
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    result = rewind_dashboard(dashboard_id)
+    if not result:
+        raise HTTPException(status_code=409, detail="Nothing to undo")
+    return {"status": "SUCCESS", "undid": result["label"]}
+
+
+@router.post("/dashboard/{dashboard_id}/restore/{version_id}")
+def dashboard_restore(dashboard_id: str, version_id: int):
+    """Jump back to a specific version, discarding everything after it."""
+    if not get_dashboard(dashboard_id):
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    result = rewind_dashboard(dashboard_id, version_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return {"status": "SUCCESS", "restored": result["label"]}
 
 
 @router.delete("/dashboard/{dashboard_id}/chart/{slot}")
@@ -982,7 +1024,7 @@ def delete_chart(dashboard_id: str, slot: int):
     chart_meta = [m for m in (state.get("chart_meta", []) or []) if m.get("slot") != slot]
     charts.pop(f"chart_{slot}", None)
 
-    save_dashboard(dashboard_id, {**state, "charts": charts, "chart_meta": chart_meta})
+    save_dashboard(dashboard_id, {**state, "charts": charts, "chart_meta": chart_meta}, label=f"Deleted chart {slot}")
     return {"status": "SUCCESS", "deleted_slot": slot, "chart_meta": chart_meta}
 
 
@@ -1010,7 +1052,7 @@ def update_chart(dashboard_id: str, slot: int, body: ChartUpdateRequest):
                 updated = True
 
     if updated:
-        save_dashboard(dashboard_id, {**state, "chart_meta": chart_meta})
+        save_dashboard(dashboard_id, {**state, "chart_meta": chart_meta}, label="Edited chart details")
 
     return {"status": "SUCCESS", "chart_meta": chart_meta}
 

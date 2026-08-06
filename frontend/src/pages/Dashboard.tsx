@@ -7,6 +7,7 @@ import {
   Database,
   Gauge,
   GitBranch,
+  LayoutDashboard,
   HardDrive,
   Rows3,
   ServerCog,
@@ -36,6 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fdt, fmtInt } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/console/Panel";
 
 const CLR = ["#2563eb", "#0891b2", "#059669", "#d97706", "#dc2626", "#7c3aed", "#db2777"];
 
@@ -369,7 +371,11 @@ export const Dashboard = () => {
           </CardHeader>
           <CardContent>
             {pipelines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No pipeline metrics found. Run a pipeline first.</p>
+              <EmptyState
+                  icon={LayoutDashboard}
+                  title="No pipeline metrics yet"
+                  body="Run a pipeline and its throughput, timings, and failures show up here."
+                />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

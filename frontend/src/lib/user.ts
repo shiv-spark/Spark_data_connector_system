@@ -1,17 +1,14 @@
+import type { PlanId } from "@/lib/plans";
+
 export interface User {
   id: string;
   name: string;
   email: string;
   role: string;
+  plan: PlanId;
+  company?: string;
   avatar?: string;
 }
-
-export const currentUser: User = {
-  id: "1",
-  name: "Gaurav",
-  email: "gaurav@sparkbrains.com",
-  role: "Owner",
-};
 
 export const getUserInitials = (name: string): string => {
   return name

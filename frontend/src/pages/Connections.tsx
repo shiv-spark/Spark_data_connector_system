@@ -4,10 +4,12 @@ import { DatabaseZap, Figma, Loader2, Pencil, Plus, Trash2, X, LayoutGrid, List,
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Row, Meta, EmptyState, RowSkeleton } from "@/components/console/Panel";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { fdt } from "@/lib/format";
 import { FolderUpload } from "@/pages/FolderUpload";
+import { PageHeader } from "@/components/PageHeader";
 
 type SourceType = "local_folder" | "s3" | "postgres" | "snowflake" | "api" | "google_sheet" | "figma_design";
 
@@ -313,25 +315,33 @@ export const Connections = () => {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="h-section flex items-center gap-2"><DatabaseZap className="h-5 w-5" /> Connections</h2>
-            <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-              Save source details once. After that, dashboard creation only needs a file name, object key, table name, or endpoint path.
-            </p>
-          </div>
-          <Badge variant="success">Reusable sources</Badge>
-        </div>
-      </section>
+      <PageHeader
+        icon={DatabaseZap}
+        eyebrow="Build"
+        title="Connections"
+        description="Save source details once. After that, building a pipeline or dashboard only needs a file name, object key, table, or endpoint path."
+      />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[430px_1fr]">
         <Card>
           <CardHeader><CardTitle className="text-sm">{editingId ? "Edit Connection" : "Create Connection"}</CardTitle></CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-4">
-              <Input placeholder="Connection name" value={form.name} onChange={(e) => update("name", e.target.value)} required />
-              <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.source_type} onChange={(e) => update("source_type", e.target.value)}>
+              <div>
+                <label className="field-label" htmlFor="conn-name">Connection name</label>
+                <Input
+                  id="conn-name"
+                  placeholder="Production analytics"
+                  value={form.name}
+                  onChange={(e) => update("name", e.target.value)}
+                  required
+                />
+                <p className="field-hint">How this source appears when you build a pipeline.</p>
+              </div>
+
+              <div>
+                <label className="field-label" htmlFor="conn-type">Source type</label>
+                <select id="conn-type" className="select-control" value={form.source_type} onChange={(e) => update("source_type", e.target.value)}>
                 <option value="local_folder">Local / mounted folder</option>
                 <option value="s3">S3 bucket</option>
                 <option value="postgres">Postgres database</option>
@@ -339,7 +349,11 @@ export const Connections = () => {
                 <option value="api">API base URL</option>
                 <option value="google_sheet">Google Sheet</option>
                 <option value="figma_design">Figma design</option>
-              </select>
+                </select>
+              </div>
+
+              <fieldset className="border-0 p-0">
+                <legend className="fieldset-legend">Credentials</legend>
 
               {form.source_type === "local_folder" && (
                 <div className="space-y-3">
@@ -414,14 +428,14 @@ export const Connections = () => {
                     value={form.test_endpoint}
                     onChange={(e) => update("test_endpoint", e.target.value)}
                   />
-                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.method} onChange={(e) => update("method", e.target.value)}>
+                  <select className="select-control" value={form.method} onChange={(e) => update("method", e.target.value)}>
                     <option value="GET">GET</option>
                     <option value="POST">POST</option>
                     <option value="PUT">PUT</option>
                     <option value="PATCH">PATCH</option>
                     <option value="DELETE">DELETE</option>
                   </select>
-                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.auth_type} onChange={(e) => update("auth_type", e.target.value)}>
+                  <select className="select-control" value={form.auth_type} onChange={(e) => update("auth_type", e.target.value)}>
                     <option value="none">No auth</option>
                     <option value="bearer">Bearer token</option>
                     <option value="api_key_header">API key header</option>
@@ -512,6 +526,7 @@ export const Connections = () => {
                   </p>
                 </div>
               )}
+              </fieldset>
 
               <Button 
                 type="submit" 
@@ -588,34 +603,62 @@ export const Connections = () => {
             </div>
           </CardHeader>
           <CardContent>
-            {connections.isLoading ? <p className="text-sm text-muted-foreground">Loading connections...</p> : viewMode === "card" ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {connections.isLoading ? <RowSkeleton rows={3} /> : viewMode === "card" ? (
+              (connections.data ?? []).length === 0 ? (
+                <EmptyState
+                  icon={DatabaseZap}
+                  title="No connections yet"
+                  body="Add a database, warehouse, bucket, or endpoint on the left. Read-only credentials are enough to get started."
+                />
+              ) : (
+              <div>
                 {(connections.data ?? []).map((connection: any) => (
-                  <div key={connection.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-foreground">{connection.name}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{connection.source_type} / {fdt(connection.updated_at)}</p>
+                  <Row key={connection.id} state="active">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-[13.5px] font-semibold text-foreground">{connection.name}</span>
+                          <span className="chip">{sourceTypeLabels[connection.source_type] || connection.source_type}</span>
+                        </div>
+                        <div className="mt-2">
+                          <Meta items={[["updated", fdt(connection.updated_at)]]} />
+                        </div>
                       </div>
-                      
+                      <div className="flex shrink-0 gap-1.5">
+                        <Button variant="outline" size="sm" onClick={() => startEdit(connection)}>
+                          <Pencil /> Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-label={`Delete ${connection.name}`}
+                          className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/20"
+                          onClick={() => remove.mutate(connection.id)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
                     </div>
-                    <pre className="mt-3 max-h-28 overflow-auto rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">{JSON.stringify(connection.config, null, 2)}</pre>
-                    <div className="mt-3 flex gap-2">
-                      <Button variant="outline" onClick={() => startEdit(connection)}>
-                        <Pencil /> Edit
-                      </Button>
-                      <Button variant="outline" className="hover:border-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/20" onClick={() => remove.mutate(connection.id)}>
-                        <Trash2 /> Delete
-                      </Button>
-                    </div>
-                  </div>
+                    <details className="mt-3">
+                      <summary className="meta-key cursor-pointer select-none hover:text-foreground">
+                        Connection details
+                      </summary>
+                      <pre className="mono-meta mt-2 max-h-40 overflow-auto rounded-md bg-muted/50 p-3">
+                        {JSON.stringify(connection.config, null, 2)}
+                      </pre>
+                    </details>
+                  </Row>
                 ))}
-                {(connections.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">No connections saved yet.</p>}
               </div>
+              )
             ) : (
               <div className="space-y-2">
                 {groupedConnections.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No connections saved yet.</p>
+                  <EmptyState
+                    icon={DatabaseZap}
+                    title="No connections yet"
+                    body="Add a database, warehouse, bucket, or endpoint on the left."
+                  />
                 ) : (
                   groupedConnections.map(([type, conns]: [string, any[]]) => (
                     <div key={type} className="rounded-lg border border-border bg-card">

@@ -54,6 +54,16 @@ def _init_db():
                 last_updated TIMESTAMP DEFAULT NOW()
             );
             CREATE INDEX IF NOT EXISTS idx_saved_dashboards_dashboard_id ON saved_dashboards(dashboard_id);
+
+            CREATE TABLE IF NOT EXISTS dashboard_history (
+                id SERIAL PRIMARY KEY,
+                dashboard_id VARCHAR(255) NOT NULL,
+                state JSONB NOT NULL,
+                label TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_dashboard_history_lookup
+                ON dashboard_history(dashboard_id, id DESC);
         """)
         conn.commit()
 
@@ -82,16 +92,70 @@ def _sanitize_for_json(obj):
         return [_sanitize_for_json(v) for v in obj]
     return obj
 
-def save_dashboard(dashboard_id: str, state: dict):
-    """Save dashboard state to both memory and DB."""
+HISTORY_LIMIT = 20
+LAYOUT_COALESCE_SECONDS = 30
+
+
+def _push_history(cur, dashboard_id: str, previous: dict, label: str):
+    """
+    Record the state being replaced, labelled with the change that replaced it,
+    so "undo" can name what it is about to reverse.
+
+    Consecutive layout saves inside a short window collapse into one entry —
+    dragging four charts should be one undo step, not four.
+    """
+    if label == "Rearranged layout":
+        cur.execute(
+            """
+            SELECT label, created_at FROM dashboard_history
+            WHERE dashboard_id = %s ORDER BY id DESC LIMIT 1
+            """,
+            (dashboard_id,),
+        )
+        row = cur.fetchone()
+        if row and row[0] == "Rearranged layout":
+            age = (datetime.utcnow() - row[1]).total_seconds()
+            if age < LAYOUT_COALESCE_SECONDS:
+                return
+
+    cur.execute(
+        "INSERT INTO dashboard_history (dashboard_id, state, label) VALUES (%s, %s, %s)",
+        (dashboard_id, json.dumps(_sanitize_for_json(previous), default=str), label),
+    )
+
+    # Keep the log bounded; old versions are not worth unbounded storage.
+    cur.execute(
+        """
+        DELETE FROM dashboard_history
+        WHERE dashboard_id = %s AND id NOT IN (
+            SELECT id FROM dashboard_history
+            WHERE dashboard_id = %s ORDER BY id DESC LIMIT %s
+        )
+        """,
+        (dashboard_id, dashboard_id, HISTORY_LIMIT),
+    )
+
+
+def save_dashboard(dashboard_id: str, state: dict, label: str | None = None):
+    """
+    Save dashboard state to both memory and DB.
+
+    When `label` is given and a previous state exists, the outgoing state is
+    pushed onto the history log first. Passing no label skips history — used by
+    undo/restore, which must not record their own rewind as a new change.
+    """
     conn = _get_conn()
     clean_state = _sanitize_for_json(state)
     state_with_time = {
         **clean_state,
         "last_updated": datetime.utcnow().isoformat(),
     }
+    previous = _store.get(dashboard_id)
+
     try:
         with conn.cursor() as cur:
+            if label and previous:
+                _push_history(cur, dashboard_id, previous, label)
             cur.execute("""
                 INSERT INTO saved_dashboards (dashboard_id, state, last_updated)
                 VALUES (%s, %s, NOW())
@@ -126,6 +190,75 @@ def get_all_dashboard_names() -> list[str]:
         {"dashboard_id": did, "name": s.get("display_name", did)}
         for did, s in _store.items()
     ]
+
+
+def list_history(dashboard_id: str) -> list[dict]:
+    """Version log for a dashboard, newest first. States are omitted — they're large."""
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, label, created_at FROM dashboard_history
+                WHERE dashboard_id = %s ORDER BY id DESC
+                """,
+                (dashboard_id,),
+            )
+            return [
+                {
+                    "version_id": row["id"],
+                    "label": row["label"],
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                }
+                for row in cur.fetchall()
+            ]
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def rewind_dashboard(dashboard_id: str, version_id: int | None = None) -> dict | None:
+    """
+    Restore a previous state.
+
+    With no version_id this is a single undo step: the newest entry. With one,
+    it jumps straight to that version. Either way the restored entry and
+    everything after it are dropped — rewinding discards the abandoned future,
+    which is why there is no redo.
+    """
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if version_id is None:
+                cur.execute(
+                    """
+                    SELECT id, state, label FROM dashboard_history
+                    WHERE dashboard_id = %s ORDER BY id DESC LIMIT 1
+                    """,
+                    (dashboard_id,),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, state, label FROM dashboard_history WHERE dashboard_id = %s AND id = %s",
+                    (dashboard_id, version_id),
+                )
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            cur.execute(
+                "DELETE FROM dashboard_history WHERE dashboard_id = %s AND id >= %s",
+                (dashboard_id, row["id"]),
+            )
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+    restored = dict(row["state"])
+    # No label: the rewind itself must not become a new history entry.
+    save_dashboard(dashboard_id, restored)
+    return {"label": row["label"], "state": get_dashboard(dashboard_id)}
 
 
 def list_dashboards() -> list[dict]:

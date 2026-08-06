@@ -337,3 +337,26 @@ export const globalSearch = async (query: string): Promise<SearchResults> => {
 
   return { pipelines, connections, dashboards, metrics, logs };
 };
+/* --- Dashboard version history ------------------------------------------ */
+
+export interface DashboardVersion {
+  version_id: number;
+  label: string | null;
+  created_at: string | null;
+}
+
+export const fetchDashboardHistory = async (dashboardId: string): Promise<DashboardVersion[]> => {
+  const r = await api.get(`/agent/dashboard/${dashboardId}/history`);
+  return r.data?.history ?? [];
+};
+
+/** Steps back one change. Returns the label of what was undone. */
+export const undoDashboard = async (dashboardId: string): Promise<string | null> => {
+  const r = await api.post(`/agent/dashboard/${dashboardId}/undo`);
+  return r.data?.undid ?? null;
+};
+
+export const restoreDashboardVersion = async (dashboardId: string, versionId: number) => {
+  const r = await api.post(`/agent/dashboard/${dashboardId}/restore/${versionId}`);
+  return r.data;
+};

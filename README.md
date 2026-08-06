@@ -37,34 +37,38 @@ A FastAPI-based AI-powered data analysis platform that automatically analyzes yo
 
 ##  Project Structure
 
+See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md#project-structure) for the full
+tree. All Python lives under `backend/`; the dashboard agent subtree is:
+
 ```
 project_root/
-  run.py                        ← Starts uvicorn on port 8001
-  main.py                       ← FastAPI app, includes agent_router
-  requirements.txt
-  .env                          ← DB credentials + LLM keys
-  agent/
-    __init__.py
-    logger.py                   ← Custom logger
-    dashboard_store.py          ← In-memory dashboard state store
-    agent_router.py             ← All FastAPI routes
-    graph/
-      state.py                  ← PipelineState TypedDict
-      nodes.py                  ← LangGraph nodes
-      edges.py                  ← Conditional edges
-      graph.py                  ← Builds + compiles LangGraph
-      onthefly.py               ← On-the-fly chart generation
-    tools/
-      data_tools.py             ← Data fetching from all sources
-      analysis_tools.py         ← Analysis logic
-      chart_tools.py            ← Plotly chart generators
-      report_tools.py           ← Jinja2 HTML report + PDF export
-    templates/
-      home.html
-      dashboard.html
-      pipeline.html
-      report.html
-    reports/                    ← Auto-created, stores generated reports
+  .env                          ← DB credentials + LLM keys (see .env.example)
+  backend/
+    run.py                      ← Starts uvicorn
+    main.py                     ← FastAPI app, includes agent_router
+    requirements.txt
+    agent/
+      __init__.py
+      logger.py                 ← Custom logger
+      dashboard_store.py        ← In-memory dashboard state store
+      agent_router.py           ← All FastAPI routes
+      graph/
+        state.py                ← PipelineState TypedDict
+        nodes.py                ← LangGraph nodes
+        edges.py                ← Conditional edges
+        graph.py                ← Builds + compiles LangGraph
+        onthefly.py             ← On-the-fly chart generation
+      tools/
+        data_tools.py           ← Data fetching from all sources
+        analysis_tools.py       ← Analysis logic
+        chart_tools.py          ← Plotly chart generators
+        report_tools.py         ← Jinja2 HTML report + PDF export
+      templates/
+        home.html
+        dashboard.html
+        pipeline.html
+        report.html
+      reports/                  ← Auto-created, generated reports (gitignored)
 ```
 
 ---

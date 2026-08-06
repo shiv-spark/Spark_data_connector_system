@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/StatusBadge";
 import { fdt } from "@/lib/format";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState, RowSkeleton } from "@/components/console/Panel";
 
 type LogsTable =
   | "pipeline_logs"
@@ -158,7 +160,12 @@ export const Logs = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2"><ScrollText className="h-5 w-5" /> Logs</h2>
+      <PageHeader
+        icon={ScrollText}
+        eyebrow="Observe"
+        title="Logs"
+        description="Per-run output from every pipeline, newest first."
+      />
 
       {/* Chatbot */}
       <Card>
@@ -282,7 +289,7 @@ export const Logs = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {logs.isFetching ? <p className="text-sm text-muted-foreground">Loading logs...</p> : logs.error ? (
+            {logs.isFetching ? <RowSkeleton rows={5} /> : logs.error ? (
               <p className="text-sm text-destructive">{(logs.error as any)?.response?.data?.detail ?? (logs.error as Error).message}</p>
             ) : (
               <div className="space-y-4">
@@ -327,13 +334,17 @@ export const Logs = () => {
         </CardHeader>
         <CardContent>
           {tableData.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading {tableLabels[selectedTable]}...</p>
+            <RowSkeleton rows={4} />
           ) : tableData.error ? (
             <p className="text-sm text-destructive">
               {(tableData.error as any)?.response?.data?.detail ?? (tableData.error as Error).message}
             </p>
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No rows found in {tableLabels[selectedTable]}.</p>
+            <EmptyState
+              icon={ScrollText}
+              title={`Nothing in ${tableLabels[selectedTable]} yet`}
+              body="Rows appear here once a pipeline has run against this table."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

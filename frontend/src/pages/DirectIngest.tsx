@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FolderUpload } from "@/pages/FolderUpload";
+import { PageHeader } from "@/components/PageHeader";
 
 type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
 
@@ -126,7 +127,12 @@ export const DirectIngest = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2 text-foreground"><DownloadCloud className="h-5 w-5" /> Direct Ingest</h2>
+      <PageHeader
+        icon={DownloadCloud}
+        eyebrow="Data"
+        title="Direct Ingest"
+        description="Load a file or endpoint straight into a table without building a pipeline."
+      />
       <Card className="bg-card border-border">
         <CardHeader><CardTitle className="text-sm text-foreground">Run One-Time Ingestion</CardTitle></CardHeader>
         <CardContent>

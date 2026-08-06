@@ -1,18 +1,44 @@
-my_env/
+# ── Python ───────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+my_env/
 venv/
 .env/
 virtual_env/
+
+# ── Secrets / local config ───────────────────────────────
+.env
+opencode.json
+
+# ── Build output ─────────────────────────────────────────
 build/
 dist/
+*.tsbuildinfo
+node_modules/
 
-.env
+# ── Editor / IDE ─────────────────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+
+# ── Airflow & pipeline runtime state ─────────────────────
 airflow/data/
-opencode.json
-*.mdAGENT/airflow/logs/
-AGENT/Pipeline/logs/
 data/
 Dataset/
+
+# ── Generated artifacts ──────────────────────────────────
+# Dashboard reports written at runtime by agent/tools/report_tools.py
+backend/agent/reports/*.html
+# DAG files emitted by /create_pipeline and /create_multi_pipeline
+backend/airflow/dags/pipeline_*.py
+# Schema-change cache written by text_sql/snowflake_schema_manager.py
+backend/text_sql/.schema_hash
+# CSVs emitted at runtime by the data generator
+backend/generator/generated/
+backend/output/
+
+# ── Archives & logs ──────────────────────────────────────
+*.zip
+build_log.txt

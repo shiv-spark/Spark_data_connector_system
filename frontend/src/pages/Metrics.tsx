@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/StatusBadge";
 import { fdt, fmtInt } from "@/lib/format";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState, RowSkeleton } from "@/components/console/Panel";
 
 export const Metrics = () => {
   const [pipeline, setPipeline] = useState("");
@@ -32,7 +34,12 @@ export const Metrics = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2 text-foreground"><ChartNoAxesCombined className="h-5 w-5" /> Metrics</h2>
+      <PageHeader
+        icon={ChartNoAxesCombined}
+        eyebrow="Observe"
+        title="Metrics"
+        description="Run counts, success rates, and throughput across every pipeline."
+      />
       <Card>
         <CardHeader><CardTitle className="text-sm">Pipeline Drilldown</CardTitle></CardHeader>
         <CardContent>
@@ -93,7 +100,7 @@ export const Metrics = () => {
       <Card>
         <CardHeader><CardTitle className="text-sm">All Pipeline Summary</CardTitle></CardHeader>
         <CardContent>
-          {summary.isLoading ? <p className="text-sm text-muted-foreground">Loading metrics...</p> : (
+          {summary.isLoading ? <RowSkeleton rows={3} /> : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">

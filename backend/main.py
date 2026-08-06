@@ -39,6 +39,7 @@ from fastapi import FastAPI
 from agent.agent_router import router as agent_router
 from sql_executors import get_executor, is_sql_capable, get_supported_types
 from sql_executors.base import QueryError
+from testers import get_tester
 
 
 
@@ -150,25 +151,26 @@ else:
 # Startup event to log all registered routes
 @app.on_event("startup")
 async def log_routes():
-    # Check and regenerate business context if schema changed
-    try:
-        # Add path to text-sql module
-        text_sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "text-sql")
-        sys.path.insert(0, text_sql_path)
-        from schema_manager import check_schema_changes
-        print("\n" + "="*60)
-        print("CHECKING FOR SCHEMA CHANGES...")
-        print("="*60)
-        regenerated = check_schema_changes()
-        if regenerated:
-            print("✓ Business context regenerated with updated schema")
-        else:
-            print("✓ No schema changes detected")
-    except ImportError as e:
-        print(f"⚠ Schema manager not available: {e}")
-    except Exception as e:
-        print(f"⚠ Schema check failed: {e}")
-    
+    # Check and regenerate business context if the Snowflake schema changed.
+    # This opens a Snowflake connection and can trigger LLM calls to rebuild
+    # business_context.json, so it is opt-in rather than run on every boot.
+    if os.getenv("SNOWFLAKE_SCHEMA_CHECK_ON_STARTUP", "false").strip().lower() in ("1", "true", "yes"):
+        try:
+            from text_sql.snowflake_schema_manager import check_schema_changes
+            print("\n" + "="*60)
+            print("CHECKING FOR SCHEMA CHANGES...")
+            print("="*60)
+            regenerated = check_schema_changes()
+            if regenerated:
+                print("✓ Business context regenerated with updated schema")
+            else:
+                print("✓ No schema changes detected")
+        except ImportError as e:
+            print(f"⚠ Schema manager not available: {e}")
+        except Exception as e:
+            print(f"⚠ Schema check failed: {e}")
+
+
     print("\n" + "="*60)
     print("REGISTERED ROUTES:")
     print("="*60)
@@ -224,272 +226,6 @@ DB_CONFIG = {
 
 def get_conn():
     return psycopg2.connect(**DB_CONFIG)
-
-
-def _sanitize_config(config: dict) -> dict:
-    """Remove sensitive information from config before returning to client."""
-    safe = dict(config)
-    sensitive_keys = {
-        "password", "secret", "token", "access_key", "secret_key",
-        "private_key", "passphrase", "api_key", "bearer_token",
-        "basic_password", "client_secret", "refresh_token"
-    }
-    for key in list(safe.keys()):
-        if any(s in key.lower() for s in sensitive_keys):
-            safe[key] = "********"
-    return safe
-
-
-def _test_snowflake(config: dict, test_write: bool = False) -> dict:
-    """Test Snowflake connection."""
-    try:
-        import snowflake.connector
-    except ImportError:
-        return {"success": False, "message": "snowflake-connector-python not installed", "category": "connectivity", "details": {}}
-
-    required = ["account", "user", "password", "warehouse", "database"]
-    missing = [f for f in required if not config.get(f)]
-    if missing:
-        return {"success": False, "message": f"Missing required fields: {', '.join(missing)}", "category": "connectivity", "details": _sanitize_config(config)}
-
-    conn = None
-    try:
-        conn_params = {
-            "account": config["account"],
-            "user": config["user"],
-            "password": config["password"],
-            "warehouse": config["warehouse"],
-            "database": config["database"],
-            "schema": config.get("schema", "PUBLIC"),
-            "login_timeout": 10,
-            "network_timeout": 10,
-        }
-        if config.get("role"):
-            conn_params["role"] = config["role"]
-
-        conn = snowflake.connector.connect(**conn_params)
-        cursor = conn.cursor()
-        cursor.execute("SELECT CURRENT_VERSION()")
-        version = cursor.fetchone()[0]
-        
-        # Verify database exists
-        database = config["database"]
-        cursor.execute(f"""SELECT DATABASE_NAME FROM INFORMATION_SCHEMA.DATABASES WHERE DATABASE_NAME = '{database}'""")
-        db_result = cursor.fetchone()
-        if not db_result:
-            conn.close()
-            return {"success": False, "message": f"Database '{database}' not found or not accessible", "category": "not_found", "details": _sanitize_config({"database": database})}
-        
-        # Verify schema exists in the database
-        schema = config.get("schema", "PUBLIC")
-        cursor.execute(f"""
-    SELECT SCHEMA_NAME
-    FROM {database}.INFORMATION_SCHEMA.SCHEMATA
-    WHERE SCHEMA_NAME = '{schema}'
-      AND CATALOG_NAME = '{database}'
-""")
-        schema_result = cursor.fetchone()
-        if not schema_result:
-            conn.close()
-            return {"success": False, "message": f"Schema '{schema}' not found in database '{database}'", "category": "not_found", "details": _sanitize_config({"database": database, "schema": schema})}
-        
-        cursor.close()
-        conn.close()
-        conn = None
-
-        return {"success": True, "message": f"Connected to Snowflake {version}. Database '{database}' and schema '{schema}' are accessible.", "category": "success", "details": _sanitize_config({"version": version, "database": database, "schema": schema})}
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "network" in error_msg or "timeout" in error_msg:
-            category = "connectivity"
-        elif "authentication" in error_msg or "password" in error_msg or "invalid credentials" in error_msg:
-            category = "auth"
-        else:
-            category = "connectivity"
-        return {"success": False, "message": str(e), "category": category, "details": _sanitize_config(config)}
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-
-def _test_postgres(config: dict, test_write: bool = False) -> dict:
-    """Test PostgreSQL connection."""
-    required = ["host", "database", "user", "password"]
-    missing = [f for f in required if not config.get(f)]
-    if missing:
-        return {"success": False, "message": f"Missing required fields: {', '.join(missing)}", "category": "connectivity", "details": _sanitize_config(config)}
-
-    conn = None
-    try:
-        conn_params = {
-            "host": config["host"],
-            "port": config.get("port", 5432),
-            "database": config["database"],
-            "user": config["user"],
-            "password": config["password"],
-            "connect_timeout": 5,
-        }
-        if config.get("sslmode"):
-            conn_params["sslmode"] = config["sslmode"]
-
-        conn = psycopg2.connect(**conn_params)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        cursor.fetchone()
-        
-        # Verify schema exists if specified
-        schema = config.get("schema")
-        if schema:
-            cursor.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = %s", (schema,))
-            schema_result = cursor.fetchone()
-            if not schema_result:
-                conn.close()
-                return {"success": False, "message": f"Schema '{schema}' not found in database '{config['database']}'", "category": "not_found", "details": _sanitize_config({"schema": schema, "database": config["database"]})}
-        
-        cursor.close()
-        conn.close()
-        conn = None
-
-        msg = f"Connected to PostgreSQL at {config['host']}/{config['database']}"
-        if schema:
-            msg += f". Schema '{schema}' is accessible."
-        return {"success": True, "message": msg, "category": "success", "details": _sanitize_config({"host": config["host"], "database": config["database"], "schema": schema})}
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "could not connect" in error_msg or "connection refused" in error_msg:
-            category = "connectivity"
-        elif "authentication" in error_msg or "password" in error_msg:
-            category = "auth"
-        elif "does not exist" in error_msg:
-            category = "not_found"
-        else:
-            category = "connectivity"
-        return {"success": False, "message": str(e), "category": category, "details": _sanitize_config(config)}
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-
-def _test_s3(config: dict, test_write: bool = False) -> dict:
-    """Test S3 connection."""
-    try:
-        import boto3
-        from botocore.exceptions import ClientError
-    except ImportError:
-        return {"success": False, "message": "boto3 not installed", "category": "connectivity", "details": {}}
-
-    if not config.get("bucket"):
-        return {"success": False, "message": "Missing required field: bucket", "category": "connectivity", "details": _sanitize_config(config)}
-
-    try:
-        client_kwargs = {
-            "service_name": "s3",
-            "region_name": config.get("region", "us-east-1"),
-        }
-        if config.get("access_key") and config.get("secret_key"):
-            client_kwargs["aws_access_key_id"] = config["access_key"]
-            client_kwargs["aws_secret_access_key"] = config["secret_key"]
-
-        s3 = boto3.client(**client_kwargs)
-        bucket = config["bucket"]
-        prefix = config.get("prefix", "").rstrip("/")
-
-        s3.head_bucket(Bucket=bucket)
-        s3.list_objects_v2(Bucket=bucket, Prefix=prefix + "/" if prefix else "", MaxKeys=1)
-
-        return {"success": True, "message": f"Connected to S3 bucket '{bucket}'. Read/list access confirmed.", "category": "success", "details": _sanitize_config({"bucket": bucket, "region": config.get("region", "us-east-1")})}
-    except ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code", "")
-        if error_code == "404":
-            return {"success": False, "message": f"Bucket '{config.get('bucket')}' not found", "category": "not_found", "details": _sanitize_config(config)}
-        elif error_code == "403":
-            return {"success": False, "message": "Access denied. Check credentials and permissions.", "category": "auth", "details": _sanitize_config(config)}
-        return {"success": False, "message": f"AWS error: {error_code}", "category": "permission", "details": _sanitize_config(config)}
-    except Exception as e:
-        return {"success": False, "message": str(e), "category": "connectivity", "details": _sanitize_config(config)}
-
-
-def _test_api(config: dict, test_write: bool = False) -> dict:
-    """Test API connection."""
-    try:
-        import httpx
-    except ImportError:
-        return {"success": False, "message": "httpx not installed", "category": "connectivity", "details": {}}
-
-    if not config.get("base_url"):
-        return {"success": False, "message": "Missing required field: base_url", "category": "connectivity", "details": _sanitize_config(config)}
-
-
-    auth_type = config.get("auth_type", "none").lower().strip()
-    timeout = config.get("timeout", 10)
-    method = (config.get("method") or "GET").upper()
-    headers = {}
-    params = {}
-    auth = None
-
-    if auth_type == "bearer":
-        token = config.get("bearer_token") or config.get("api_key")
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-    elif auth_type == "api_key_header":
-        if config.get("api_key"):
-            headers[config.get("header_name", "x-api-key")] = config["api_key"]
-    elif auth_type == "basic":
-        if config.get("basic_user") and config.get("basic_password"):
-            auth = (config["basic_user"], config["basic_password"])
-    elif auth_type == "query_param":
-        if config.get("api_key"):
-            params[config.get("query_param_name", "api_key")] = config["api_key"]
-    
-
-    
-    # url = config["base_url"].strip().rstrip("/") + "/" + config["test_endpoint"].strip().lstrip("/")
-
-
-    base_url = config["base_url"].strip()
-    test_endpoint = config["test_endpoint"].strip()
-
-    # If test_endpoint is empty, OR it's literally the same as base_url (which
-    # happens when the frontend defaults test_endpoint = base_url for
-    # convenience), just hit base_url directly — don't concatenate them,
-    # or you get a doubled/invalid URL like ".../search/https://.../search".
-    if not test_endpoint or test_endpoint == base_url:
-        url = base_url
-    elif test_endpoint.startswith("http://") or test_endpoint.startswith("https://"):
-        # test_endpoint is itself a full URL (e.g. user pasted a different
-        # complete URL) — use it as-is rather than appending to base_url.
-        url = test_endpoint
-    else:
-        url = base_url.rstrip("/") + "/" + test_endpoint.lstrip("/")
-    # url = config["base_url"].rstrip("/") + "/" + config["test_endpoint"].lstrip("/")
-
-    try:
-        with httpx.Client(timeout=timeout, auth=auth, follow_redirects=True) as client:
-            response = client.request(method, url, headers=headers, params=params)
-
-        if response.status_code in (200, 201, 204):
-            return {"success": True, "message": f"API connected. Status: {response.status_code}", "category": "success", "details": _sanitize_config({"url": url})}
-        elif response.status_code in (301, 302, 303, 307, 308):
-            return {"success": True, "message": f"API connected (redirect). Final status: {response.status_code}", "category": "success", "details": _sanitize_config({"url": url})}
-        elif response.status_code == 401:
-            return {"success": False, "message": "Authentication failed: 401 Unauthorized", "category": "auth", "details": _sanitize_config(config)}
-        elif response.status_code == 403:
-            return {"success": False, "message": "Authorization failed: 403 Forbidden", "category": "auth", "details": _sanitize_config(config)}
-        elif response.status_code >= 500:
-            return {"success": False, "message": f"Server error: HTTP {response.status_code}", "category": "server_error", "details": {"status_code": response.status_code}}
-        return {"success": False, "message": f"HTTP {response.status_code}", "category": "server_error", "details": {"status_code": response.status_code}}
-    except httpx.TimeoutException:
-        return {"success": False, "message": f"Request timed out after {timeout}s", "category": "connectivity", "details": _sanitize_config(config)}
-    except httpx.ConnectError as e:
-        return {"success": False, "message": f"Cannot connect to {url}", "category": "connectivity", "details": _sanitize_config(config)}
-    except Exception as e:
-        return {"success": False, "message": str(e), "category": "connectivity", "details": _sanitize_config(config)}
 
 
 class ConnectionRequest(BaseModel):
@@ -677,16 +413,9 @@ def test_connector(req: ConnectionTestRequest):
     - figma_design
     """
     import os
-    
+
     source_type = req.source_type.lower().strip()
-    
-    tester_map = {
-        "snowflake": "testers.snowflake",
-        "postgres": "testers.postgres",
-        "s3": "testers.s3",
-        "api": "testers.api",
-    }
-    
+
     # Handle source types that don't need network testing
     if source_type == "local_folder":
         base_path = req.config.get("base_path", "")
@@ -766,23 +495,17 @@ def test_connector(req: ConnectionTestRequest):
             "details": {}
         }
     
-    if source_type not in ["snowflake", "postgres", "s3", "api"]:
+    tester = get_tester(source_type)
+    if tester is None:
         return {
             "success": False,
             "message": f"Unknown source_type: {source_type}. Valid types: snowflake, postgres, s3, api, local_folder, google_sheet, figma_design",
             "category": "connectivity",
             "details": {}
         }
-    
+
     try:
-        if source_type == "snowflake":
-            return _test_snowflake(req.config, req.test_write)
-        elif source_type == "postgres":
-            return _test_postgres(req.config, req.test_write)
-        elif source_type == "s3":
-            return _test_s3(req.config, req.test_write)
-        elif source_type == "api":
-            return _test_api(req.config, req.test_write)
+        return tester(req.config, req.test_write)
     except Exception as e:
         return {
             "success": False,

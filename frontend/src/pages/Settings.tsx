@@ -1,20 +1,25 @@
 import { useState } from "react";
-import { currentUser } from "@/lib/user";
+import { Settings as SettingsIcon } from "lucide-react";
+import { getUserInitials } from "@/lib/user";
+import { useAuth } from "@/lib/auth";
+import { getPlan } from "@/lib/plans";
 import { useTheme } from "@/components/ThemeProvider";
+import { PageHeader } from "@/components/PageHeader";
+import { PlanUsage } from "@/components/PlanUsage";
 
 export function Settings() {
   const { theme, setTheme } = useTheme();
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(false);
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage your account preferences and application settings
-        </p>
-      </div>
+      <PageHeader
+        icon={SettingsIcon}
+        title="Settings"
+        description="Manage your account, appearance, and notification preferences."
+      />
 
       <div className="rounded-lg border border-border bg-card">
         <div className="border-b border-border px-6 py-4">
@@ -23,25 +28,30 @@ export function Settings() {
         <div className="p-6">
           <div className="flex items-center gap-4">
             <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-700 text-2xl font-bold text-white shadow-[inset_0_0_0_1px_rgba(15,23,42,0.12)]">
-              {currentUser.name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")
-                .toUpperCase()
-                .slice(0, 2)}
+              {user ? getUserInitials(user.name) : "—"}
             </div>
-            <div>
-              <p className="text-lg font-semibold text-foreground">
-                {currentUser.name}
-              </p>
-              <p className="text-sm text-muted-foreground">{currentUser.email}</p>
-              <span className="mt-1 inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                {currentUser.role}
-              </span>
+            <div className="min-w-0">
+              <p className="text-lg font-semibold text-foreground">{user?.name}</p>
+              <p className="truncate text-sm text-muted-foreground">{user?.email}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  {user?.role}
+                </span>
+                {user?.company ? (
+                  <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                    {user.company}
+                  </span>
+                ) : null}
+                <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+                  {getPlan(user?.plan).name} plan
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {user ? <PlanUsage planId={user.plan} /> : null}
 
       <div className="rounded-lg border border-border bg-card">
         <div className="border-b border-border px-6 py-4">

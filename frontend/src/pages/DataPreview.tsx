@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState, RowSkeleton } from "@/components/console/Panel";
 
 export const DataPreview = () => {
   const [table, setTable] = useState("");
@@ -36,7 +38,12 @@ export const DataPreview = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2"><Table2 className="h-5 w-5" /> Data Preview</h2>
+      <PageHeader
+        icon={Table2}
+        eyebrow="Data"
+        title="Data Preview"
+        description="Inspect rows from any connected source before you build against it."
+      />
       <Card>
         <CardHeader><CardTitle className="text-sm">Table Browser</CardTitle></CardHeader>
         <CardContent>
@@ -59,7 +66,7 @@ export const DataPreview = () => {
             <CardTitle className="text-sm">{activeTable} {data?.pagination ? `(${data.pagination.total} rows)` : ""}</CardTitle>
           </CardHeader>
           <CardContent>
-            {isFetching ? <p className="text-sm text-muted-foreground">Loading rows...</p> : rows.length ? (
+            {isFetching ? <RowSkeleton rows={4} /> : rows.length ? (
               <>
                 <div className="overflow-auto rounded-md border border-border">
                   <table className="w-full text-sm">
@@ -81,7 +88,13 @@ export const DataPreview = () => {
                   <Button variant="outline" disabled={!data.pagination.has_more} onClick={() => setOffset(offset + limit)}>Next</Button>
                 </div>
               </>
-            ) : <p className="text-sm text-muted-foreground">No rows found.</p>}
+            ) : (
+              <EmptyState
+                icon={Table2}
+                title="No rows to show"
+                body="Pick a connection and table above, or run a pipeline to load data into one."
+              />
+            )}
           </CardContent>
         </Card>
       )}

@@ -13,6 +13,7 @@ if (typeof window !== "undefined") {
 const TypedGrid = GridLayout as unknown as React.ComponentType<any>;
 import {
   ArrowLeft,
+  AlignLeft,
   ArrowUpRight,
   AreaChart as AreaChartIcon,
   BarChart3,
@@ -24,6 +25,7 @@ import {
   ExternalLink,
   Gauge,
   GripVertical,
+  History,
   LineChart as LineChartIcon,
   Loader2,
   Maximize2,
@@ -39,14 +41,25 @@ import {
   Sparkles,
   Table2,
   Trash2,
+  Undo2,
   User,
   Download,
   FileImage,
   Wand2,
   X,
 } from "lucide-react";
-import { api, updateDashboardName, deleteDashboard, renameChart, updateChartDescription } from "@/lib/api";
+import {
+  api,
+  updateDashboardName,
+  deleteDashboard,
+  renameChart,
+  updateChartDescription,
+  fetchDashboardHistory,
+  undoDashboard,
+} from "@/lib/api";
+import { HistoryPanel } from "@/components/console/HistoryPanel";
 import { cn } from "@/lib/utils";
+import { OverflowMenu, MenuItem, MenuSeparator } from "@/components/console/OverflowMenu";
 import { fdt } from "@/lib/format";
 
 const mono = { fontFamily: "var(--font-mono)" } as const;
@@ -266,11 +279,54 @@ export const DashboardEditor = () => {
     },
   });
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [lastUndone, setLastUndone] = useState<string | null>(null);
+
+  const historyQuery = useQuery({
+    queryKey: ["dashboard-history", dashboardId],
+    queryFn: () => fetchDashboardHistory(dashboardId),
+    enabled: !!dashboardId,
+  });
+
+  const canUndo = (historyQuery.data ?? []).length > 0;
+  const nextUndoLabel = historyQuery.data?.[0]?.label ?? null;
+
+  const undo = useMutation({
+    mutationFn: () => undoDashboard(dashboardId),
+    onSuccess: (label) => {
+      setLastUndone(label);
+      setTimeout(() => setLastUndone(null), 4000);
+      queryClient.invalidateQueries({ queryKey: dashboardKey });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-history", dashboardId] });
+    },
+  });
+
+  const refreshAfterChange = () => {
+    queryClient.invalidateQueries({ queryKey: dashboardKey });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-history", dashboardId] });
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      // Don't hijack undo inside a text field.
+      const el = e.target as HTMLElement | null;
+      if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
+      e.preventDefault();
+      if (canUndo && !undo.isPending) undo.mutate();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canUndo, undo.isPending]);
+
   const deleteChart = useMutation({
     mutationFn: async (slot: number) => {
       await api.delete(`/agent/dashboard/${dashboardId}/chart/${slot}`);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: dashboardKey });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-history", dashboardId] });
+    },
   });
 
   const renameChartMutation = useMutation({
@@ -293,7 +349,12 @@ export const DashboardEditor = () => {
   const [sqlOpen, setSqlOpen] = useState(false);
 
   return (
-    <div className={cn("-mx-6 -my-6 grid h-[calc(100vh-56px)]", chatVisible ? "grid-cols-[360px_1fr]" : "grid-cols-[0px_1fr]")}>
+    <div
+      className={cn(
+        "-mx-6 -my-6 grid h-[calc(100vh-56px)]",
+        chatVisible ? "grid-cols-[360px_1fr]" : "grid-cols-[0px_1fr]",
+      )}
+    >
       {/* Chat rail */}
       <aside className={cn("flex h-full flex-col border-r border-border bg-background/80 backdrop-blur dark:border-border overflow-hidden transition-all duration-200", !chatVisible && "border-r-0")}>
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -304,6 +365,7 @@ export const DashboardEditor = () => {
             <div className="leading-tight">
               <p className="text-[12.5px] font-semibold tracking-tight text-foreground">Dashboard agent</p>
               <p className="text-[10.5px] text-muted-foreground" style={mono}>
+                edits this board
               </p>
             </div>
           </div>
@@ -379,12 +441,13 @@ export const DashboardEditor = () => {
         </form>
       </aside>
 
-      {/* Canvas */}
-      <main className="flex h-full flex-col overflow-hidden">
+      {/* Canvas + history */}
+      <div className="flex h-full min-w-0 overflow-hidden">
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border bg-background/80 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              to="/"
+              to="/app"
               className="icon-btn !h-7 !w-7"
               title="Back to studio"
             >
@@ -426,89 +489,144 @@ export const DashboardEditor = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            
+            {/* Read-outs first, then actions, then the destructive tail behind
+                a menu — delete used to sit unlabelled beside Refresh. */}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset",
+                tone === "good" && "bg-[hsl(var(--accent-signal)/0.12)] text-[hsl(var(--accent-signal))] ring-[hsl(var(--accent-signal)/0.3)]",
+                tone === "warn" && "bg-[hsl(var(--accent-amber)/0.12)] text-[hsl(var(--accent-amber))] ring-[hsl(var(--accent-amber)/0.3)]",
+                tone === "bad" && "bg-[hsl(var(--accent-rose)/0.12)] text-[hsl(var(--accent-rose))] ring-[hsl(var(--accent-rose)/0.3)]",
+              )}
+              title={`Quality score ${score} out of 100 — grade ${grade}`}
+            >
+              <Gauge className="h-3 w-3" />
+              <span style={mono}>{score}</span>/100
+            </span>
+
+            <span className="hidden h-5 w-px bg-border md:block" />
+
+            <button
+              type="button"
+              onClick={() => undo.mutate()}
+              disabled={!canUndo || undo.isPending}
+              title={
+                canUndo
+                  ? `Undo: ${nextUndoLabel ?? "last change"} (${navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"}Z)`
+                  : "Nothing to undo"
+              }
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold text-foreground ring-1 ring-inset ring-border transition hover:bg-[hsl(var(--surface-2))] disabled:opacity-40"
+            >
+              {undo.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Undo2 className="h-3 w-3" />
+              )}
+              Undo
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((v) => !v)}
+              aria-pressed={historyOpen}
+              title="Version history"
+              className={cn(
+                "icon-btn !h-8 !w-8",
+                historyOpen && "bg-[hsl(var(--surface-2))] text-foreground",
+              )}
+            >
+              <History className="h-3.5 w-3.5" />
+            </button>
+
             {!chatVisible && (
               <button
                 type="button"
                 onClick={() => setChatVisible(true)}
                 className="icon-btn !h-8 !w-8"
                 title="Open dashboard agent"
+                aria-label="Open dashboard agent"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
               </button>
             )}
-            <button
-              type="button"
-              disabled={command.isPending}
-              onClick={() =>
-                command.mutate({
-                  message: "Add one new chart that reveals the most insightful pattern in this data — pick the best chart type yourself and pick a metric we don't already visualize.",
-                })
-              }
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-[12px] font-semibold text-emerald-800 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900"
-              title="Ask the agent to add a new chart"
-            >
-              {command.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-              Add chart
-            </button>
-            <button
-              type="button"
-              onClick={() => dashboard.refetch()}
-              className="icon-btn !h-8 !w-8"
-              title="Refresh"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", dashboard.isFetching && "animate-spin")} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm(`Delete dashboard "${data?.display_name || summary?.name || dashboardId}"?`)) {
-                  deleteMutation.mutate();
-                }
-              }}
-              disabled={deleteMutation.isPending}
-              className="icon-btn !h-8 !w-8 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-              title="Delete dashboard"
-            >
-              {deleteMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            </button>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset",
-                tone === "good" && "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800",
-                tone === "warn" && "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800",
-                tone === "bad" && "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800",
-              )}
-            >
-              <Gauge className="h-3 w-3" />
-              <span style={mono}>{score}</span>/100
-              <span className="text-muted-foreground">·</span>
-              <span style={mono}>{grade}</span>
-            </span>
+
             {sql ? (
               <button
                 type="button"
                 onClick={() => setSqlOpen((v) => !v)}
+                aria-pressed={sqlOpen}
                 className={cn(
-                  "inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-[12px] font-semibold transition",
+                  "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold transition",
                   sqlOpen
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
-                    : "border-input bg-background text-foreground hover:border-border hover:text-foreground",
+                    ? "bg-[hsl(var(--accent-signal)/0.12)] text-[hsl(var(--accent-signal))] ring-1 ring-inset ring-[hsl(var(--accent-signal)/0.3)]"
+                    : "text-foreground ring-1 ring-inset ring-border hover:bg-[hsl(var(--surface-2))]",
                 )}
               >
                 <Code2 className="h-3 w-3" /> SQL
               </button>
             ) : null}
-            <a
-              href={`/api/agent/dashboard/${dashboardId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2.5 text-[12px] font-semibold text-foreground shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-border hover:text-foreground"
+
+            <button
+              type="button"
+              disabled={command.isPending}
+              onClick={() =>
+                command.mutate({
+                  message:
+                    "Add one new chart that reveals the most insightful pattern in this data — pick the best chart type yourself and pick a metric we don't already visualize.",
+                })
+              }
+              className="header-cta inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white disabled:opacity-50"
+              title="Ask the agent to add a new chart"
             >
-              Published view <ExternalLink className="h-3 w-3" />
-            </a>
+              {command.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Add chart
+            </button>
+
+            <OverflowMenu label="Dashboard actions">
+              {(close) => (
+                <>
+                  <MenuItem
+                    icon={RefreshCw}
+                    onClick={() => {
+                      dashboard.refetch();
+                      close();
+                    }}
+                  >
+                    Refresh data
+                  </MenuItem>
+                  <MenuItem icon={ExternalLink} href={`/api/agent/dashboard/${dashboardId}`}>
+                    Open published view
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem
+                    icon={Trash2}
+                    tone="danger"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      close();
+                      if (
+                        window.confirm(
+                          `Delete dashboard "${data?.display_name || summary?.name || dashboardId}"? This can't be undone.`,
+                        )
+                      ) {
+                        deleteMutation.mutate();
+                      }
+                    }}
+                  >
+                    Delete dashboard
+                  </MenuItem>
+                </>
+              )}
+            </OverflowMenu>
           </div>
         </div>
+
+        {lastUndone ? (
+          <div className="flex items-center gap-2 border-b border-border bg-[hsl(var(--accent-signal)/0.1)] px-6 py-2 text-[12.5px] text-foreground">
+            <Undo2 className="h-3.5 w-3.5 text-[hsl(var(--accent-signal))]" />
+            Reversed <span className="font-semibold">{lastUndone}</span>
+          </div>
+        ) : null}
 
         <div ref={canvasRef} className="flex-1 overflow-y-auto px-6 py-5">
           {sql && sqlOpen ? <SqlPreview sql={sql} /> : null}
@@ -594,6 +712,15 @@ export const DashboardEditor = () => {
           )}
         </div>
       </main>
+
+      {historyOpen ? (
+        <HistoryPanel
+          dashboardId={dashboardId}
+          onClose={() => setHistoryOpen(false)}
+          onRestored={refreshAfterChange}
+        />
+      ) : null}
+      </div>
     </div>
   );
 };
@@ -874,7 +1001,7 @@ const ChartCard = ({
             label="Description"
             active={open === "description"}
             onClick={() => { setOpen(open === "description" ? null : "description"); setDescText(meta?.description || ""); }}
-            icon={MessageSquarePlus}
+            icon={AlignLeft}
           />
           <span className="mx-0.5 h-4 w-px bg-border" />
           {/* Type popover */}
@@ -898,37 +1025,53 @@ const ChartCard = ({
             label="Refine with AI"
             active={open === "refine"}
             onClick={() => setOpen(open === "refine" ? null : "refine")}
-            icon={MessageSquarePlus}
+            icon={Sparkles}
           />
           <span className="mx-0.5 h-4 w-px bg-border" />
-          {/* Regenerate */}
-          <ToolbarButton
-            label="Regenerate"
-            disabled={busy}
-            onClick={() =>
-              fire(
-                `Regenerate chart ${slot} from scratch — pick the best chart type and metric for the underlying data, keep the same intent as "${titleLabel}".`,
-              )
-            }
-            icon={Wand2}
-          />
+          <span className="mx-0.5 h-4 w-px bg-border" />
           {/* Expand */}
           <ToolbarButton
             label="Expand"
             onClick={() => setExpanded(true)}
             icon={Maximize2}
           />
-          {/* Delete */}
-          {onDelete ? (
-            <ToolbarButton
-              label="Delete"
-              tone="danger"
-              disabled={deleting}
-              onClick={onDelete}
-              icon={deleting ? Loader2 : Trash2}
-              spinning={deleting}
-            />
-          ) : null}
+
+          {/* Regenerate and Delete are the two that can't be casually undone,
+              so they live behind a menu rather than under the cursor. */}
+          <OverflowMenu label="More chart actions">
+            {(close) => (
+              <>
+                <MenuItem
+                  icon={Wand2}
+                  disabled={busy}
+                  onClick={() => {
+                    close();
+                    fire(
+                      `Regenerate chart ${slot} from scratch — pick the best chart type and metric for the underlying data, keep the same intent as "${titleLabel}".`,
+                    );
+                  }}
+                >
+                  Regenerate chart
+                </MenuItem>
+                {onDelete ? (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem
+                      icon={Trash2}
+                      tone="danger"
+                      disabled={deleting}
+                      onClick={() => {
+                        close();
+                        onDelete();
+                      }}
+                    >
+                      Delete chart
+                    </MenuItem>
+                  </>
+                ) : null}
+              </>
+            )}
+          </OverflowMenu>
         </div>
 
         {/* Popover panels */}

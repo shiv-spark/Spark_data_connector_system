@@ -95,13 +95,18 @@ The **Data Intelligence Platform** (also known as **Universal Data Connector Sys
 
 ## Project Structure
 
+All Python lives under `backend/`. Dockerfile.backend copies the *contents* of
+`backend/` to `/app`, so every directory below is a top-level import in the
+running container (`from connectors...`, `from metadata...`).
+
 ```
 project_root/
-├── backend/                    # FastAPI backend
-│   ├── main.py                 # Main FastAPI application
+├── backend/                    # FastAPI backend — the only Python root
+│   ├── main.py                 # FastAPI app + connection/pipeline routes
 │   ├── run.py                  # Entry point with DB initialization
-│   ├── streamlit_app.py        # Alternative Streamlit interface
-│   ├── requirements.txt          # Python dependencies
+│   ├── sql_router.py           # Ad-hoc SQL query routes
+│   ├── streamlit_app.py        # Alternative Streamlit interface (standalone)
+│   ├── requirements.txt        # Python dependencies
 │   ├── init.sql                # Database initialization
 │   ├── connectors/             # Data source connectors
 │   │   ├── csv_connector.py
@@ -109,18 +114,28 @@ project_root/
 │   │   ├── postgres_connector.py
 │   │   ├── google_sheets_connector.py
 │   │   ├── api_connector.py
-│   │   └── s3_connector.py
+│   │   ├── s3_connector.py
+│   │   └── snowflake_connector.py
+│   ├── testers/                # Connection tests behind POST /connectors/test
+│   │   ├── snowflake.py  postgres.py  s3.py  api.py
+│   ├── sql_executors/          # SQL execution per source type
 │   ├── loaders/                # Database loaders
-│   ├── utils/                  # Utility functions
-│   │   ├── dag_generator.py
-│   │   ├── multi_dag_generator.py
-│   │   └── ingest_runner.py
-│   └── agent/                  # AI Agent components
-│       ├── agent_router.py
-│       ├── dashboard_store.py
-│       ├── graph/              # LangGraph nodes & edges
-│       ├── tools/              # Analysis & chart tools
-│       └── templates/          # HTML templates
+│   ├── utils/                  # DAG generation, ingestion, logging
+│   ├── agent/                  # Dashboard AI agent
+│   │   ├── agent_router.py
+│   │   ├── dashboard_store.py
+│   │   ├── graph/              # LangGraph nodes & edges
+│   │   ├── tools/              # Analysis & chart tools
+│   │   └── templates/          # HTML templates
+│   ├── text_sql/               # Text-to-SQL, split by warehouse
+│   │   ├── agent.py  postgres_executor.py  postgres_schema_manager.py
+│   │   ├── snowflake_agent.py  snowflake_executor.py
+│   │   ├── snowflake_schema_manager.py  snowflake_config.py
+│   │   └── schema.sql          # text2sql_run_metadata DDL
+│   ├── data_generator/         # /datagen routes
+│   ├── generator/              # Synthetic data generation (used by data_generator)
+│   ├── metadata/               # Schema/business-context extraction (Snowflake)
+│   └── airflow/dags/           # Generated DAGs (gitignored)
 ├── frontend/                   # React frontend
 │   ├── package.json
 │   ├── vite.config.ts
@@ -134,8 +149,18 @@ project_root/
 ├── docker-compose.yml          # Full stack Docker setup
 ├── Dockerfile.backend          # Backend Docker image
 ├── Dockerfile.frontend         # Frontend Docker image
+├── .env.example                # Documented environment template
 └── README.md                   # Original project README
 ```
+
+### Import conventions
+
+- `backend/` is the import root in both layouts — never add `sys.path` hacks
+  to reach a sibling package; import it directly (`from metadata.x import y`).
+- Anything writing runtime output (generated CSVs, DAG files, reports) belongs
+  in a gitignored directory — see `.gitignore`.
+- Secrets come from the environment only. `.env.example` documents every key
+  the code reads; no credentials belong in a `.py` file.
 
 ---
 

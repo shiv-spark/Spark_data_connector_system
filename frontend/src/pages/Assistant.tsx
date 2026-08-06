@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/PageHeader";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -45,7 +46,12 @@ export const Assistant = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2"><Bot className="h-5 w-5" /> AI Assistant</h2>
+      <PageHeader
+        icon={Bot}
+        eyebrow="Intelligence"
+        title="AI Assistant"
+        description="Ask about your pipelines, connections, and data in plain English."
+      />
       <Card>
         <CardHeader><CardTitle className="text-sm">Live Pipeline Assistant</CardTitle></CardHeader>
         <CardContent className="space-y-4">

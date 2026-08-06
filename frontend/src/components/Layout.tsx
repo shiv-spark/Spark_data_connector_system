@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -16,6 +17,7 @@ import {
   MessageSquare,
   Moon,
   Network,
+  PanelLeft,
   Plus,
   ScrollText,
   Settings,
@@ -28,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/ThemeProvider";
 import { UniversalSearch } from "@/components/UniversalSearch";
 import { UserMenu } from "@/components/UserMenu";
+import { useAuth } from "@/lib/auth";
 
 type NavItem = { to: string; label: string; icon: typeof Sparkles; badge?: string };
 type NavGroup = { label: string; items: NavItem[] };
@@ -36,40 +39,40 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Overview",
     items: [
-      { to: "/", label: "Dashboard Studio", icon: Sparkles, badge: "AI" },
-      { to: "/monitoring", label: "Monitoring", icon: LayoutDashboard },
+      { to: "/app", label: "Dashboard Studio", icon: Sparkles, badge: "AI" },
+      { to: "/app/monitoring", label: "Monitoring", icon: LayoutDashboard },
     ],
   },
   {
     label: "Build",
     items: [
-      { to: "/connections", label: "Connections", icon: DatabaseZap },
-      { to: "/create", label: "Create Pipeline", icon: Plus },
-      { to: "/pipelines", label: "Pipelines", icon: ListChecks },
-      { to: "/multi-source", label: "Multi-Source", icon: Network },
+      { to: "/app/connections", label: "Connections", icon: DatabaseZap },
+      { to: "/app/create", label: "Create Pipeline", icon: Plus },
+      { to: "/app/pipelines", label: "Pipelines", icon: ListChecks },
+      { to: "/app/multi-source", label: "Multi-Source", icon: Network },
     ],
   },
   {
     label: "Data",
     items: [
-      { to: "/ingest", label: "Direct Ingest", icon: Download },
-      { to: "/preview", label: "Preview", icon: Database },
+      { to: "/app/ingest", label: "Direct Ingest", icon: Download },
+      { to: "/app/preview", label: "Preview", icon: Database },
     ],
   },
   {
     label: "Observe",
     items: [
-      { to: "/metrics", label: "Metrics", icon: LineChart },
-      { to: "/logs", label: "Logs", icon: ScrollText },
+      { to: "/app/metrics", label: "Metrics", icon: LineChart },
+      { to: "/app/logs", label: "Logs", icon: ScrollText },
     ],
   },
   {
     label: "Intelligence",
     items: [
-      { to: "/assistant", label: "AI Assistant", icon: Bot, badge: "Beta" },
-      { to: "/text2sql", label: "Text-to-SQL", icon: MessageSquare, badge: "New" },
-      { to: "/datagenerator", label: "Data Generator", icon: Sparkles, badge: "New" },
-      { to: "/sql-editor", label: "SQL Editor", icon: Database, badge: "New" },
+      { to: "/app/assistant", label: "AI Assistant", icon: Bot, badge: "Beta" },
+      { to: "/app/text2sql", label: "Text-to-SQL", icon: MessageSquare, badge: "New" },
+      { to: "/app/datagenerator", label: "Data Generator", icon: Sparkles, badge: "New" },
+      { to: "/app/sql-editor", label: "SQL Editor", icon: Database, badge: "New" },
     ],
   },
 ];
@@ -90,6 +93,24 @@ export const Layout = () => {
   });
   const healthy = !!data && !isError;
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const { user } = useAuth();
+  const workspace = user?.company?.trim() || "SparkBrains";
+
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("dc.sidebar") === "collapsed";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("dc.sidebar", collapsed ? "collapsed" : "expanded");
+    } catch {
+      /* storage unavailable — the choice just won't persist */
+    }
+  }, [collapsed]);
 
   const toggleTheme = () => {
     if (theme === "system") {
@@ -101,13 +122,18 @@ export const Layout = () => {
 
   return (
     <div className="flex h-full">
-      <aside className="relative flex w-[248px] shrink-0 flex-col border-r border-border bg-white/70 backdrop-blur dark:bg-[hsl(222.2,47%,9%)]/70">
-        <div className="px-4 pt-4 pb-3">
+      <aside
+        className={cn(
+          "relative flex shrink-0 flex-col border-r border-border bg-[hsl(var(--sidebar-bg))] transition-[width] duration-200 ease-out",
+          collapsed ? "nav-collapsed w-[62px]" : "w-[248px]",
+        )}
+      >
+        <div className={cn("pb-3 pt-4", collapsed ? "px-3" : "px-4")}>
           <div className="flex items-center gap-2.5">
             <ProductMark />
-            <div className="min-w-0 flex-1">
+            <div className={cn("min-w-0 flex-1", collapsed && "hidden")}>
               <div className="flex items-center gap-1.5">
-                <h1 className="truncate text-[13.5px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                <h1 className="truncate text-[14px] font-semibold tracking-[-0.025em] text-slate-900 dark:text-slate-100" style={{ fontFamily: "var(--font-display)" }}>
                   Data Pipeline
                 </h1>
                 <span className="rounded bg-slate-100 px-1 py-px text-[9.5px] font-semibold tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400" style={{ fontFamily: "var(--font-mono)" }}>
@@ -119,40 +145,62 @@ export const Layout = () => {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-2">
+        <nav className={cn("flex-1 space-y-4 overflow-y-auto py-2", collapsed ? "px-3" : "px-3")}>
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="space-y-0.5">
-              <div className="section-eyebrow px-2 pb-1.5 pt-1">
-                {group.label}
-              </div>
+              {collapsed ? (
+                <div className="mx-auto mb-1.5 h-px w-6 bg-border" />
+              ) : (
+                <div className="section-eyebrow px-2 pb-1.5 pt-1">{group.label}</div>
+              )}
               {group.items.map(({ to, label, icon: Icon, badge }) => (
                 <NavLink
                   key={to}
                   to={to}
-                  end={to === "/"}
+                  end={to === "/app"}
+                  title={collapsed ? label : undefined}
                   className={({ isActive }) => cn("nav-item", isActive && "active")}
                 >
-                  <Icon className="nav-icon h-[15px] w-[15px] shrink-0 text-slate-500 dark:text-slate-400" />
-                  <span className="min-w-0 flex-1 truncate">{label}</span>
-                  {badge ? (
-                    <span className="rounded bg-gradient-to-b from-emerald-50 to-emerald-100 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-inset ring-emerald-200/70 dark:from-emerald-900/50 dark:to-emerald-800/50 dark:text-emerald-400 dark:ring-emerald-700/50">
-                      {badge}
-                    </span>
-                  ) : null}
+                  <Icon className="nav-icon h-[15px] w-[15px] shrink-0" />
+                  {collapsed ? (
+                    <span className="sr-only">{label}</span>
+                  ) : (
+                    <>
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                      {badge ? (
+                        <span className="rounded bg-[hsl(var(--accent-signal)/0.12)] px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-[hsl(var(--accent-signal))]">
+                          {badge}
+                        </span>
+                      ) : null}
+                    </>
+                  )}
                 </NavLink>
               ))}
             </div>
           ))}
         </nav>
 
-        <div className="mx-3 mb-3 mt-2 rounded-[10px] border border-border bg-gradient-to-b from-white to-slate-50/60 p-3 shadow-sm dark:from-slate-800/50 dark:to-slate-900/50">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="section-eyebrow">
-              System
-            </span>
+        <div className="mx-3 mb-3 mt-2 space-y-2">
+          <Link
+            to="/app/create"
+            title={collapsed ? "New pipeline" : undefined}
+            className="header-cta flex h-9 w-full items-center justify-center gap-1.5 rounded-lg text-[12.5px] font-semibold text-white"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.4} />
+            {collapsed ? <span className="sr-only">New pipeline</span> : "New pipeline"}
+          </Link>
+
+          <div
+            className={cn(
+              "flex items-center rounded-lg py-2 ring-1 ring-inset ring-border",
+              collapsed ? "justify-center px-1" : "justify-between px-2.5",
+            )}
+            title={collapsed ? (healthy ? "API healthy" : "API unreachable") : undefined}
+          >
+            <span className={cn("section-eyebrow", collapsed && "hidden")}>API</span>
             <span
               className={cn(
-                "inline-flex items-center gap-1 text-[10.5px] font-semibold",
+                "inline-flex items-center gap-1.5 text-[11px] font-semibold",
                 healthy ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400",
               )}
             >
@@ -167,46 +215,23 @@ export const Layout = () => {
                   )}
                 />
               </span>
-              {healthy ? "Healthy" : "Down"}
+              {collapsed ? null : healthy ? "Healthy" : "Unreachable"}
             </span>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5 text-center">
-            <div className="rounded-md bg-white px-1 py-1.5 ring-1 ring-inset ring-border dark:bg-slate-800 dark:ring-slate-700">
-              <div className="text-[10px] font-medium text-muted-foreground">API</div>
-              <div className="text-[11px] font-semibold text-foreground" style={{ fontFamily: "var(--font-mono)" }}>
-                42ms
-              </div>
-            </div>
-            <div className="rounded-md bg-white px-1 py-1.5 ring-1 ring-inset ring-border dark:bg-slate-800 dark:ring-slate-700">
-              <div className="text-[10px] font-medium text-muted-foreground">Jobs</div>
-              <div className="text-[11px] font-semibold text-foreground" style={{ fontFamily: "var(--font-mono)" }}>
-                12
-              </div>
-            </div>
-            <div className="rounded-md bg-white px-1 py-1.5 ring-1 ring-inset ring-border dark:bg-slate-800 dark:ring-slate-700">
-              <div className="text-[10px] font-medium text-muted-foreground">Err</div>
-              <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400" style={{ fontFamily: "var(--font-mono)" }}>
-                0
-              </div>
-            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-border px-3 py-2">
-          <UserMenu />
-          <div className="flex items-center gap-1">
-            <button
-              className="icon-btn !h-7 !w-7"
-              title="Toggle theme"
-              onClick={toggleTheme}
-            >
-              {resolvedTheme === "dark" ? (
-                <Moon className="h-3.5 w-3.5" />
-              ) : (
-                <Sun className="h-3.5 w-3.5" />
-              )}
+        <div
+          className={cn(
+            "border-t border-border px-3 py-2",
+            collapsed ? "flex flex-col items-center gap-1" : "flex items-center justify-between",
+          )}
+        >
+          <UserMenu collapsed={collapsed} />
+          <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+            <button className="icon-btn !h-7 !w-7" title="Toggle theme" onClick={toggleTheme}>
+              {resolvedTheme === "dark" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
             </button>
-            <Link to="/settings" className="icon-btn !h-7 !w-7" title="Settings">
+            <Link to="/app/settings" className="icon-btn !h-7 !w-7" title="Settings">
               <Settings className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -215,25 +240,42 @@ export const Layout = () => {
 
       <main className="flex-1 overflow-y-auto bg-background">
         <header className="app-header sticky top-0 z-20">
-          <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-3 px-5">
+          <div className="flex h-14 items-center gap-3 px-4">
+            <button
+              onClick={() => setCollapsed((v) => !v)}
+              className="icon-btn"
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!collapsed}
+            >
+              <PanelLeft className="h-4 w-4" />
+            </button>
+            <span className="hidden h-5 w-px bg-border sm:block" />
+
             {/* Workspace / project / env breadcrumb */}
+            {/* Workspace and environment are display-only until there is more
+                than one of either — a chevron that opens nothing is worse than
+                no chevron. */}
             <div className="flex min-w-0 items-center gap-2">
-              <button className="group inline-flex items-center gap-2 rounded-md px-1.5 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800">
+              <div className="inline-flex items-center gap-2 px-1.5 py-1">
                 <span className="ws-mark h-5 w-5 rounded-[5px] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.12)]" />
-                <span className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">SparkBrains</span>
-                <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400 transition group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-              </button>
+                <span
+                  className="truncate text-[13.5px] font-semibold tracking-[-0.02em] text-slate-900 dark:text-slate-100"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {workspace}
+                </span>
+              </div>
 
               <span className="select-none text-slate-300 dark:text-slate-600">/</span>
 
-              <button className="env-pill inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 transition hover:brightness-[0.98]">
+              <span className="env-pill inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
                 <span className="relative inline-flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 </span>
                 production
-                <ChevronDown className="h-3 w-3 text-emerald-600/70 dark:text-emerald-500/70" />
-              </button>
+              </span>
             </div>
 
             {/* Search bar */}
@@ -261,13 +303,6 @@ export const Layout = () => {
                 </span>
                 <span className="font-medium text-foreground">
                   {healthy ? "Operational" : "Degraded"}
-                </span>
-                <span className="hidden text-slate-300 dark:text-slate-600 xl:inline">·</span>
-                <span
-                  className="hidden text-muted-foreground xl:inline"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}
-                >
-                  4m ago
                 </span>
               </div>
 
@@ -299,7 +334,7 @@ export const Layout = () => {
             </div>
           </div>
         </header>
-        <div className="mx-auto max-w-[1500px] px-6 py-6">
+        <div className="mx-auto w-full max-w-[1440px] px-6 py-7">
           <Outlet />
         </div>
       </main>

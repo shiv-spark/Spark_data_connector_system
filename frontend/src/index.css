@@ -2,115 +2,119 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   ONE PALETTE.
+
+   Every colour in the product resolves from the ramp below — the public site
+   and the console both. Surfaces step 0 → 2 (page, panel, fill), lines come in
+   two weights, text in three levels, and exactly four accents, each of which
+   encodes a state rather than a mood. Neutrals sit on hue 200 at low
+   saturation: pure grey reads cheap, and the slight cool cast is what makes
+   the emerald look chosen instead of applied.
+
+   shadcn tokens (--background, --card …) and site tokens (--mk-*) are both
+   aliases onto this ramp, so the two halves of the product cannot drift.
+   ========================================================================== */
+
 @layer base {
   :root {
-    --background:           0 0% 100%;
-    --foreground:           222.2 84% 4.9%;
+    /* Ramp ------------------------------------------------------------- */
+    --surface-0:   200 14% 97%;
+    --surface-1:   0 0% 100%;
+    --surface-2:   200 16% 94%;
+    --line:        200 14% 89%;
+    --line-strong: 200 12% 80%;
+    --text-1:      205 30% 12%;
+    --text-2:      205 12% 38%;
+    --text-3:      205 10% 52%;
 
-    --card:                 0 0% 100%;
-    --card-foreground:      222.2 84% 4.9%;
+    /* Accents — each one means something. */
+    --accent-signal:  160 84% 30%;   /* running, healthy, active   */
+    --accent-conduit: 192 82% 31%;   /* source, queued, scheduled  */
+    --accent-amber:    30 90% 37%;   /* paused, stale, degraded    */
+    --accent-rose:    347 77% 50%;   /* failed                     */
 
-    --popover:              0 0% 100%;
-    --popover-foreground:   222.2 84% 4.9%;
+    /* The conduit canvas is dark in both themes — a fixed value, not a step
+       on the ramp. */
+    --canvas: 207 40% 6%;
 
-    --primary:              160 84% 32%;
+    /* shadcn aliases ---------------------------------------------------- */
+    --background:           var(--surface-0);
+    --foreground:           var(--text-1);
+    --card:                 var(--surface-1);
+    --card-foreground:      var(--text-1);
+    --popover:              var(--surface-1);
+    --popover-foreground:   var(--text-1);
+    --primary:              var(--accent-signal);
     --primary-foreground:   0 0% 100%;
-
-    --secondary:            210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted:                210 40% 96.1%;
-    --muted-foreground:     215.4 16.3% 46.9%;
-
-    --accent:               210 40% 96.1%;
-    --accent-foreground:    222.2 47.4% 11.2%;
-
-    --destructive:          0 84% 60%;
+    --secondary:            var(--surface-2);
+    --secondary-foreground: var(--text-1);
+    --muted:                var(--surface-2);
+    --muted-foreground:     var(--text-2);
+    --accent:               var(--surface-2);
+    --accent-foreground:    var(--text-1);
+    --destructive:          var(--accent-rose);
     --destructive-foreground: 0 0% 100%;
-
-    --success:              160 84% 39%;
+    --success:              var(--accent-signal);
     --success-foreground:   0 0% 100%;
-
-    --warning:              38 92% 50%;
+    --warning:              var(--accent-amber);
     --warning-foreground:   0 0% 100%;
-
-    --border:               214.3 31.8% 91.4%;
-    --input:                214.3 31.8% 91.4%;
-    --ring:                 160 84% 32%;
+    --border:               var(--line);
+    --input:                var(--line);
+    --ring:                 var(--accent-signal);
 
     --radius: 0.5rem;
 
-    --brand-50:  152 81% 96%;
-    --brand-100: 149 80% 90%;
-    --brand-500: 160 84% 39%;
-    --brand-600: 161 94% 30%;
-    --brand-700: 163 94% 24%;
+    --brand-50:  152 60% 96%;
+    --brand-100: 152 55% 90%;
+    --brand-500: var(--accent-signal);
+    --brand-600: 161 90% 26%;
+    --brand-700: 163 90% 21%;
 
-    --sidebar-bg:           0 0% 100%;
-    --sidebar-border:       214.3 31.8% 91.4%;
+    --sidebar-bg:     var(--surface-1);
+    --sidebar-border: var(--line);
 
-    --surface:              0 0% 100%;
-    --surface-elevated:     0 0% 100%;
-    --surface-tinted:       210 40% 99%;
+    --surface:          var(--surface-1);
+    --surface-elevated: var(--surface-1);
+    --surface-tinted:   var(--surface-2);
 
-    --shadow-xs: 0 1px 0 rgba(15, 23, 42, 0.04);
-    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 0 rgba(15, 23, 42, 0.04);
-    --shadow-md: 0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 12px -4px rgba(15, 23, 42, 0.08);
-    --shadow-lg: 0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 32px -8px rgba(15, 23, 42, 0.14);
+    --shadow-xs: 0 1px 0 hsl(205 30% 12% / 0.04);
+    --shadow-sm: 0 1px 2px hsl(205 30% 12% / 0.06), 0 1px 0 hsl(205 30% 12% / 0.03);
+    --shadow-md: 0 1px 2px hsl(205 30% 12% / 0.05), 0 4px 12px -4px hsl(205 30% 12% / 0.08);
+    --shadow-lg: 0 1px 2px hsl(205 30% 12% / 0.06), 0 12px 32px -8px hsl(205 30% 12% / 0.14);
   }
 
   .dark {
-    --background:           222.2 47% 11%;
-    --foreground:           210 40% 98%;
+    --surface-0:   207 40% 6%;
+    --surface-1:   207 32% 9%;
+    --surface-2:   207 28% 13%;
+    --line:        207 22% 18%;
+    --line-strong: 207 18% 26%;
+    --text-1:      160 12% 93%;
+    --text-2:      205 14% 68%;
+    --text-3:      205 12% 52%;
 
-    --card:                 222.2 47% 11%;
-    --card-foreground:      210 40% 98%;
+    --accent-signal:  158 64% 52%;
+    --accent-conduit: 187 85% 53%;
+    --accent-amber:    38 92% 50%;
+    --accent-rose:    351 95% 71%;
 
-    --popover:              222.2 47% 11%;
-    --popover-foreground:   210 40% 98%;
+    --primary-foreground:     207 40% 6%;
+    --destructive-foreground: 207 40% 6%;
+    --success-foreground:     207 40% 6%;
+    --warning-foreground:     207 40% 6%;
 
-    --primary:              160 84% 39%;
-    --primary-foreground:   0 0% 100%;
+    --brand-50:  160 40% 12%;
+    --brand-100: 160 40% 18%;
+    --brand-600: 158 60% 58%;
+    --brand-700: 158 58% 66%;
 
-    --secondary:            217.2 32.6% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --sidebar-bg: var(--surface-0);
 
-    --muted:                217.2 32.6% 17%;
-    --muted-foreground:     215 20.2% 65.1%;
-
-    --accent:               217.2 32.6% 17%;
-    --accent-foreground:    210 40% 98%;
-
-    --destructive:          0 62.8% 50%;
-    --destructive-foreground: 210 40% 98%;
-
-    --success:              160 84% 39%;
-    --success-foreground:   0 0% 100%;
-
-    --warning:              38 92% 50%;
-    --warning-foreground:   0 0% 100%;
-
-    --border:               217.2 32.6% 25%;
-    --input:                217.2 32.6% 25%;
-    --ring:                 160 84% 39%;
-
-    --brand-50:  160 84% 12%;
-    --brand-100: 160 84% 18%;
-    --brand-500: 160 84% 39%;
-    --brand-600: 160 84% 45%;
-    --brand-700: 160 84% 52%;
-
-    --sidebar-bg:           222.2 47% 9%;
-    --sidebar-border:       217.2 32.6% 20%;
-
-    --surface:              222.2 47% 11%;
-    --surface-elevated:     222.2 47% 14%;
-    --surface-tinted:       222.2 47% 13%;
-
-    --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.3);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px -4px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+    --shadow-xs: 0 1px 0 hsl(0 0% 0% / 0.3);
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.4), 0 1px 0 hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 1px 2px hsl(0 0% 0% / 0.4), 0 4px 12px -4px hsl(0 0% 0% / 0.5);
+    --shadow-lg: 0 1px 2px hsl(0 0% 0% / 0.4), 0 12px 32px -8px hsl(0 0% 0% / 0.6);
   }
 }
 
@@ -122,47 +126,322 @@
     height: 100%;
   }
   body {
-    @apply text-foreground antialiased;
+    @apply bg-background text-foreground antialiased;
     font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "cv11" 1;
   }
 }
 
-.light body {
-  background-color: #fafbfc;
-  background-image: radial-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-position: -1px -1px;
-}
-
-.dark body {
-  background-color: hsl(222.2 47% 8%);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-position: -1px -1px;
-}
-
 @layer base {
   :root {
     --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    /* Display face shared by the console and the public site, so headings read
+       as one product across both. */
+    --font-display: "Archivo", "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  /* Console headings and numerals ---------------------------------------- */
+  .page-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    color: hsl(var(--foreground));
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .page-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    color: hsl(var(--accent-signal));
+    background: hsl(var(--accent-signal) / 0.1);
+    box-shadow: inset 0 0 0 1px hsl(var(--accent-signal) / 0.22);
+  }
+
+  .stat-tile {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: hsl(var(--card));
+    box-shadow: inset 0 0 0 1px hsl(var(--line)), var(--shadow-xs);
+    transition: box-shadow 180ms ease;
+  }
+
+  /* A hairline of the wire along the top edge, tinted by the tile's tone. */
+  .stat-tile::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, currentColor, transparent 70%);
+    opacity: 0.6;
+  }
+
+  /* ======================================================================
+     Console surfaces.
+
+     One panel holds many hairline-separated rows, rather than a stack of
+     cards. Saturated colour only ever encodes state — never decoration.
+     ====================================================================== */
+
+  .panel {
+    border-radius: 12px;
+    background: hsl(var(--card));
+    box-shadow: inset 0 0 0 1px hsl(var(--line)), var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .panel-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    padding: 9px 14px;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--surface-2) / 0.5);
+  }
+
+  .panel-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13.5px;
+    letter-spacing: -0.015em;
+    color: hsl(var(--foreground));
+  }
+
+  /* Rows ----------------------------------------------------------------- */
+  .row {
+    position: relative;
+    padding: 13px 16px 13px 19px;
+    border-bottom: 1px solid hsl(var(--border));
+    transition: background 140ms ease;
+  }
+
+  .row:last-child {
+    border-bottom: 0;
+  }
+
+  .row:hover {
+    background: hsl(var(--surface-2) / 0.55);
+  }
+
+  /* The signature: state you can read straight down the leading edge. */
+  .row::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: hsl(var(--line-strong));
+    transition: background 160ms ease;
+  }
+
+  .row[data-state="running"]::before { background: linear-gradient(180deg, hsl(var(--accent-conduit)), hsl(var(--accent-signal))); }
+  .row[data-state="active"]::before,
+  .row[data-state="success"]::before,
+  .row[data-state="healthy"]::before { background: hsl(var(--accent-signal)); }
+  .row[data-state="queued"]::before,
+  .row[data-state="created"]::before { background: hsl(var(--accent-conduit)); }
+  .row[data-state="paused"]::before,
+  .row[data-state="skipped"]::before,
+  .row[data-state="warning"]::before { background: hsl(var(--accent-amber)); }
+  .row[data-state="failed"]::before,
+  .row[data-state="degraded"]::before { background: hsl(var(--accent-rose)); }
+
+  .row[data-state="running"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 3px;
+    height: 34%;
+    background: linear-gradient(180deg, transparent, #a5f3fc, transparent);
+    animation: rail-run 2.6s ease-in-out infinite;
+  }
+
+  /* Machine values — ids, paths, cron, durations, timestamps. */
+  .mono-meta {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .meta-key {
+    font-size: 10.5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: hsl(var(--muted-foreground));
+    opacity: 0.75;
+  }
+
+  /* Toolbar controls ------------------------------------------------------ */
+  .toolbar-search {
+    position: relative;
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .toolbar-search input {
+    width: 100%;
+    height: 34px;
+    padding: 0 12px 0 32px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+    box-shadow: inset 0 0 0 1px hsl(var(--border));
+    transition: box-shadow 150ms ease;
+  }
+
+  .toolbar-search input:focus {
+    outline: none;
+    box-shadow: inset 0 0 0 1px #10b981, 0 0 0 3px rgba(16, 185, 129, 0.15);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--muted));
+  }
+
+  /* Empty and loading ----------------------------------------------------- */
+  .empty {
+    display: grid;
+    place-items: center;
+    gap: 4px;
+    padding: 56px 24px;
+    text-align: center;
+  }
+
+  .empty-mark {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    color: hsl(var(--text-3));
+    background: hsl(var(--muted));
+  }
+
+  .skel {
+    border-radius: 6px;
+    background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--accent)) 37%, hsl(var(--muted)) 63%);
+    background-size: 400% 100%;
+    animation: skel-sweep 1.4s ease-in-out infinite;
+  }
+
+  /* Form fields ----------------------------------------------------------- */
+  .field-label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    color: hsl(var(--foreground));
+  }
+
+  .field-hint {
+    margin-top: 5px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .fieldset-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .fieldset-legend::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: hsl(var(--border));
+  }
+
+  .select-control {
+    width: 100%;
+    height: 36px;
+    padding: 0 32px 0 11px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 15px;
+    box-shadow: inset 0 0 0 1px hsl(var(--input));
+    appearance: none;
+    transition: box-shadow 150ms ease;
+  }
+
+  .select-control:focus {
+    outline: none;
+    box-shadow: inset 0 0 0 1px #10b981, 0 0 0 3px rgba(16, 185, 129, 0.15);
+  }
+}
+
+@keyframes rail-run {
+  0%   { top: -34%; opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@keyframes skel-sweep {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row[data-state="running"]::after,
+  .skel {
+    animation: none;
   }
 }
 
 @layer components {
   .app-header {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.8),
-      0 1px 0 rgba(15, 23, 42, 0.06),
-      0 8px 24px -16px rgba(15, 23, 42, 0.12);
-  }
-
-  .dark .app-header {
-    background: linear-gradient(180deg, rgba(30, 41, 59, 0.98) 0%, rgba(30, 41, 59, 0.94) 100%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 1px 0 rgba(0, 0, 0, 0.3),
-      0 8px 24px -16px rgba(0, 0, 0, 0.4);
+    background: hsl(var(--surface-0) / 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid hsl(var(--line));
   }
 
   .cmdk-trigger {
@@ -180,13 +459,13 @@
   }
 
   .dark .cmdk-trigger {
-    background: linear-gradient(180deg, hsl(222.2 47% 14%) 0%, hsl(222.2 47% 12%) 100%);
+    background: hsl(var(--surface-2));
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.08),
       0 1px 0 rgba(0, 0, 0, 0.2);
   }
   .dark .cmdk-trigger:hover {
-    background: linear-gradient(180deg, hsl(222.2 47% 16%) 0%, hsl(222.2 47% 14%) 100%);
+    background: hsl(var(--line));
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.12),
       0 1px 2px rgba(0, 0, 0, 0.3);
@@ -207,7 +486,7 @@
 
   .dark .kbd {
     color: rgb(148 163 184);
-    background: hsl(222.2 47% 14%);
+    background: hsl(var(--surface-2));
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.1),
       0 1px 0 rgba(0, 0, 0, 0.3);
@@ -259,20 +538,12 @@
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    color: rgb(71 85 105);
+    color: hsl(var(--text-2));
     transition: background 140ms ease, color 140ms ease;
   }
   .icon-btn:hover {
-    background: rgb(241 245 249);
-    color: rgb(15 23 42);
-  }
-
-  .dark .icon-btn {
-    color: rgb(148 163 184);
-  }
-  .dark .icon-btn:hover {
-    background: hsl(222.2 47% 16%);
-    color: rgb(226 232 240);
+    background: hsl(var(--surface-2));
+    color: hsl(var(--text-1));
   }
 
   .env-pill {
@@ -290,39 +561,24 @@
   }
 
   .surface {
-    background: #ffffff;
-    border: 1px solid rgb(226 232 240);
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--line));
     border-radius: 10px;
     box-shadow: var(--shadow-sm);
   }
 
-  .dark .surface {
-    background: hsl(222.2 47% 12%);
-    border: 1px solid hsl(217.2 32.6% 20%);
-  }
-
   .surface-elevated {
-    background: #ffffff;
-    border: 1px solid rgb(226 232 240);
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--line));
     border-radius: 12px;
     box-shadow: var(--shadow-md);
   }
 
-  .dark .surface-elevated {
-    background: hsl(222.2 47% 14%);
-    border: 1px solid hsl(217.2 32.6% 22%);
-  }
-
   .surface-tinted {
-    background: linear-gradient(180deg, #ffffff 0%, #fafbfd 100%);
-    border: 1px solid rgb(226 232 240);
+    background: hsl(var(--surface-2) / 0.5);
+    border: 1px solid hsl(var(--line));
     border-radius: 10px;
     box-shadow: var(--shadow-xs);
-  }
-
-  .dark .surface-tinted {
-    background: linear-gradient(180deg, hsl(222.2 47% 13%) 0%, hsl(222.2 47% 11%) 100%);
-    border: 1px solid hsl(217.2 32.6% 18%);
   }
 
   .nav-item {
@@ -330,56 +586,45 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 32px;
+    height: 34px;
     padding: 0 10px;
-    border-radius: 6px;
+    border-radius: 7px;
     font-size: 13px;
     font-weight: 500;
-    color: rgb(71 85 105);
+    color: hsl(var(--text-2));
     transition: background 140ms ease, color 140ms ease;
   }
   .nav-item:hover {
-    background: rgb(241 245 249);
-    color: rgb(15 23 42);
+    background: hsl(var(--surface-2));
+    color: hsl(var(--text-1));
   }
   .nav-item.active {
-    color: rgb(15 23 42);
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-    box-shadow:
-      inset 0 0 0 1px rgba(15, 23, 42, 0.08),
-      0 1px 0 rgba(15, 23, 42, 0.02);
+    color: hsl(var(--text-1));
+    font-weight: 600;
+    background: hsl(var(--surface-2));
   }
   .nav-item.active::before {
     content: "";
     position: absolute;
-    left: -3px;
-    top: 6px;
-    bottom: 6px;
+    left: -7px;
+    top: 7px;
+    bottom: 7px;
     width: 3px;
     border-radius: 2px;
-    background: linear-gradient(180deg, #34d399, #059669);
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.55);
+    background: linear-gradient(180deg, hsl(var(--accent-conduit)), hsl(var(--accent-signal)));
   }
   .nav-item.active .nav-icon {
-    color: rgb(5 150 105);
+    color: hsl(var(--accent-signal));
   }
 
-  .dark .nav-item {
-    color: rgb(148 163 184);
+  /* Icon-rail mode ------------------------------------------------------- */
+  .nav-collapsed .nav-item {
+    justify-content: center;
+    padding: 0;
+    width: 38px;
   }
-  .dark .nav-item:hover {
-    background: hsl(222.2 47% 16%);
-    color: rgb(226 232 240);
-  }
-  .dark .nav-item.active {
-    color: rgb(226 232 240);
-    background: linear-gradient(180deg, hsl(222.2 47% 14%) 0%, hsl(222.2 47% 12%) 100%);
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-      0 1px 0 rgba(0, 0, 0, 0.2);
-  }
-  .dark .nav-item.active .nav-icon {
-    color: rgb(52 211 153);
+  .nav-collapsed .nav-item.active::before {
+    left: -8px;
   }
 
   .section-eyebrow {
@@ -388,11 +633,7 @@
     font-weight: 500;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: rgb(100 116 139);
-  }
-
-  .dark .section-eyebrow {
-    color: rgb(148 163 184);
+    color: hsl(var(--text-3));
   }
 
   .react-grid-item.react-grid-placeholder {
@@ -414,16 +655,9 @@
 
   .h-section {
     @apply text-xl font-bold leading-tight;
-    background: linear-gradient(180deg, rgb(15 23 42) 0%, rgb(30 41 59) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .dark .h-section {
-    background: linear-gradient(180deg, rgb(226 232 240) 0%, rgb(203 213 225) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
+    color: hsl(var(--foreground));
   }
 
   .figma-surface {
@@ -437,7 +671,7 @@
     background:
       radial-gradient(circle at 12% 20%, rgba(8, 145, 178, 0.12), transparent 26%),
       radial-gradient(circle at 78% 18%, rgba(5, 150, 105, 0.12), transparent 24%),
-      hsl(222.2 47% 12%);
+      hsl(var(--surface-1));
   }
 
   .motion-card {
@@ -478,6 +712,609 @@
     border-radius: inherit;
     border: 1px solid rgba(52, 211, 153, .55);
     animation: live-pulse 1.8s ease-out infinite;
+  }
+}
+
+/* ==========================================================================
+   Marketing site — public pages (landing, pricing, about, auth).
+   Scoped behind `mk-` so nothing here can leak into the console UI.
+   Palette is directional: conduit cyan at the source end of a flow,
+   signal emerald at the output end. Raw on the left, resolved on the right.
+   ========================================================================== */
+
+:root {
+  --mk-paper:    hsl(var(--surface-0));
+  --mk-paper-2:  hsl(var(--surface-2));
+  --mk-ink:      hsl(var(--canvas));
+  --mk-ink-2:    hsl(207 32% 9%);
+  --mk-graphite: hsl(var(--text-1));
+  --mk-muted:    hsl(var(--text-2));
+  --mk-line:     hsl(var(--line));
+  --mk-conduit:  hsl(var(--accent-conduit));
+  --mk-signal:   hsl(var(--accent-signal));
+  --mk-amber:    hsl(var(--accent-amber));
+
+  --mk-display: var(--font-display);
+}
+
+/* No dark overrides needed: every site token above already resolves through
+   the ramp, which .dark redefines. Only the conduit canvas is pinned, since it
+   stays dark in both themes. */
+
+@layer components {
+  .mk-shell {
+    min-height: 100%;
+    background: var(--mk-paper);
+    color: var(--mk-graphite);
+  }
+
+  /* Type roles ------------------------------------------------------------ */
+  .mk-display {
+    font-family: var(--mk-display);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 0.98;
+    text-wrap: balance;
+  }
+
+  .mk-mono {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  .mk-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--mk-muted);
+  }
+
+  .mk-lede {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--mk-muted);
+    max-width: 34rem;
+    text-wrap: pretty;
+  }
+
+  /* Stage rail — the labels name real pipeline stages, in real order ------- */
+  .mk-stage {
+    border-top: 1px solid var(--mk-line);
+    padding-top: 22px;
+  }
+
+  .mk-stage-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--mk-muted);
+  }
+
+  .mk-stage-tag::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  /* Signature: the conduit ------------------------------------------------ */
+  .mk-conduit {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    background:
+      radial-gradient(120% 100% at 8% 0%, rgba(14, 116, 144, 0.22), transparent 55%),
+      radial-gradient(110% 100% at 96% 100%, rgba(5, 150, 105, 0.2), transparent 55%),
+      var(--mk-ink);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+      0 30px 60px -30px rgba(10, 16, 23, 0.6);
+  }
+
+  .mk-conduit::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
+    mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
+    pointer-events: none;
+  }
+
+  .mk-wire {
+    position: relative;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(
+      90deg,
+      rgba(34, 211, 238, 0.15),
+      rgba(34, 211, 238, 0.5) 12%,
+      rgba(52, 211, 153, 0.5) 88%,
+      rgba(52, 211, 153, 0.15)
+    );
+  }
+
+  .mk-wire::after {
+    content: "";
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    width: 18%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, #67e8f9, #6ee7b7, transparent);
+    filter: blur(0.3px);
+    animation: mk-packet 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
+  /* Vertical run of the conduit, used down the side of the auth pages. */
+  .mk-wire-v {
+    position: relative;
+    width: 2px;
+    border-radius: 2px;
+    background: linear-gradient(
+      180deg,
+      rgba(34, 211, 238, 0.15),
+      rgba(34, 211, 238, 0.45) 14%,
+      rgba(52, 211, 153, 0.45) 86%,
+      rgba(52, 211, 153, 0.15)
+    );
+  }
+
+  .mk-wire-v::after {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    height: 22%;
+    border-radius: 2px;
+    background: linear-gradient(180deg, transparent, #67e8f9, #6ee7b7, transparent);
+    animation: mk-packet-v 5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
+  .mk-node {
+    position: relative;
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    background: var(--mk-ink);
+    box-shadow: inset 0 0 0 2px currentColor;
+  }
+
+  .mk-node[data-live="true"]::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+    border: 1px solid currentColor;
+    opacity: 0.45;
+    animation: live-pulse 2.4s ease-out infinite;
+  }
+
+  .mk-station {
+    border-radius: 12px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.035);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.075);
+    backdrop-filter: blur(2px);
+  }
+
+  .mk-station-title {
+    font-family: var(--mk-display);
+    font-weight: 600;
+    font-size: 14.5px;
+    letter-spacing: -0.01em;
+    color: #f1f5f4;
+  }
+
+  /* Surfaces -------------------------------------------------------------- */
+  .mk-card {
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: inset 0 0 0 1px var(--mk-line);
+    transition: box-shadow 200ms ease, transform 200ms ease;
+  }
+
+  .dark .mk-card {
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .mk-card-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--mk-signal) 40%, var(--mk-line)),
+      0 18px 32px -22px rgba(10, 16, 23, 0.4);
+  }
+
+  .mk-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 22px;
+    border-radius: 10px;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: #ffffff;
+    background: linear-gradient(100deg, var(--mk-conduit), var(--mk-signal));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      0 12px 26px -14px rgba(5, 150, 105, 0.85);
+    transition: filter 160ms ease, transform 120ms ease;
+  }
+
+  .dark .mk-cta {
+    color: var(--mk-ink);
+  }
+
+  .mk-cta:hover {
+    filter: brightness(1.07);
+  }
+
+  .mk-cta:active {
+    transform: translateY(1px);
+  }
+
+  .mk-cta-quiet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 20px;
+    border-radius: 10px;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--mk-graphite);
+    box-shadow: inset 0 0 0 1px var(--mk-line);
+    transition: box-shadow 160ms ease, background 160ms ease;
+  }
+
+  .mk-cta-quiet:hover {
+    background: rgba(255, 255, 255, 0.6);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mk-graphite) 28%, var(--mk-line));
+  }
+
+  .dark .mk-cta-quiet:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  /* Header tabs. The active underline is a short run of the wire, so the nav
+     belongs to the same system as the hero. */
+  .mk-navlink {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 11px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--mk-muted);
+    transition: color 140ms ease, background 140ms ease;
+  }
+
+  .mk-navlink:hover {
+    color: var(--mk-graphite);
+    background: color-mix(in srgb, var(--mk-graphite) 6%, transparent);
+  }
+
+  .mk-navlink.active {
+    color: var(--mk-graphite);
+    font-weight: 600;
+  }
+
+  .mk-navlink.active::after {
+    content: "";
+    position: absolute;
+    left: 11px;
+    right: 11px;
+    bottom: 1px;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--mk-conduit), var(--mk-signal));
+  }
+
+  /* Range control used by the pricing estimator ---------------------------- */
+  .mk-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 22px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .mk-range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--mk-line);
+  }
+
+  .mk-range::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--mk-line);
+  }
+
+  .mk-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: -7px;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: linear-gradient(140deg, var(--mk-conduit), var(--mk-signal));
+    box-shadow: 0 1px 3px rgba(10, 16, 23, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  .mk-range::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(140deg, var(--mk-conduit), var(--mk-signal));
+    box-shadow: 0 1px 3px rgba(10, 16, 23, 0.35);
+  }
+
+  .mk-range:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--mk-signal);
+    outline-offset: 2px;
+  }
+
+  /* FAQ disclosure --------------------------------------------------------- */
+  .mk-faq {
+    border-top: 1px solid var(--mk-line);
+  }
+
+  .mk-faq summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 0;
+    cursor: pointer;
+    list-style: none;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--mk-graphite);
+  }
+
+  .mk-faq summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mk-faq summary::after {
+    content: "";
+    flex-shrink: 0;
+    width: 11px;
+    height: 11px;
+    border-right: 1.8px solid var(--mk-muted);
+    border-bottom: 1.8px solid var(--mk-muted);
+    transform: rotate(45deg) translate(-2px, -2px);
+    transition: transform 200ms ease;
+  }
+
+  .mk-faq[open] summary::after {
+    transform: rotate(225deg) translate(-2px, -2px);
+  }
+
+  .mk-faq[open] summary {
+    padding-bottom: 8px;
+  }
+
+  .mk-faq-body {
+    padding-bottom: 18px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--mk-muted);
+    max-width: 48rem;
+  }
+
+  /* CTAs sitting on a conduit panel, where the surface is dark in both themes:
+     brighten the fill so it separates from the panel instead of sinking into it. */
+  .mk-cta.mk-on-dark,
+  .dark .mk-cta.mk-on-dark {
+    color: #0a1017;
+    background: linear-gradient(100deg, #22d3ee, #34d399);
+  }
+
+  .mk-cta-quiet.mk-on-dark {
+    color: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  }
+
+  .mk-cta-quiet.mk-on-dark:hover,
+  .dark .mk-cta-quiet.mk-on-dark:hover {
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+  }
+
+  /* Auth ------------------------------------------------------------------ */
+  .mk-auth-paper {
+    background:
+      radial-gradient(90% 60% at 12% 0%, color-mix(in srgb, var(--mk-conduit) 9%, transparent), transparent 62%),
+      radial-gradient(70% 50% at 96% 100%, color-mix(in srgb, var(--mk-signal) 8%, transparent), transparent 60%),
+      var(--mk-paper);
+  }
+
+  .mk-authcard {
+    border-radius: 18px;
+    padding: 30px;
+    background: color-mix(in srgb, var(--mk-paper) 60%, #ffffff);
+    box-shadow:
+      inset 0 0 0 1px var(--mk-line),
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 28px 60px -34px rgba(10, 16, 23, 0.32);
+  }
+
+  .dark .mk-authcard {
+    background: rgba(255, 255, 255, 0.035);
+    box-shadow:
+      inset 0 0 0 1px var(--mk-line),
+      0 28px 60px -34px rgba(0, 0, 0, 0.8);
+  }
+
+  /* Fields stagger in so the form assembles rather than appearing at once. */
+  .mk-stagger > * {
+    animation: mk-swap-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .mk-stagger > *:nth-child(1) { animation-delay: 60ms; }
+  .mk-stagger > *:nth-child(2) { animation-delay: 120ms; }
+  .mk-stagger > *:nth-child(3) { animation-delay: 180ms; }
+  .mk-stagger > *:nth-child(4) { animation-delay: 240ms; }
+  .mk-stagger > *:nth-child(5) { animation-delay: 300ms; }
+
+  .mk-field-label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--mk-graphite);
+    margin-bottom: 6px;
+  }
+
+  .mk-input {
+    width: 100%;
+    height: 44px;
+    padding: 0 13px;
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--mk-graphite);
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: inset 0 0 0 1px var(--mk-line);
+    transition: box-shadow 160ms ease;
+  }
+
+  .dark .mk-input {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .mk-input::placeholder {
+    color: color-mix(in srgb, var(--mk-muted) 70%, transparent);
+  }
+
+  .mk-input:focus {
+    outline: none;
+    box-shadow:
+      inset 0 0 0 1px var(--mk-signal),
+      0 0 0 4px color-mix(in srgb, var(--mk-signal) 18%, transparent);
+  }
+
+  .mk-shell :focus-visible {
+    outline: 2px solid var(--mk-signal);
+    outline-offset: 2px;
+  }
+
+  .mk-reveal {
+    animation: mk-rise 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  /* Content swapping inside a panel that stays put — lighter than mk-reveal. */
+  .mk-swap {
+    animation: mk-swap-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  /* Connector tiles ------------------------------------------------------- */
+  .mk-tile {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 12px;
+    border-radius: 11px;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: inset 0 0 0 1px var(--mk-line);
+    transition: box-shadow 180ms ease, background 180ms ease, transform 180ms ease;
+  }
+
+  .dark .mk-tile {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .mk-tile:hover {
+    transform: translateY(-1px);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mk-graphite) 22%, var(--mk-line));
+  }
+
+  .mk-tile[aria-selected="true"] {
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow:
+      inset 0 0 0 1.5px var(--mk-signal),
+      0 10px 24px -16px rgba(5, 150, 105, 0.7);
+  }
+
+  .dark .mk-tile[aria-selected="true"] {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .mk-tile-glyph {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+}
+
+@keyframes mk-packet {
+  0%   { left: -18%; opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+
+@keyframes mk-packet-v {
+  0%   { top: -22%; opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@keyframes mk-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mk-swap-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-wire::after,
+  .mk-wire-v::after,
+  .mk-node[data-live="true"]::after {
+    animation: none;
+  }
+  .mk-wire::after {
+    left: 41%;
+    opacity: 1;
+  }
+  .mk-wire-v::after {
+    top: 39%;
+    opacity: 1;
+  }
+  .mk-reveal,
+  .mk-swap,
+  .mk-stagger > * {
+    animation: none;
+  }
+  .mk-tile:hover {
+    transform: none;
   }
 }
 

@@ -7,6 +7,7 @@ import {
   BarChart3,
   CheckCircle2,
   Database,
+  DatabaseZap,
   ExternalLink,
   Figma,
   FileSpreadsheet,
@@ -16,12 +17,17 @@ import {
   Wand2,
   Workflow,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, fetchDataGenTables } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { fdt } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState as ConsoleEmptyState } from "@/components/console/Panel";
+import { StudioStage, SourceTile } from "@/components/console/StudioStage";
+import { DatasetPreview } from "@/components/console/DatasetPreview";
 
 // API, Google Sheets, and S3 sources are intentionally NOT offered here —
 // only Pipeline, CSV, Excel, Postgres, and Snowflake.
@@ -93,6 +99,47 @@ export const DashboardStudio = () => {
   const selectedPipelineObj = (pipelines.data ?? []).find(
     (p: any) => p.dag_id === selectedPipeline
   );
+
+  const selectedConnectionObj = (connections.data ?? []).find(
+    (c: any) => String(c.id) === connectionId,
+  );
+
+  // Only warehouse-style connections can enumerate tables; folders cannot.
+  const canListTables =
+    selectedConnectionObj?.source_type === "postgres" ||
+    selectedConnectionObj?.source_type === "snowflake";
+  const isSnowflakeSource = selectedConnectionObj?.source_type === "snowflake";
+  const isPipelineSource = !connectionId && !!selectedPipeline;
+
+  const tables = useQuery({
+    queryKey: ["studio-tables", connectionId],
+    queryFn: () => fetchDataGenTables(connectionId),
+    enabled: !!connectionId && canListTables,
+    retry: false,
+  });
+
+  const hasSource = !!connectionId || !!selectedPipeline;
+  const hasDataset = isPipelineSource ? hasSource : !!datasetRef.trim();
+  const pickedLabel = connectionId
+    ? selectedConnectionObj?.name
+    : selectedPipeline
+      ? selectedPipeline.replace(/^pipeline_/, "")
+      : "";
+
+  /* Picking a source clears the other kind, so the two can never both be set. */
+  const pickConnection = (connection: any) => {
+    setConnectionId(String(connection.id));
+    setSelectedPipeline("");
+    setDatasetRef("");
+    setSourceType(connection.source_type === "snowflake" ? "snowflake" : "postgres");
+  };
+
+  const pickPipeline = (pipeline: any) => {
+    setSelectedPipeline(pipeline.dag_id);
+    setConnectionId("");
+    setDatasetRef("");
+    setSourceType("pipeline");
+  };
 
   const dashboards = useQuery({
     queryKey: ["agent-dashboards"],
@@ -166,7 +213,7 @@ export const DashboardStudio = () => {
       setResult(data);
       dashboards.refetch();
       if (data?.dashboard_id) {
-        navigate(`/studio/${data.dashboard_id}`);
+        navigate(`/app/studio/${data.dashboard_id}`);
       }
     },
     onError: (err: any) => {
@@ -202,284 +249,246 @@ export const DashboardStudio = () => {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[14px] border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_-12px_rgba(15,23,42,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_32px_-12px_rgba(0,0,0,0.5)]">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.55] dark:opacity-30"
-          style={{
-            background:
-              "radial-gradient(60% 60% at 100% 0%, rgba(16,185,129,0.10) 0%, rgba(16,185,129,0) 60%), radial-gradient(40% 50% at 0% 0%, rgba(20,184,166,0.08) 0%, rgba(20,184,166,0) 65%)",
-          }}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-px"
-          style={{
-            background:
-              "linear-gradient(90deg, transparent 0%, rgba(16,185,129,0.4) 50%, transparent 100%)",
-          }}
-        />
-
-        <div className="relative p-6 lg:p-7">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-800">
-                <Sparkles className="h-3 w-3" /> Agentic Studio
-              </span>
-              <span className="section-eyebrow">Generate · Profile · Visualize</span>
-            </div>
-            <div className="hidden items-center gap-3 text-[11px] text-muted-foreground md:flex">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="relative inline-flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                </span>
-                Agent ready
-              </span>
-              <span className="text-border dark:text-muted-foreground/30">·</span>
-              <span className="font-mono text-[11px]">{effectiveModel || "auto"}</span>
-            </div>
-          </div>
-
-          <h1 className="mt-4 max-w-3xl text-[28px] font-semibold leading-[1.15] tracking-tight text-foreground">
-            From any dataset to a{" "}
-            <span className="bg-gradient-to-br from-emerald-500 to-teal-700 bg-clip-text text-transparent dark:from-emerald-400 dark:to-teal-500">
-              prompt-shaped dashboard
+      <PageHeader
+        icon={Sparkles}
+        eyebrow="Overview"
+        title="Dashboard Studio"
+        description="Pick a dataset, look at what's actually in it, then say what you want — or leave it blank and the agent designs the whole board."
+        actions={
+          <span className="inline-flex items-center gap-2 text-[11.5px] text-muted-foreground">
+            <span className="relative inline-flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[hsl(var(--accent-signal))] opacity-60" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[hsl(var(--accent-signal))]" />
             </span>
-            .
-          </h1>
-          <p className="mt-2 max-w-2xl text-[13.5px] leading-6 text-muted-foreground">
-            Agents profile the data, infer KPIs, and ship charts. Refine in plain English — no SQL,
-            no drag-and-drop fatigue.
-          </p>
+            Agent ready
+            <span className="mono-meta">{effectiveModel || "auto"}</span>
+          </span>
+        }
+      />
 
-          <form
-            onSubmit={submit}
-            className="mt-6 rounded-[12px] border border-border bg-background shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_1px_2px_rgba(0,0,0,0.2)]"
+      <form onSubmit={submit} className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
+          {/* Stage 1 — where the data lives ------------------------------- */}
+          <StudioStage
+            tag="source"
+            title="Choose your data"
+            hint={pickedLabel || undefined}
+            done={hasSource}
           >
-            <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:gap-4">
-              <span className="section-eyebrow shrink-0">Source</span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {sourceOptions.map(({ value, label, icon: Icon }) => {
-                  const active = !connectionId && sourceType === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      disabled={!!connectionId}
-                      onClick={() => setSourceType(value)}
-                      className={cn(
-                        "inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition",
-                        active
-                          ? "bg-foreground text-background shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_1px_2px_rgba(15,23,42,0.25)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1px_2px_rgba(0,0,0,0.4)]"
-                          : "bg-muted text-muted-foreground ring-1 ring-inset ring-border hover:bg-background hover:text-foreground",
-                        connectionId && "opacity-40",
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex-1" />
-
-              <div className="flex items-center gap-2">
-                <span className="section-eyebrow">Connection</span>
-                <select
-                  className="h-8 rounded-md border border-input bg-background px-2 pr-7 text-[12.5px] text-foreground shadow-[0_1px_0_rgba(15,23,42,0.02)] outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:shadow-[0_1px_0_rgba(0,0,0,0.1)]"
-                  value={connectionId}
-                  onChange={(event) => setConnectionId(event.target.value)}
-                >
-                  <option value="">— None —</option>
-                  {dataConnections.map((connection: any) => (
-                    <option key={connection.id} value={connection.id}>
-                      {connection.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="section-eyebrow inline-flex items-center gap-1">
-                  <Figma className="h-3.5 w-3.5 text-pink-600 dark:text-pink-500" />
-                  Design
-                </span>
-                <select
-                  className="h-8 rounded-md border border-input bg-background px-2 pr-7 text-[12.5px] text-foreground shadow-[0_1px_0_rgba(15,23,42,0.02)] outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:shadow-[0_1px_0_rgba(0,0,0,0.1)]"
-                  value={designConnectionId}
-                  onChange={(event) => setDesignConnectionId(event.target.value)}
-                >
-                  <option value="">No Figma reference</option>
-                  {figmaConnections.map((connection: any) => (
-                    <option key={connection.id} value={connection.id}>
-                      {connection.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="border-b border-border px-4 py-3">
-              {connectionId ? (
-                <Input
-                  className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                  placeholder={
-                    connections.data?.find((c: any) => String(c.id) === connectionId)
-                      ?.source_type === "snowflake"
-                      ? "Table name, or a full SELECT query…"
-                      : "File name or table name…"
-                  }
-                  value={datasetRef}
-                  onChange={(event) => setDatasetRef(event.target.value)}
-                />
-              ) : sourceType === "pipeline" ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Workflow className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-500" />
-                  {pipelines.isLoading ? (
-                    <span className="text-[12.5px] text-muted-foreground">Loading pipelines…</span>
-                  ) : (pipelines.data ?? []).length === 0 ? (
-                    <span className="text-[12.5px] text-muted-foreground">
-                      No pipelines yet — create one in <a className="font-medium text-emerald-700 hover:underline dark:text-emerald-500" href="/create">Create Pipeline</a>.
-                    </span>
-                  ) : (
-                    <>
-                      <select
-                        className="h-9 min-w-[260px] rounded-md border border-input bg-background px-2 text-[13px] text-foreground shadow-[0_1px_0_rgba(15,23,42,0.02)] outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15 dark:shadow-[0_1px_0_rgba(0,0,0,0.1)]"
-                        value={selectedPipeline}
-                        onChange={(event) => setSelectedPipeline(event.target.value)}
-                      >
-                        <option value="">— Select a pipeline —</option>
-                        {(pipelines.data ?? [])
-                          .slice()
-                          .sort((a: any, b: any) => a.dag_id.localeCompare(b.dag_id, undefined, { numeric: true }))
-                          .map((p: any) => {
-                            const rawName = p.dag_id.replace(/^pipeline_/, "");
-                            return (
-                              <option key={p.dag_id} value={p.dag_id}>
-                                {rawName}
-                              </option>
-                            );
-                          })}
-                      </select>
-
-                      {selectedPipeline ? (
-                        <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold text-muted-foreground font-mono">
-                          table: {selectedPipeline.replace(/^pipeline_/, "")}
-                        </span>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ) : sourceType === "snowflake" ? (
-                <span className="text-[12.5px] text-muted-foreground">
-                  Pick a saved Snowflake connection above, then type a table name .
-                </span>
-              ) : (
-                <>
-                  {["csv", "excel"].includes(sourceType) && (
-                    <Input
-                      className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                      placeholder="File path (e.g. /data/orders.csv)"
-                      value={filePath}
-                      onChange={(event) => setFilePath(event.target.value)}
-                    />
-                  )}
-                  {sourceType === "postgres" && (
-                    <Input
-                      className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                      placeholder="Pipeline / table name"
-                      value={pipelineName}
-                      onChange={(event) => setPipelineName(event.target.value)}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="border-b border-border px-4 py-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="section-eyebrow">Dashboard Name</span>
-              </div>
-              <Input
-                className="h-9 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
-                placeholder="Enter a name for your dashboard..."
-                value={dashboardName}
-                onChange={(event) => setDashboardName(event.target.value)}
-              />
-            </div>
-
-            <div className="px-4 pb-3 pt-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="section-eyebrow">Direction</span>
-                {autoMode ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-800">
-                    <Sparkles className="h-3 w-3" /> Agent decides
-                  </span>
-                ) : (
-                  <span className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    Custom prompt
-                  </span>
-                )}
-              </div>
-              <div className="flex items-start gap-2">
-                <Wand2
-                  className={cn(
-                    "mt-2 h-3.5 w-3.5 transition-colors",
-                    autoMode ? "text-border dark:text-muted-foreground/40" : "text-emerald-600 dark:text-emerald-500",
-                  )}
-                />
-                <textarea
-                  className="min-h-[72px] w-full resize-none border-0 bg-transparent px-0 text-[13.5px] leading-6 text-foreground outline-none placeholder:text-muted-foreground"
-                  value={request}
-                  onChange={(event) => setRequest(event.target.value)}
-                  placeholder="Optional — leave blank and the agent will pick the best KPIs, charts, and layout for this dataset on its own."
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 rounded-b-[12px] border-t border-border bg-muted/40 px-4 py-3 lg:flex-row lg:items-center">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                <span className="section-eyebrow">Try</span>
-                {ideas.map((idea) => (
-                  <button
-                    key={idea}
-                    type="button"
-                    onClick={() => setRequest(idea)}
-                    className="inline-flex h-6 items-center rounded-full bg-background px-2 text-[11.5px] font-medium text-muted-foreground ring-1 ring-inset ring-border transition hover:text-foreground hover:ring-muted-foreground"
-                  >
-                    {idea}
-                  </button>
+            {connections.isLoading || pipelines.isLoading ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="skel h-[52px]" />
                 ))}
               </div>
-              <div className="flex items-center gap-2">
-                <select
-                  className="h-8 rounded-md border border-input bg-background px-2 pr-7 text-[12px] text-foreground outline-none transition hover:border-muted-foreground focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/15"
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                >
-                  <option value="">Auto (recommended)</option>
-                  {modelOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-                      {opt.label}
-                    </option>
-                  ))}
-                  <option value="custom">Custom…</option>
-                </select>
-                {model === "custom" && (
-                  <Input
-                    className="h-8 w-[160px] text-[12px]"
-                    placeholder="exact model id"
-                    value={customModel}
-                    onChange={(event) => setCustomModel(event.target.value)}
-                  />
+            ) : dataConnections.length === 0 && (pipelines.data ?? []).length === 0 ? (
+              <ConsoleEmptyState
+                icon={DatabaseZap}
+                title="No data to build from"
+                body="Save a connection or run a pipeline first, then come back and the sources show up here."
+                action={
+                  <Link to="/app/connections">
+                    <Button size="sm" variant="outline">Add a connection</Button>
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="space-y-4">
+                {dataConnections.length > 0 && (
+                  <div>
+                    <p className="section-eyebrow mb-2">Connections</p>
+                    <div className="grid gap-2 sm:grid-cols-2" role="listbox" aria-label="Connections">
+                      {dataConnections.map((connection: any) => (
+                        <SourceTile
+                          key={connection.id}
+                          icon={connection.source_type === "snowflake" ? Snowflake : connection.source_type === "postgres" ? Database : FileSpreadsheet}
+                          name={connection.name}
+                          detail={connection.source_type}
+                          selected={String(connection.id) === connectionId}
+                          onClick={() => pickConnection(connection)}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 )}
 
-                <span className="hidden text-[11px] text-muted-foreground font-mono md:inline">
-                  ⌘ ↵
-                </span>
-                <Button type="submit" disabled={analyze.isPending} className="h-8 px-3.5">
+                {(pipelines.data ?? []).length > 0 && (
+                  <div>
+                    <p className="section-eyebrow mb-2">Pipelines</p>
+                    <div className="grid gap-2 sm:grid-cols-2" role="listbox" aria-label="Pipelines">
+                      {(pipelines.data ?? []).map((pipeline: any) => (
+                        <SourceTile
+                          key={pipeline.dag_id}
+                          icon={Workflow}
+                          name={pipeline.dag_id.replace(/^pipeline_/, "")}
+                          detail={pipeline.table_name || "table from pipeline"}
+                          selected={pipeline.dag_id === selectedPipeline}
+                          onClick={() => pickPipeline(pipeline)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </StudioStage>
+
+          {/* Stage 2 — which table ---------------------------------------- */}
+          <StudioStage
+            tag="dataset"
+            title={isPipelineSource ? "Confirm the table" : "Pick a table"}
+            hint={datasetRef || undefined}
+            done={hasDataset}
+            locked={!hasSource}
+            lockedReason="Choose a source above first."
+          >
+            {isPipelineSource ? (
+              <div className="flex items-center gap-2.5 rounded-lg bg-muted/50 p-3">
+                <Workflow className="h-4 w-4 shrink-0 text-[hsl(var(--accent-signal))]" />
+                <div className="min-w-0">
+                  <p className="mono-meta !text-[12.5px] !text-foreground">
+                    {selectedPipelineObj?.table_name || selectedPipeline.replace(/^pipeline_/, "")}
+                  </p>
+                  <p className="field-hint !mt-0.5">Loaded by this pipeline. Nothing to choose.</p>
+                </div>
+              </div>
+            ) : canListTables ? (
+              <div className="space-y-2.5">
+                {tables.isLoading ? (
+                  <div className="skel h-9 w-full" />
+                ) : tables.error ? (
+                  <p className="field-hint !mt-0">
+                    Couldn't list tables on this connection. Type the name below instead.
+                  </p>
+                ) : (
+                  <div>
+                    <label className="field-label" htmlFor="studio-table">Table</label>
+                    <select
+                      id="studio-table"
+                      className="select-control"
+                      value={(tables.data ?? []).includes(datasetRef) ? datasetRef : ""}
+                      onChange={(e) => setDatasetRef(e.target.value)}
+                    >
+                      <option value="">
+                        {(tables.data ?? []).length} tables found — pick one
+                      </option>
+                      {(tables.data ?? []).map((name: string) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <details>
+                  <summary className="meta-key cursor-pointer select-none hover:text-foreground">
+                    Type a name or a query instead
+                  </summary>
+                  <Input
+                    className="mt-2"
+                    placeholder={isSnowflakeSource ? "Table name, or a full SELECT query…" : "Table name…"}
+                    value={datasetRef}
+                    onChange={(e) => setDatasetRef(e.target.value)}
+                  />
+                </details>
+              </div>
+            ) : (
+              <div>
+                <label className="field-label" htmlFor="studio-file">File name</label>
+                <Input
+                  id="studio-file"
+                  placeholder="orders.csv"
+                  value={datasetRef}
+                  onChange={(e) => setDatasetRef(e.target.value)}
+                />
+                <p className="field-hint">
+                  {selectedConnectionObj?.config?.base_path
+                    ? `Relative to ${selectedConnectionObj.config.base_path}`
+                    : "Relative to the connection's base folder."}
+                </p>
+              </div>
+            )}
+          </StudioStage>
+
+          {/* Stage 3 — what you want -------------------------------------- */}
+          <StudioStage
+            tag="direction"
+            title="Say what you want"
+            hint={autoMode ? "agent decides" : "custom"}
+            locked={!hasDataset}
+            lockedReason="Pick a table above first."
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="field-label" htmlFor="studio-name">Dashboard name</label>
+                <Input
+                  id="studio-name"
+                  placeholder="Q3 revenue overview"
+                  value={dashboardName}
+                  onChange={(e) => setDashboardName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="field-label" htmlFor="studio-prompt">
+                  Direction <span className="font-normal text-muted-foreground">(optional)</span>
+                </label>
+                <textarea
+                  id="studio-prompt"
+                  className="min-h-[84px] w-full resize-y rounded-lg bg-background p-3 text-[13.5px] leading-6 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--input))] outline-none transition placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_1px_hsl(var(--accent-signal)),0_0_0_3px_hsl(var(--accent-signal)/0.15)]"
+                  value={request}
+                  onChange={(e) => setRequest(e.target.value)}
+                  placeholder="Leave this blank and the agent profiles the data, picks the KPIs, chooses the chart types, and lays out the board itself."
+                />
+
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <span className="meta-key">Add</span>
+                  {ideas.map((idea) => (
+                    <button
+                      key={idea}
+                      type="button"
+                      onClick={() =>
+                        setRequest((prev) => (prev.trim() ? `${prev.trim()} ${idea}` : idea))
+                      }
+                      className="chip transition hover:text-foreground"
+                    >
+                      {idea}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <details>
+                <summary className="meta-key cursor-pointer select-none hover:text-foreground">
+                  Advanced — pick a model
+                </summary>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <select
+                    className="select-control !w-auto min-w-[240px]"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    aria-label="Model"
+                  >
+                    <option value="">Auto (recommended)</option>
+                    {modelOptions
+                      .filter((opt) => !opt.disabled)
+                      .map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    <option value="custom">Custom…</option>
+                  </select>
+                  {model === "custom" && (
+                    <Input
+                      className="h-9 w-[200px]"
+                      placeholder="exact model id"
+                      value={customModel}
+                      onChange={(e) => setCustomModel(e.target.value)}
+                    />
+                  )}
+                </div>
+              </details>
+
+              <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                <Button type="submit" disabled={analyze.isPending || !hasDataset} className="h-9">
                   {analyze.isPending ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : autoMode ? (
@@ -487,13 +496,26 @@ export const DashboardStudio = () => {
                   ) : (
                     <Sparkles className="h-3.5 w-3.5" />
                   )}
-                  {autoMode ? "Auto-design Dashboard" : "Generate Dashboard"}
+                  {analyze.isPending
+                    ? "Building…"
+                    : autoMode
+                      ? "Auto-design dashboard"
+                      : "Generate dashboard"}
                 </Button>
+                <span className="mono-meta hidden md:inline">⌘ ↵</span>
               </div>
             </div>
-          </form>
+          </StudioStage>
         </div>
-      </section>
+
+        <aside className="lg:sticky lg:top-24">
+          <DatasetPreview
+            connectionId={connectionId}
+            table={datasetRef}
+            supported={canListTables}
+          />
+        </aside>
+      </form>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Dashboards" value={String(total)} hint="all-time" />

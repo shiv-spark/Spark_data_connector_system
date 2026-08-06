@@ -360,7 +360,7 @@
 //                   </label>
 //                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Connector
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.connector_type} onChange={(e) => update("connector_type", e.target.value as Connector)}>
+//                     <select className="select-control" value={form.connector_type} onChange={(e) => update("connector_type", e.target.value as Connector)}>
 //                       {(Object.keys(CONNECTOR_LABELS) as Connector[]).map((c) => (
 //                         <option key={c} value={c}>{CONNECTOR_LABELS[c]}</option>
 //                       ))}
@@ -372,7 +372,7 @@
 //                   </label>
 //                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Load option
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.option} onChange={(e) => update("option", e.target.value)}>
+//                     <select className="select-control" value={form.option} onChange={(e) => update("option", e.target.value)}>
 //                       <option value="1">Append</option>
 //                       <option value="2">Overwrite</option>
 //                       <option value="3">Create new</option>
@@ -380,7 +380,7 @@
 //                   </label>
 //                   <label className="space-y-1 text-sm font-medium text-foreground">
 //                     Sync mode
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
+//                     <select className="select-control" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
 //                       <option value="full">Full</option>
 //                       <option value="incremental">Incremental</option>
 //                     </select>
@@ -390,7 +390,7 @@
 //                 {form.option === "3" && (
 //                   <label className="block max-w-md space-y-1 text-sm font-medium text-foreground">
 //                     After first run
-//                     <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.after_first_run} onChange={(e) => update("after_first_run", e.target.value)}>
+//                     <select className="select-control" value={form.after_first_run} onChange={(e) => update("after_first_run", e.target.value)}>
 //                       <option value="">Select...</option>
 //                       <option value="1">Then append</option>
 //                       <option value="2">Then overwrite</option>
@@ -445,7 +445,7 @@
 //                           <p className="text-sm text-red-500 dark:text-red-400">No saved connections for this connector type. Please create a new connection.</p>
 //                         ) : (
 //                           <select
-//                             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+//                             className="select-control"
 //                             value={selectedConnectionId}
 //                             onChange={(e) => {
 //                               setSelectedConnectionId(e.target.value);
@@ -728,6 +728,7 @@ import { Input } from "@/components/ui/input";
 import { SchedulerFields } from "@/components/SchedulerFields";
 import { FolderUpload } from "@/pages/FolderUpload";
 import { buildCron, defaultSchedule } from "@/lib/schedule";
+import { PageHeader } from "@/components/PageHeader";
 
 type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
 
@@ -1046,7 +1047,12 @@ export const CreatePipeline = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2 text-foreground"><PlusCircle className="h-5 w-5" /> Create Pipeline</h2>
+      <PageHeader
+        icon={PlusCircle}
+        eyebrow="Build"
+        title="Create Pipeline"
+        description="Pick a source, shape the data, and set when it runs."
+      />
 
       {/* ── Stepper ─────────────────────────────────────────────────── */}
       <Card>
@@ -1110,7 +1116,7 @@ export const CreatePipeline = () => {
                   </label>
                   <label className="space-y-1 text-sm font-medium text-foreground">
                     Connector
-                    <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.connector_type} onChange={(e) => update("connector_type", e.target.value as Connector)}>
+                    <select className="select-control" value={form.connector_type} onChange={(e) => update("connector_type", e.target.value as Connector)}>
                       {(Object.keys(CONNECTOR_LABELS) as Connector[]).map((c) => (
                         <option key={c} value={c}>{CONNECTOR_LABELS[c]}</option>
                       ))}
@@ -1122,7 +1128,7 @@ export const CreatePipeline = () => {
                   </label>
                   <label className="space-y-1 text-sm font-medium text-foreground">
                     Load option
-                    <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.option} onChange={(e) => update("option", e.target.value)}>
+                    <select className="select-control" value={form.option} onChange={(e) => update("option", e.target.value)}>
                       <option value="1">Append</option>
                       <option value="2">Overwrite</option>
                       <option value="3">Create new</option>
@@ -1130,7 +1136,7 @@ export const CreatePipeline = () => {
                   </label>
                   <label className="space-y-1 text-sm font-medium text-foreground">
                     Sync mode
-                    <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
+                    <select className="select-control" value={form.sync_mode} onChange={(e) => update("sync_mode", e.target.value)}>
                       <option value="full">Full</option>
                       <option value="incremental">Incremental</option>
                     </select>
@@ -1140,7 +1146,7 @@ export const CreatePipeline = () => {
                 {form.option === "3" && (
                   <label className="block max-w-md space-y-1 text-sm font-medium text-foreground">
                     After first run
-                    <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={form.after_first_run} onChange={(e) => update("after_first_run", e.target.value)}>
+                    <select className="select-control" value={form.after_first_run} onChange={(e) => update("after_first_run", e.target.value)}>
                       <option value="">Select...</option>
                       <option value="1">Then append</option>
                       <option value="2">Then overwrite</option>
@@ -1195,7 +1201,7 @@ export const CreatePipeline = () => {
                           <p className="text-sm text-red-500 dark:text-red-400">No saved connections for this connector type. Please create a new connection.</p>
                         ) : (
                           <select
-                            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                            className="select-control"
                             value={selectedConnectionId}
                             onChange={(e) => {
                               setSelectedConnectionId(e.target.value);

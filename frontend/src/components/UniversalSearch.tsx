@@ -94,7 +94,8 @@ export function UniversalSearch() {
   const totalResults = allResults.length;
 
   const handleSelect = (result: SearchResult) => {
-    navigate(result.path);
+    // The API returns console paths from before the /app move, so re-base them.
+    navigate(result.path.startsWith('/app') ? result.path : `/app${result.path}`);
     setQuery('');
     setIsFocused(false);
     setResults({ pipelines: [], connections: [], dashboards: [], metrics: [], logs: [] });

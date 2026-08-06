@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHeader } from "@/components/PageHeader";
 
 interface QueryResult {
   success: boolean;
@@ -169,17 +170,13 @@ export default function Text2SQL() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-emerald-500" />
-            Text-to-SQL
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Ask questions about your data in natural language
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        icon={Sparkles}
+        eyebrow="Intelligence"
+        title="Text-to-SQL"
+        description="Ask a question in plain English. Read the SQL it writes before it runs."
+        actions={
+          <div className="flex items-center gap-3">
           {stats && (
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -192,11 +189,12 @@ export default function Text2SQL() {
               </span>
             </div>
           )}
-          <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-            AI Powered
-          </Badge>
-        </div>
-      </div>
+            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              AI Powered
+            </Badge>
+          </div>
+        }
+      />
 
       <Card className="border-border shadow-sm">
         <CardContent className="pt-4">

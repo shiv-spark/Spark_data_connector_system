@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHeader } from "@/components/PageHeader";
 
 interface GenerationResult {
   success: boolean;
@@ -175,20 +176,17 @@ export default function DataGenerator() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-purple-500 dark:text-purple-400" />
-            Data Generator
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Generate synthetic data in natural language and load to your database
-          </p>
-        </div>
-        <Badge variant="secondary" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
-          AI Powered
-        </Badge>
-      </div>
+      <PageHeader
+        icon={Sparkles}
+        eyebrow="Intelligence"
+        title="Data Generator"
+        description="Describe the rows you need and load realistic test data into a table."
+        actions={
+          <Badge variant="secondary" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+            AI Powered
+          </Badge>
+        }
+      />
 
       <Card className="border-border shadow-sm">
         <CardContent className="pt-4">

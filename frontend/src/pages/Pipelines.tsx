@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, ListChecks, Pause, Play, Save, Trash2, RefreshCw, Search, X, Settings2 } from "lucide-react";
+import { ListChecks, Pause, Play, Plus, Save, Trash2, RefreshCw, Search, X, Settings2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Link } from "react-router-dom";
+import { Panel, PanelBar, PanelSearch, Row, Meta, EmptyState, RowSkeleton } from "@/components/console/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { fdt } from "@/lib/format";
 import { SchedulerFields } from "@/components/SchedulerFields";
 import { buildCron, scheduleFromCron, ScheduleState } from "@/lib/schedule";
+import { PageHeader } from "@/components/PageHeader";
+import { StatTile } from "@/components/StatTile";
 
 type Pipeline = {
   dag_id: string;
@@ -230,84 +233,96 @@ export const Pipelines = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2"><ListChecks className="h-5 w-5" /> Manage Pipelines</h2>
+      <PageHeader
+        icon={ListChecks}
+        eyebrow="Build"
+        title="Pipelines"
+        description="Every scheduled job in this workspace, with the result of its last run."
+      />
 
-      <div className="flex items-center gap-3">
-        <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ["pipelines"] })}>
-          <RefreshCw /> Refresh
-        </Button>
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search pipeline..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
+      <div className="grid grid-cols-3 gap-3">
+        <StatTile label="Total pipelines" value={counts.total} icon={ListChecks} />
+        <StatTile label="Active" value={counts.active} tone="positive" icon={Play} />
+        <StatTile label="Paused" value={counts.paused} tone="warning" icon={Pause} />
       </div>
 
-      {isLoading ? (
-        <p className="text-muted-foreground">Loading pipelines...</p>
-      ) : pipes.length === 0 ? (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
-          <CardContent className="px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
-            No pipelines found. Create one using the "Create Pipeline" page.
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            <Card><CardContent className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">Total Pipelines</p>
-              <p className="text-2xl font-bold text-foreground">{counts.total}</p>
-            </CardContent></Card>
-            <Card><CardContent className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">Active</p>
-              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-500">{counts.active}</p>
-            </CardContent></Card>
-            <Card><CardContent className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">Paused</p>
-              <p className="text-2xl font-bold text-amber-600 dark:text-amber-500">{counts.paused}</p>
-            </CardContent></Card>
-          </div>
+      <Panel>
+        <PanelBar title="Pipelines" count={filtered.length}>
+          <PanelSearch
+            label="Search pipelines"
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by name…"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => qc.invalidateQueries({ queryKey: ["pipelines"] })}
+          >
+            <RefreshCw /> Refresh
+          </Button>
+        </PanelBar>
 
-          <div className="space-y-2">
-            {filtered.length === 0 && (
-              <p className="text-sm text-muted-foreground">No pipelines match your search.</p>
-            )}
-
+        {isLoading ? (
+          <RowSkeleton rows={4} />
+        ) : pipes.length === 0 ? (
+          <EmptyState
+            icon={ListChecks}
+            title="No pipelines yet"
+            body="A pipeline pulls from a source on a schedule and loads the result into a table. Build your first one to see it here."
+            action={
+              <Link to="/app/create">
+                <Button size="sm"><Plus /> Create pipeline</Button>
+              </Link>
+            }
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Search}
+            title="No matches"
+            body={`Nothing matches "${search}". Clear the search to see all ${pipes.length} pipelines.`}
+            action={<Button variant="outline" size="sm" onClick={() => setSearch("")}>Clear search</Button>}
+          />
+        ) : (
+          <div>
             {filtered.map((row) => {
               const state = editing[row.name];
               const connectorType = row.connector_type ?? "";
 
               return (
-                <Card key={row.dag_id}>
-                  <CardContent className="space-y-3 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-foreground">{row.dag_id}</span>
+                <Row key={row.dag_id} state={row.status}>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className="truncate text-[13.5px] font-semibold text-foreground"
+                            style={{ fontFamily: "var(--font-mono)" }}
+                          >
+                            {row.dag_id}
+                          </span>
                           <StatusBadge status={row.status} />
-                          {connectorType && (
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                              {connectorType}
-                            </span>
-                          )}
+                          {connectorType && <span className="chip">{connectorType}</span>}
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Next run: {fdt(row.next_run)} &nbsp;/&nbsp; Size: {row.size_kb ?? "-"} KB
-                          {row.table_name ? <> &nbsp;/&nbsp; Table: <span className="font-mono">{row.table_name}</span></> : null}
-                        </p>
-                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                          <CalendarClock className="h-3.5 w-3.5" />
-                          <span className="font-mono">{row.schedule}</span>
-                          <span>in {row.timezone}</span>
-                        </p>
+
+                        <div className="mt-2">
+                          <Meta
+                            items={[
+                              ["schedule", `${row.schedule} · ${row.timezone}`],
+                              ["next run", fdt(row.next_run)],
+                              ...(row.table_name
+                                ? ([["table", row.table_name]] as [string, React.ReactNode][])
+                                : []),
+                              ["size", row.size_kb ? `${row.size_kb} KB` : "—"],
+                            ]}
+                          />
+                        </div>
                       </div>
-                      <div className="flex gap-2">
+
+                      <div className="flex shrink-0 gap-1.5">
                         <Button
                           variant="outline"
+                          size="sm"
                           onClick={() => setEditing((current) => ({
                             ...current,
                             [row.name]: buildEditState(row),
@@ -316,16 +331,18 @@ export const Pipelines = () => {
                           <Settings2 /> Edit
                         </Button>
                         {row.status === "ACTIVE" ? (
-                          <Button variant="outline" onClick={() => pauseM.mutate(row.name)}>
+                          <Button variant="outline" size="sm" onClick={() => pauseM.mutate(row.name)}>
                             <Pause /> Pause
                           </Button>
                         ) : (
-                          <Button variant="outline" onClick={() => resumeM.mutate(row.name)}>
+                          <Button variant="outline" size="sm" onClick={() => resumeM.mutate(row.name)}>
                             <Play /> Resume
                           </Button>
                         )}
                         <Button
                           variant="outline"
+                          size="sm"
+                          aria-label={`Delete ${row.name}`}
                           className="hover:border-destructive hover:bg-red-50 hover:text-destructive dark:hover:bg-red-950/30"
                           onClick={() => {
                             if (confirm(`Delete pipeline "${row.name}"? This cannot be undone.`)) {
@@ -333,13 +350,13 @@ export const Pipelines = () => {
                             }
                           }}
                         >
-                          <Trash2 /> Delete
+                          <Trash2 />
                         </Button>
                       </div>
                     </div>
 
                     {state && (
-                      <div className="space-y-4 rounded-lg border border-border bg-card p-3">
+                      <div className="space-y-4 rounded-lg bg-muted/40 p-4 ring-1 ring-inset ring-border">
                         <div>
                           <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Schedule</p>
                           <SchedulerFields
@@ -357,7 +374,7 @@ export const Pipelines = () => {
                           <label className="space-y-1 text-sm font-medium text-foreground">
                             Load option
                             <select
-                              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                              className="select-control"
                               value={state.option}
                               onChange={(e) => updateEdit(row.name, { option: e.target.value })}
                             >
@@ -369,7 +386,7 @@ export const Pipelines = () => {
                           <label className="space-y-1 text-sm font-medium text-foreground">
                             Sync mode
                             <select
-                              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                              className="select-control"
                               value={state.sync_mode}
                               onChange={(e) => updateEdit(row.name, { sync_mode: e.target.value })}
                             >
@@ -504,13 +521,13 @@ export const Pipelines = () => {
                         </div>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                </Row>
               );
             })}
           </div>
-        </>
-      )}
+        )}
+      </Panel>
     </div>
   );
 };

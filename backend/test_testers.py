@@ -26,11 +26,12 @@ class TestSnowflakeTester:
         from testers.snowflake import test_connection
         
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.side_effect = [("3.0.0",), (0,)]
+        # version lookup, then the database-exists and schema-exists checks
+        mock_cursor.fetchone.side_effect = [("3.0.0",), ("test_db",), ("PUBLIC",)]
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         mock_connect.return_value = mock_conn
-        
+
         config = {
             "account": "test_account",
             "user": "test_user",
@@ -39,12 +40,32 @@ class TestSnowflakeTester:
             "database": "test_db",
             "schema": "PUBLIC"
         }
-        
+
         result = test_connection(config)
-        
+
         assert result["success"] is True
         assert "Connected to Snowflake" in result["message"]
         assert result["details"]["database"] == "test_db"
+
+    @patch("testers.snowflake.snowflake.connector.connect")
+    def test_missing_schema_reports_not_found(self, mock_connect):
+        """A schema that doesn't exist is an error, not a soft warning."""
+        from testers.snowflake import test_connection
+
+        mock_cursor = MagicMock()
+        # version, database found, schema missing
+        mock_cursor.fetchone.side_effect = [("3.0.0",), ("test_db",), None]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        result = test_connection({
+            "account": "a", "user": "u", "password": "p",
+            "warehouse": "w", "database": "test_db", "schema": "NOPE",
+        })
+
+        assert result["success"] is False
+        assert result["category"] == "not_found"
     
     @patch("testers.snowflake.snowflake.connector.connect")
     def test_auth_failure(self, mock_connect):
@@ -256,102 +277,119 @@ class TestApiTester:
         assert result["success"] is False
         assert "base_url" in result["message"].lower()
     
-    def test_missing_test_endpoint(self):
-        """Test error when test_endpoint is missing."""
+    @staticmethod
+    def _mock_client(mock_client, status_code):
+        """Wire a mocked httpx.Client context manager returning status_code."""
+        mock_response = MagicMock()
+        mock_response.status_code = status_code
+        mock_ctx = MagicMock()
+        mock_ctx.__enter__ = Mock(return_value=mock_ctx)
+        mock_ctx.__exit__ = Mock(return_value=False)
+        mock_ctx.request.return_value = mock_response
+        mock_client.return_value = mock_ctx
+        return mock_ctx
+
+    @patch("testers.api.httpx.Client")
+    def test_missing_test_endpoint_falls_back_to_base_url(self, mock_client):
+        """An absent test_endpoint probes base_url directly rather than erroring."""
         from testers.api import test_connection
-        
+
+        mock_ctx = self._mock_client(mock_client, 200)
+
         result = test_connection({"base_url": "https://api.example.com"})
-        
-        assert result["success"] is False
-        assert "test_endpoint" in result["message"].lower()
-    
+
+        assert result["success"] is True
+        assert mock_ctx.request.call_args[0][1] == "https://api.example.com"
+
+    @patch("testers.api.httpx.Client")
+    def test_test_endpoint_equal_to_base_url_is_not_doubled(self, mock_client):
+        """The frontend defaults test_endpoint to base_url; don't concatenate them."""
+        from testers.api import test_connection
+
+        mock_ctx = self._mock_client(mock_client, 200)
+
+        result = test_connection({
+            "base_url": "https://api.example.com/search",
+            "test_endpoint": "https://api.example.com/search",
+        })
+
+        assert result["success"] is True
+        assert mock_ctx.request.call_args[0][1] == "https://api.example.com/search"
+
     @patch("testers.api.httpx.Client")
     def test_successful_connection(self, mock_client):
         """Test successful API connection."""
         from testers.api import test_connection
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = Mock(return_value=mock_ctx)
-        mock_ctx.__exit__ = Mock(return_value=False)
-        mock_ctx.get.return_value = mock_response
-        mock_client.return_value = mock_ctx
-        
+
+        mock_ctx = self._mock_client(mock_client, 200)
+
         config = {
             "base_url": "https://api.example.com",
             "test_endpoint": "/health",
             "auth_type": "none"
         }
-        
+
         result = test_connection(config)
-        
+
         assert result["success"] is True
         assert result["category"] == "success"
-    
+        assert mock_ctx.request.call_args[0][1] == "https://api.example.com/health"
+
     @patch("testers.api.httpx.Client")
     def test_auth_failure_401(self, mock_client):
         """Test 401 authentication failure."""
         from testers.api import test_connection
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 401
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = Mock(return_value=mock_ctx)
-        mock_ctx.__exit__ = Mock(return_value=False)
-        mock_ctx.get.return_value = mock_response
-        mock_client.return_value = mock_ctx
-        
+
+        self._mock_client(mock_client, 401)
+
         config = {
             "base_url": "https://api.example.com",
             "test_endpoint": "/health",
             "auth_type": "bearer",
             "bearer_token": "invalid_token"
         }
-        
+
         result = test_connection(config)
-        
+
         assert result["success"] is False
         assert result["category"] == "auth"
-    
+
     @patch("testers.api.httpx.Client")
     def test_server_error_500(self, mock_client):
         """Test 500 server error."""
         from testers.api import test_connection
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = Mock(return_value=mock_ctx)
-        mock_ctx.__exit__ = Mock(return_value=False)
-        mock_ctx.get.return_value = mock_response
-        mock_client.return_value = mock_ctx
-        
+
+        self._mock_client(mock_client, 500)
+
         config = {
             "base_url": "https://api.example.com",
             "test_endpoint": "/health",
             "auth_type": "none"
         }
-        
+
         result = test_connection(config)
-        
+
         assert result["success"] is False
         assert result["category"] == "server_error"
-    
-    def test_invalid_auth_type(self):
-        """Test error with invalid auth type."""
+
+    @patch("testers.api.httpx.Client")
+    def test_unknown_auth_type_is_treated_as_no_auth(self, mock_client):
+        """An unrecognised auth_type adds no credentials rather than erroring."""
         from testers.api import test_connection
-        
+
+        mock_ctx = self._mock_client(mock_client, 200)
+
         config = {
             "base_url": "https://api.example.com",
             "test_endpoint": "/health",
             "auth_type": "invalid_auth"
         }
-        
+
         result = test_connection(config)
-        
-        assert result["success"] is False
-        assert "Unsupported auth_type" in result["message"]
+
+        assert result["success"] is True
+        assert mock_ctx.request.call_args.kwargs["headers"] == {}
+        assert mock_client.call_args.kwargs["auth"] is None
 
 
 class TestLocalFolderTester:

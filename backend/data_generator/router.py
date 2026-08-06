@@ -23,8 +23,13 @@ import pandas as pd
 
 # Load env vars from project root
 from dotenv import load_dotenv
-project_root = Path(__file__).resolve().parent.parent.parent
-load_dotenv(project_root / ".env")
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+env_path = BACKEND_DIR.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
 
 # Create router
 router = APIRouter(prefix="/datagen", tags=["Data Generator"])
@@ -32,19 +37,10 @@ router = APIRouter(prefix="/datagen", tags=["Data Generator"])
 # Constants
 MAX_ROWS = 1000
 
-# Determine paths
-BACKEND_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BACKEND_DIR.parent.parent
-AGENT_DIR = PROJECT_ROOT / "AGENT"
-GENERATED_DIR = AGENT_DIR / "generator" / "generated"
+GENERATED_DIR = BACKEND_DIR / "generator" / "generated"
 GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
-print(f"[datagen] AGENT_DIR: {AGENT_DIR}")
 print(f"[datagen] GENERATED_DIR: {GENERATED_DIR}")
-
-# Add paths to sys.path
-sys.path.insert(0, str(AGENT_DIR))
-sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
 # Import connection manager from text_sql
 CONNECTION_MANAGER_AVAILABLE = False
@@ -104,8 +100,6 @@ def get_saved_connection(connection_id: int):
     return dict(zip(columns, row))
 
 try:
-    text_sql_path = str(PROJECT_ROOT / "backend" / "text_sql")
-    sys.path.insert(0, text_sql_path)
     from text_sql.connection_manager import (
         get_connection_manager as _get_connection_manager,
         DatabaseConnection,
@@ -566,9 +560,6 @@ def _upload_to_s3(filepath: str) -> Optional[str]:
 GENERATOR_AVAILABLE = False
 
 try:
-    sys.path.insert(0, str(AGENT_DIR / "generator"))
-    sys.path.insert(0, str(AGENT_DIR / "metadata"))
-    
     from generator.prompt_parser import parse_prompt as _parse_prompt_llm
     from generator.fake_generator import generate_data as _generate_data_llm
     import generator.csv_writer as _csv_writer_module

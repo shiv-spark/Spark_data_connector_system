@@ -80,7 +80,7 @@ services:
     image: data_connector_frontend:latest
     container_name: data_connector_frontend
     ports:
-      - "3001:80"
+      - "3000:80"
     environment:
       TZ: Asia/Kolkata
     depends_on:

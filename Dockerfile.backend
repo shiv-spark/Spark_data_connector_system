@@ -20,12 +20,12 @@ COPY backend/agent/          ./agent/
 COPY backend/text_sql/       ./text_sql/
 COPY backend/data_generator/ ./data_generator/
 COPY backend/sql_executors/  ./sql_executors/
+COPY backend/testers/        ./testers/
+COPY backend/generator/      ./generator/
+COPY backend/metadata/       ./metadata/
 COPY backend/sql_router.py   .
 COPY backend/main.py         .
 COPY backend/run.py          .
-
-# AGENT folder for data generator
-COPY AGENT/ ./AGENT/
 
 # Required folders
 RUN mkdir -p dags data backups

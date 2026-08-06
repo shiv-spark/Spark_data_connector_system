@@ -477,7 +477,7 @@
 //                 </label>
 //                 <label className="space-y-1 text-sm font-medium">
 //                   Load option (first source)
-//                   <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={option} onChange={(e) => setOption(e.target.value)}>
+//                   <select className="select-control" value={option} onChange={(e) => setOption(e.target.value)}>
 //                     <option value="1">Append</option>
 //                     <option value="2">Overwrite</option>
 //                     <option value="3">Create new</option>
@@ -533,7 +533,7 @@
 //                       <label className="space-y-1 text-sm font-medium block max-w-xs">
 //                         Connector type
 //                         <select
-//                           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+//                           className="select-control"
 //                           value={source.connector_type}
 //                           onChange={(e) => handleConnectorTypeChange(index, e.target.value)}
 //                         >
@@ -578,7 +578,7 @@
 //                                 <p className="text-sm text-destructive">No saved connections for this connector type. Please create a new connection.</p>
 //                               ) : (
 //                                 <select
-//                                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+//                                   className="select-control"
 //                                   value={connState.selectedConnectionId}
 //                                   onChange={(e) => {
 //                                     updateConnectionState(index, "selectedConnectionId", e.target.value);
@@ -861,6 +861,7 @@ import { Input } from "@/components/ui/input";
 import { SchedulerFields } from "@/components/SchedulerFields";
 import { FolderUpload } from "@/pages/FolderUpload";
 import { buildCron, defaultSchedule } from "@/lib/schedule";
+import { PageHeader } from "@/components/PageHeader";
 
 const CONNECTOR_TO_SOURCE_TYPE: Record<string, string> = {
   csv: "local_folder",
@@ -1281,7 +1282,12 @@ export const MultiSource = () => {
 
   return (
     <div className="space-y-5">
-      <h2 className="h-section flex items-center gap-2"><Network className="h-5 w-5" /> Multi-Source Pipeline</h2>
+      <PageHeader
+        icon={Network}
+        eyebrow="Build"
+        title="Multi-Source Pipeline"
+        description="Join tables that live in different systems into a single pipeline."
+      />
 
       {/* ── Stepper ─────────────────────────────────────────────────── */}
       <Card>
@@ -1332,7 +1338,7 @@ export const MultiSource = () => {
                 </label>
                 <label className="space-y-1 text-sm font-medium">
                   Load option (first source)
-                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={option} onChange={(e) => setOption(e.target.value)}>
+                  <select className="select-control" value={option} onChange={(e) => setOption(e.target.value)}>
                     <option value="1">Append</option>
                     <option value="2">Overwrite</option>
                     <option value="3">Create new</option>
@@ -1387,7 +1393,7 @@ export const MultiSource = () => {
                       <label className="space-y-1 text-sm font-medium block max-w-xs">
                         Connector type
                         <select
-                          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          className="select-control"
                           value={source.connector_type}
                           onChange={(e) => handleConnectorTypeChange(index, e.target.value)}
                         >
@@ -1432,7 +1438,7 @@ export const MultiSource = () => {
                                 <p className="text-sm text-destructive">No saved connections for this connector type. Please create a new connection.</p>
                               ) : (
                                 <select
-                                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                  className="select-control"
                                   value={connState.selectedConnectionId}
                                   onChange={(e) => {
                                     updateConnectionState(index, "selectedConnectionId", e.target.value);
