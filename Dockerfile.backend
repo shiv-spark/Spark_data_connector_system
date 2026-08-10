@@ -23,6 +23,7 @@ COPY backend/sql_executors/  ./sql_executors/
 COPY backend/testers/        ./testers/
 COPY backend/generator/      ./generator/
 COPY backend/metadata/       ./metadata/
+COPY backend/quality/        ./quality/
 COPY backend/sql_router.py   .
 COPY backend/main.py         .
 COPY backend/run.py          .

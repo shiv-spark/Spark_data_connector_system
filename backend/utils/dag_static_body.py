@@ -13,6 +13,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 
+
 load_dotenv()
 
 DB_CONFIG = {
@@ -286,6 +287,7 @@ def _ingest_file(container_file, endpoint, option, table_name, sync_mode, increm
         "table_name":         table_name,
         "sync_mode":          sync_mode,
         "incremental_column": incremental_column,
+        "pipeline_id": PIPELINE_ID,
     }
     res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
     print(f"Status: {res.status_code} | Response: {res.text}")
@@ -497,6 +499,7 @@ def _process_one_source(cfg, source_label=None):
             "table_name":         table_name,
             "sync_mode":          sync_mode,
             "incremental_column": incremental_column,
+            "pipeline_id": PIPELINE_ID,
         }
         res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -521,6 +524,7 @@ def _process_one_source(cfg, source_label=None):
             "table_name":         table_name,
             "sync_mode":          sync_mode,
             "incremental_column": incremental_column,
+            "pipeline_id": PIPELINE_ID,
         }
         res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -602,6 +606,7 @@ def _process_one_source(cfg, source_label=None):
                     "table_name":         table_name,
                     "sync_mode":          sync_mode,
                     "incremental_column": incremental_column,
+                    "pipeline_id": PIPELINE_ID,
                 }
                 res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
 
@@ -634,6 +639,7 @@ def _process_one_source(cfg, source_label=None):
                 "table_name":         table_name,
                 "sync_mode":          sync_mode,
                 "incremental_column": incremental_column,
+                "pipeline_id": PIPELINE_ID,
             }
             res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
             if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -660,6 +666,7 @@ def _process_one_source(cfg, source_label=None):
             "table_name":         table_name,
             "sync_mode":          sync_mode,
             "incremental_column": incremental_column,
+            "pipeline_id": PIPELINE_ID,
         }
         res = requests.post(f"{BASE_URL}/ingest_postgres", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -686,6 +693,7 @@ def _process_one_source(cfg, source_label=None):
             "table_name":         table_name,
             "sync_mode":          sync_mode,
             "incremental_column": incremental_column,
+            "pipeline_id": PIPELINE_ID,
         }
         res = requests.post(f"{BASE_URL}/ingest_snowflake", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":

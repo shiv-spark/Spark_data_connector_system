@@ -24,6 +24,7 @@ import Text2SQL from "@/pages/Text2SQL";
 import DataGenerator from "@/pages/DataGenerator";
 import SqlEditor from "@/pages/SqlEditor";
 import { Settings } from "@/pages/Settings";
+import { QualityChecks } from "@/pages/QualityChecks";
 
 /** Console paths that used to live at the root, kept working as redirects. */
 const MOVED_TO_APP = [
@@ -41,6 +42,7 @@ const MOVED_TO_APP = [
   "datagenerator",
   "sql-editor",
   "settings",
+  "quality"
 ];
 
 export default function App() {
@@ -69,6 +71,7 @@ export default function App() {
           <Route path="pipelines" element={<Pipelines />} />
           <Route path="ingest" element={<DirectIngest />} />
           <Route path="preview" element={<DataPreview />} />
+          <Route path="quality" element={<QualityChecks />} />
           <Route path="metrics" element={<Metrics />} />
           <Route path="logs" element={<Logs />} />
           <Route path="multi-source" element={<MultiSource />} />

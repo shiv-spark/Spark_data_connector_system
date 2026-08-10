@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Table2 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -8,20 +8,57 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, RowSkeleton } from "@/components/console/Panel";
 
+interface ColumnInfo {
+  name: string;
+  type: string;
+}
+
 export const DataPreview = () => {
   const [table, setTable] = useState("");
   const [activeTable, setActiveTable] = useState("");
   const [filterCol, setFilterCol] = useState("");
   const [filterVal, setFilterVal] = useState("");
+  const [filterExact, setFilterExact] = useState(false);
   const [offset, setOffset] = useState(0);
   const limit = 50;
 
+  // ── Table list — populates the table dropdown so nobody has to type/
+  // remember an exact table name. ─────────────────────────────────────
+  const { data: tablesData, isFetching: tablesLoading } = useQuery({
+    queryKey: ["preview-tables"],
+    queryFn: async () => (await api.get("/tables")).data,
+  });
+  const tables: string[] = tablesData?.tables ?? [];
+
+  // ── Column list for the currently selected table — populates the
+  // filter-column dropdown so filter_col can never be mistyped/mis-cased. ─
+  const { data: columnsData } = useQuery({
+    queryKey: ["preview-table-columns", table],
+    enabled: !!table,
+    queryFn: async () => (await api.get(`/table/${table}/columns`)).data,
+  });
+  const columns: ColumnInfo[] = columnsData?.columns ?? [];
+
+  // Reset the filter column if it no longer belongs to the newly picked table
+  useEffect(() => {
+    if (filterCol && !columns.some((c) => c.name === filterCol)) {
+      setFilterCol("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table]);
+
   const { data, isFetching, error } = useQuery({
-    queryKey: ["table-preview", activeTable, filterCol, filterVal, offset],
+    queryKey: ["table-preview", activeTable, filterCol, filterVal, filterExact, offset],
     enabled: !!activeTable,
     queryFn: async () => {
       const response = await api.get(`/table/${activeTable}`, {
-        params: { limit, offset, filter_col: filterCol || undefined, filter_val: filterVal || undefined },
+        params: {
+          limit,
+          offset,
+          filter_col: filterCol || undefined,
+          filter_val: filterVal || undefined,
+          filter_exact: filterCol && filterVal ? filterExact : undefined,
+        },
       });
       return response.data;
     },
@@ -34,7 +71,7 @@ export const DataPreview = () => {
   };
 
   const rows = data?.data ?? [];
-  const columns: string[] = data?.columns ?? (rows[0] ? Object.keys(rows[0]) : []);
+  const previewColumns: string[] = data?.columns ?? (rows[0] ? Object.keys(rows[0]) : []);
 
   return (
     <div className="space-y-5">
@@ -47,11 +84,53 @@ export const DataPreview = () => {
       <Card>
         <CardHeader><CardTitle className="text-sm">Table Browser</CardTitle></CardHeader>
         <CardContent>
-          <form onSubmit={submit} className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_220px_auto]">
-            <Input placeholder="Table name" value={table} onChange={(e) => setTable(e.target.value)} required />
-            <Input placeholder="Filter column" value={filterCol} onChange={(e) => setFilterCol(e.target.value)} />
-            <Input placeholder="Filter value" value={filterVal} onChange={(e) => setFilterVal(e.target.value)} />
-            <Button type="submit"><Search /> Load</Button>
+          <form onSubmit={submit} className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_220px_auto]">
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={table}
+                onChange={(e) => setTable(e.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  {tablesLoading ? "Loading tables…" : "Select a table"}
+                </option>
+                {tables.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+                value={filterCol}
+                onChange={(e) => setFilterCol(e.target.value)}
+                disabled={!table}
+              >
+                <option value="">No filter column</option>
+                {columns.map((c) => (
+                  <option key={c.name} value={c.name}>{c.name} ({c.type})</option>
+                ))}
+              </select>
+
+              <Input
+                placeholder="Filter value"
+                value={filterVal}
+                onChange={(e) => setFilterVal(e.target.value)}
+                disabled={!filterCol}
+              />
+
+              <Button type="submit"><Search /> Load</Button>
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={filterExact}
+                onChange={(e) => setFilterExact(e.target.checked)}
+                disabled={!filterCol}
+              />
+              Exact match (unchecked = contains — e.g. filtering "active" also matches "inactive")
+            </label>
           </form>
         </CardContent>
       </Card>
@@ -71,12 +150,12 @@ export const DataPreview = () => {
                 <div className="overflow-auto rounded-md border border-border">
                   <table className="w-full text-sm">
                     <thead className="bg-muted">
-                      <tr>{columns.map((column) => <th key={column} className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">{column}</th>)}</tr>
+                      <tr>{previewColumns.map((column) => <th key={column} className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">{column}</th>)}</tr>
                     </thead>
                     <tbody>
                       {rows.map((row: any, index: number) => (
                         <tr key={index} className="border-t border-border">
-                          {columns.map((column) => <td key={column} className="max-w-72 truncate px-3 py-2 text-foreground">{String(row[column] ?? "")}</td>)}
+                          {previewColumns.map((column) => <td key={column} className="max-w-72 truncate px-3 py-2 text-foreground">{String(row[column] ?? "")}</td>)}
                         </tr>
                       ))}
                     </tbody>

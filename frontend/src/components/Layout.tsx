@@ -21,6 +21,7 @@ import {
   Plus,
   ScrollText,
   Settings,
+  ShieldCheck,
   Sparkles,
   Sun,
   Waves,
@@ -59,6 +60,16 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/app/preview", label: "Preview", icon: Database },
     ],
   },
+  
+  {
+  label: "Data",
+  items: [
+      { to: "/app/ingest", label: "Direct Ingest", icon: Download },
+      { to: "/app/preview", label: "Preview", icon: Database },
+      { to: "/app/quality", label: "Data Quality", icon: ShieldCheck, badge: "New" },   // ← naya
+    ],
+  },
+
   {
     label: "Observe",
     items: [

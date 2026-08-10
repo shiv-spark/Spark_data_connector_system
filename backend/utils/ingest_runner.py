@@ -102,7 +102,7 @@ DB_CONFIG = {
 
 def run_ingestion(connector_func, source, connector_name, *args,
                   option=None, table_name=None,
-                  sync_mode="full", incremental_column=None, **connector_kwargs):
+                  sync_mode="full", incremental_column=None,pipeline_id=None, **connector_kwargs):
 
     conn     = psycopg2.connect(**DB_CONFIG)
     tracker  = RunTracker(conn)
