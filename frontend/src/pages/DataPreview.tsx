@@ -4,7 +4,6 @@ import { Search, Table2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, RowSkeleton } from "@/components/console/Panel";
 
@@ -18,7 +17,6 @@ export const DataPreview = () => {
   const [activeTable, setActiveTable] = useState("");
   const [filterCol, setFilterCol] = useState("");
   const [filterVal, setFilterVal] = useState("");
-  const [filterExact, setFilterExact] = useState(false);
   const [offset, setOffset] = useState(0);
   const limit = 50;
 
@@ -39,25 +37,52 @@ export const DataPreview = () => {
   });
   const columns: ColumnInfo[] = columnsData?.columns ?? [];
 
-  // Reset the filter column if it no longer belongs to the newly picked table
+  // ── Distinct values for the selected filter column. The backend only
+  // supports exact (case-insensitive) matching — there's no "contains"
+  // mode — so instead of free text, we let the user pick from real values
+  // that actually exist in that column. ────────────────────────────────
+  const { data: valuesData, isFetching: valuesLoading } = useQuery({
+    queryKey: ["preview-column-values", table, filterCol],
+    enabled: !!table && !!filterCol,
+    queryFn: async () => (await api.get(`/table/${table}/columns/${filterCol}/values`)).data,
+  });
+  const filterValues: string[] = valuesData?.values ?? [];
+
+  // Reset the filter column if it no longer belongs to the newly picked table.
+  // Depends on `columns` too, so it re-checks once the new table's columns
+  // actually arrive (fixes the stale-closure race on fast table switching).
   useEffect(() => {
-    if (filterCol && !columns.some((c) => c.name === filterCol)) {
+    if (filterCol && columns.length > 0 && !columns.some((c) => c.name === filterCol)) {
       setFilterCol("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table]);
+  }, [table, columns, filterCol]);
+
+  // Clear a stale picked value whenever the filter column changes.
+  useEffect(() => {
+    setFilterVal("");
+  }, [filterCol]);
+
+  // Any time the effective filter changes (column, value) or the active
+  // table changes, jump back to page 1. Otherwise a stale offset can point
+  // past the end of the new filtered result set and the table appears to
+  // be "empty"/broken.
+  useEffect(() => {
+    setOffset(0);
+  }, [activeTable, filterCol, filterVal]);
 
   const { data, isFetching, error } = useQuery({
-    queryKey: ["table-preview", activeTable, filterCol, filterVal, filterExact, offset],
+    queryKey: ["table-preview", activeTable, filterCol, filterVal, offset],
     enabled: !!activeTable,
     queryFn: async () => {
       const response = await api.get(`/table/${activeTable}`, {
         params: {
           limit,
           offset,
-          filter_col: filterCol || undefined,
-          filter_val: filterVal || undefined,
-          filter_exact: filterCol && filterVal ? filterExact : undefined,
+          // Backend expects filter_col/filter_val as matched pairs — only send
+          // filter_col once a value has actually been picked, otherwise it
+          // arrives alone and the backend rejects it as a length mismatch.
+          filter_col: filterCol && filterVal ? filterCol : undefined,
+          filter_val: filterCol && filterVal ? filterVal : undefined,
         },
       });
       return response.data;
@@ -112,25 +137,22 @@ export const DataPreview = () => {
                 ))}
               </select>
 
-              <Input
-                placeholder="Filter value"
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
                 value={filterVal}
                 onChange={(e) => setFilterVal(e.target.value)}
                 disabled={!filterCol}
-              />
+              >
+                <option value="">
+                  {!filterCol ? "No filter value" : valuesLoading ? "Loading values…" : "Any value"}
+                </option>
+                {filterValues.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
 
               <Button type="submit"><Search /> Load</Button>
             </div>
-
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={filterExact}
-                onChange={(e) => setFilterExact(e.target.checked)}
-                disabled={!filterCol}
-              />
-              Exact match (unchecked = contains — e.g. filtering "active" also matches "inactive")
-            </label>
           </form>
         </CardContent>
       </Card>
