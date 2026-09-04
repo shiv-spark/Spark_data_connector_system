@@ -54,8 +54,14 @@ def success_response(message: str, details: dict = None) -> dict:
 TESTER_MODULES = {
     "snowflake": "testers.snowflake",
     "postgres": "testers.postgres",
+    "mysql": "testers.mysql",
+    "oracle": "testers.oracle",
+    "mongodb": "testers.mongodb",
     "s3": "testers.s3",
     "api": "testers.api",
+    "salesforce": "testers.salesforce",
+    "hubspot": "testers.hubspot",
+    "zoho": "testers.zoho",
 }
 
 

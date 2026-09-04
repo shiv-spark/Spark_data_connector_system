@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowUpFromLine,
   Bell,
   BookOpen,
   Bot,
@@ -25,6 +26,7 @@ import {
   Sparkles,
   Sun,
   Waves,
+  Waypoints,
 } from "lucide-react";
 import { fetchHealth } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/app/create", label: "Create Pipeline", icon: Plus },
       { to: "/app/pipelines", label: "Pipelines", icon: ListChecks },
       { to: "/app/multi-source", label: "Multi-Source", icon: Network },
+      { to: "/app/reverse-etl", label: "Reverse ETL", icon: ArrowUpFromLine, badge: "New" },
     ],
   },
   {
@@ -75,6 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/app/metrics", label: "Metrics", icon: LineChart },
       { to: "/app/logs", label: "Logs", icon: ScrollText },
+      { to: "/app/lineage", label: "Data Lineage", icon: Waypoints, badge: "New" },
     ],
   },
   {

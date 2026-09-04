@@ -133,3 +133,64 @@ export const getConnectionSchemaInfo = async (
   const response = await api.get<SchemaInfoResponse>(`/text2sql/schema?${params.toString()}`);
   return response.data;
 };
+
+/* --- Saved queries (named, editable, versioned) ---------------------------
+   Distinct from QueryHistoryItem above, which is per-execution run history.
+   These are user-named queries the person explicitly saves to reuse/edit —
+   see the "Saved" tab in SqlEditor's sidebar. */
+
+export interface SavedQueryItem {
+  id: string;
+  connection_id: number;
+  connection_name?: string;
+  connection_type?: string;
+  name: string;
+  query_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const saveQuery = async (params: {
+  connection_id: number;
+  name: string;
+  query_text: string;
+}): Promise<SavedQueryItem> => {
+  const response = await api.post<SavedQueryItem>('/sql/saved_queries', params);
+  return response.data;
+};
+
+export const listSavedQueries = async (connectionId?: number): Promise<SavedQueryItem[]> => {
+  const params = new URLSearchParams();
+  if (connectionId) params.append('connection_id', connectionId.toString());
+  const response = await api.get<SavedQueryItem[]>(`/sql/saved_queries?${params.toString()}`);
+  return response.data;
+};
+
+export const getSavedQuery = async (queryId: string): Promise<SavedQueryItem> => {
+  const response = await api.get<SavedQueryItem>(`/sql/saved_queries/${queryId}`);
+  return response.data;
+};
+
+export const updateSavedQuery = async (
+  queryId: string,
+  params: { name?: string; query_text?: string; connection_id?: number }
+): Promise<SavedQueryItem> => {
+  const response = await api.put<SavedQueryItem>(`/sql/saved_queries/${queryId}`, params);
+  return response.data;
+};
+
+export const deleteSavedQuery = async (queryId: string): Promise<{ status: string; id: string }> => {
+  const response = await api.delete(`/sql/saved_queries/${queryId}`);
+  return response.data;
+};
+
+/** Version history for a saved query — feeds the generic HistoryPanel. */
+export const fetchSqlQueryHistory = async (queryId: string) => {
+  const r = await api.get(`/sql/saved_queries/${queryId}/history`);
+  return r.data?.history ?? [];
+};
+
+export const restoreSqlQueryVersion = async (queryId: string, versionId: number): Promise<SavedQueryItem> => {
+  const r = await api.post<SavedQueryItem>(`/sql/saved_queries/${queryId}/restore/${versionId}`);
+  return r.data;
+};

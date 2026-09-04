@@ -591,6 +591,8 @@
 #         cursor.close()
 #         conn.close()
 
+
+
 import psycopg2
 import re
 import polars as pl
@@ -705,12 +707,16 @@ def table_exists(cursor, table_name):
 # CREATE TABLE
 # ─────────────────────────────────────────────
 
-def create_table(cursor, df, table_name):
+def create_table(cursor, df, table_name, custom_schema_sql=None):
+    """custom_schema_sql: optional {cleaned_col_name: SQL_TYPE} — when a
+    column is listed here, its user-requested SQL type wins over the
+    auto-detected dtype. See utils/schema_applier.py."""
     schema = get_schema(df)
+    custom_schema_sql = custom_schema_sql or {}
 
     col_definitions = []
     for col, dtype in schema.items():
-        sql_type   = dtype_to_sql(dtype)
+        sql_type = custom_schema_sql.get(col) or dtype_to_sql(dtype)
         # with sql.SQL and sql.Identifier, column names and table names are safely quoted to prevent SQL injection and handle special characters. For example, a column named "user name" will be quoted as "user name" in the SQL query, ensuring it is treated as a single identifier.
         col_definitions.append(
             sql.SQL("{} {}").format(
@@ -740,6 +746,111 @@ def create_table(cursor, df, table_name):
             return
         print(f"Table create failed: {e}")
         raise
+
+
+
+# ─────────────────────────────────────────────
+# RETROACTIVE TYPE ALTER FOR EXISTING TABLES
+# ─────────────────────────────────────────────
+# create_table() / evolve_schema() only apply a custom_schema type to a
+# BRAND-NEW table or a BRAND-NEW column — a column that already existed
+# before custom_schema was set (or was created on an earlier run without
+# one) keeps its old Postgres type forever otherwise. This is what makes
+# an existing "Append" target look like custom_schema "isn't working":
+# the data gets cast correctly in Python, but then lands in a column
+# that's still TEXT, so it reads back as text again.
+#
+# Canonical type -> a Postgres expression that casts a TEXT column value
+# safely: if a given row's value doesn't actually match the target type,
+# it becomes NULL instead of aborting the whole ALTER TABLE (Postgres has
+# no TRY_CAST, and a plain `col::type` fails the entire statement the
+# moment ONE existing row doesn't fit).
+_SQL_TO_CANONICAL = {
+    "BIGINT":           "integer",
+    "DOUBLE PRECISION": "float",
+    "BOOLEAN":          "boolean",
+    "DATE":             "date",
+    "TIMESTAMP":        "timestamp",
+    "JSONB":            "json",
+    "TEXT":             "text",
+}
+
+
+def _safe_cast_sql(col_ident: str, canonical_type: str) -> str:
+    c = f"{col_ident}::text"
+    if canonical_type == "integer":
+        return f"CASE WHEN {c} ~ '^\\s*-?\\d+\\s*$' THEN {c}::bigint ELSE NULL END"
+    if canonical_type == "float":
+        return f"CASE WHEN {c} ~ '^\\s*-?\\d+(\\.\\d+)?\\s*$' THEN {c}::double precision ELSE NULL END"
+    if canonical_type == "boolean":
+        return (
+            f"CASE WHEN lower(trim({c})) IN ('true','1','yes','y','t') THEN true "
+            f"WHEN lower(trim({c})) IN ('false','0','no','n','f') THEN false "
+            f"ELSE NULL END"
+        )
+    if canonical_type in ("date", "timestamp"):
+        target = "date" if canonical_type == "date" else "timestamp"
+        # No safe generic date-format matcher in plain SQL — only convert
+        # values that already look ISO-ish (YYYY-MM-DD...), everything
+        # else becomes NULL rather than blowing up the ALTER.
+        return f"CASE WHEN {c} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN {c}::{target} ELSE NULL END"
+    if canonical_type == "json":
+        return f"CASE WHEN {c} IS NOT NULL THEN to_jsonb({c}) ELSE NULL END"
+    return c  # text — a plain ::text cast always succeeds
+
+
+def alter_existing_columns_to_custom_schema(cursor, table_name, custom_schema_sql):
+    """For a table that ALREADY EXISTS, retroactively ALTER any of its
+    existing columns that are listed in custom_schema_sql but whose live
+    Postgres type doesn't match yet. Each column is altered in its own
+    SAVEPOINT — if one column's existing data genuinely can't be
+    represented in the new type (extremely rare given the permissive
+    safe-cast above, but possible), that column is skipped with a warning
+    instead of failing the whole ingest.
+
+    Returns (altered: [col, ...], warnings: [str, ...]).
+    """
+    if not custom_schema_sql:
+        return [], []
+
+    cursor.execute("""
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = %s AND table_schema = 'public'
+    """, (table_name,))
+    current_types = {row[0]: row[1] for row in cursor.fetchall()}
+
+    altered, warnings = [], []
+    for col, desired_sql_type in custom_schema_sql.items():
+        if col not in current_types:
+            continue  # brand-new column — evolve_schema() handles that case
+
+        canonical = _SQL_TO_CANONICAL.get(desired_sql_type, "text")
+        using_expr = _safe_cast_sql(sql.Identifier(col).as_string(cursor.connection), canonical)
+
+        cursor.execute("SAVEPOINT custom_schema_alter")
+        try:
+            alter_query = sql.SQL(
+                'ALTER TABLE {table} ALTER COLUMN {col} TYPE {sql_type} USING {using_expr}'
+            ).format(
+                table      = sql.Identifier(table_name),
+                col        = sql.Identifier(col),
+                sql_type   = sql.SQL(desired_sql_type),
+                using_expr = sql.SQL(using_expr),
+            )
+            cursor.execute(alter_query)
+            cursor.execute("RELEASE SAVEPOINT custom_schema_alter")
+            altered.append(col)
+        except Exception as e:
+            cursor.execute("ROLLBACK TO SAVEPOINT custom_schema_alter")
+            warnings.append(f"Could not change existing column '{col}' to {desired_sql_type}: {e}")
+
+    if altered:
+        print(f"Custom schema — existing columns retyped: {altered}")
+    for w in warnings:
+        print(f"Custom schema — {w}")
+
+    return altered, warnings
 
 
 
@@ -781,7 +892,17 @@ def check_schema_mismatch(cursor, df, table_name):
 # ─────────────────────────────────────────────
 import json   # ← top pe already ho sakta hai, confirm karo import hai
 
-def insert_data(cursor, df, table_name, batch_size=1000):
+def insert_data(cursor, df, table_name, batch_size=1000, custom_schema_sql=None):
+    """custom_schema_sql: optional {cleaned_col_name: SQL_TYPE} — the SAME
+    mapping passed to create_table()/evolve_schema()/the retroactive ALTER.
+    Used here as a final, last-mile guard: right before each value is sent
+    to Postgres, double-check it actually matches the type Postgres expects
+    for that column. Every earlier step (apply_custom_schema in
+    utils/schema_applier.py, the retroactive ALTER) already tries to
+    guarantee this, but if anything upstream ever slips through, THIS is
+    what stops an "invalid input syntax for type X" crash — the offending
+    value becomes NULL (with a clear log line naming the row/column/value)
+    instead of failing the whole batch."""
     if isinstance(df, pl.DataFrame):
         pdf = df.to_pandas()
     else:
@@ -827,9 +948,37 @@ def insert_data(cursor, df, table_name, batch_size=1000):
             return v.to_pydatetime()
         return v
 
+    # ── Final-mile custom-schema guard ──────────────────────────────────
+    import datetime as _dt
+    _governed = {}  # column position -> canonical type, only for custom_schema columns
+    if custom_schema_sql:
+        col_positions = {c: i for i, c in enumerate(pdf.columns)}
+        for col, desired_sql_type in custom_schema_sql.items():
+            if col in col_positions:
+                _governed[col_positions[col]] = (col, _SQL_TO_CANONICAL.get(desired_sql_type, "text"))
+
+    def _guard(pos, value, row_idx):
+        if pos not in _governed or value is None:
+            return value
+        col, canonical = _governed[pos]
+        ok = (
+            (canonical == "integer" and isinstance(value, int) and not isinstance(value, bool))
+            or (canonical == "float" and isinstance(value, (int, float)) and not isinstance(value, bool))
+            or (canonical == "boolean" and isinstance(value, bool))
+            or (canonical in ("date", "timestamp") and isinstance(value, (_dt.date, _dt.datetime)))
+            or (canonical in ("text", "json"))  # any scalar is fine as text/json — psycopg2 stringifies
+        )
+        if ok:
+            return value
+        print(
+            f"custom_schema guard: row {row_idx}, column '{col}' expected '{canonical}' "
+            f"but got {value!r} ({type(value).__name__}) — inserting NULL instead."
+        )
+        return None
+
     rows = [
-        tuple(_sanitize_value(v) for v in row)
-        for row in pdf.itertuples(index=False, name=None)
+        tuple(_guard(pos, _sanitize_value(v), row_idx) for pos, v in enumerate(row))
+        for row_idx, row in enumerate(pdf.itertuples(index=False, name=None))
     ]
 
     for i in range(0, len(rows), batch_size):
@@ -843,7 +992,10 @@ def insert_data(cursor, df, table_name, batch_size=1000):
 # Schema evolution 
 # (for option=1 append, if new columns detected then alter table to add them before insert)
 # ────────────────────────────────────────────
-def evolve_schema(cursor, df, table_name):
+def evolve_schema(cursor, df, table_name, custom_schema_sql=None):
+    """custom_schema_sql: optional {cleaned_col_name: SQL_TYPE} — new columns
+    listed here get added with the user-requested SQL type instead of the
+    auto-detected one. See utils/schema_applier.py."""
     cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
@@ -851,11 +1003,12 @@ def evolve_schema(cursor, df, table_name):
     """, (table_name,))
     existing_cols   = {row[0] for row in cursor.fetchall()}
     incoming_schema = get_schema(df)
+    custom_schema_sql = custom_schema_sql or {}
 
     added = []
     for col, dtype in incoming_schema.items():
         if col not in existing_cols:
-            sql_type = dtype_to_sql(dtype)
+            sql_type = custom_schema_sql.get(col) or dtype_to_sql(dtype)
             # ALTER TABLE bhi safely banao
             alter_query = sql.SQL(
                 "ALTER TABLE {table} ADD COLUMN {col} {type}"
@@ -1004,7 +1157,8 @@ def filter_incremental(df, incremental_column: str, last_value):
 # ─────────────────────────────────────────────
 def load_to_db(df, option=None, table_name=None,
                pipeline_id=None, connector_type=None, file_name=None,
-               sync_mode="full", incremental_column=None):   # ← new params
+               sync_mode="full", incremental_column=None,
+               custom_schema_sql=None):   # ← {cleaned_col: SQL_TYPE}, see utils/schema_applier.py
 
     validate_table_name(table_name)
 
@@ -1065,8 +1219,18 @@ def load_to_db(df, option=None, table_name=None,
         
         if option == "1":
             if not table_exists(cursor, table_name):
-                create_table(cursor, df, table_name)
+                create_table(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
             else:
+                # Table already existed BEFORE this custom_schema was set (or
+                # from a run without one) — retroactively retype any of its
+                # existing columns that custom_schema asks for, since
+                # create_table()/evolve_schema() only apply the requested
+                # type to brand-new tables/columns, not ones that already
+                # exist. Without this, data still casts fine in Python but
+                # lands back in an old TEXT column and reads as text again.
+                if custom_schema_sql:
+                    alter_existing_columns_to_custom_schema(cursor, table_name, custom_schema_sql)
+
                 report    = check_schema_mismatch(cursor, df, table_name)
                 match_pct = report["match_pct"]
 
@@ -1091,13 +1255,13 @@ def load_to_db(df, option=None, table_name=None,
                 # ── THRESHOLD 3: New columns add Only 80%+ match ──
                 if match_pct >= 80:
                     # High confidence — add new columns automatically
-                    evolved_cols = evolve_schema(cursor, df, table_name)
+                    evolved_cols = evolve_schema(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
                     if evolved_cols:
                         print(f"Schema evolved ({match_pct}% match): {evolved_cols}")
 
                 elif 50 <= match_pct < 80:
                     # Medium confidence — add new columns but log a caution
-                    evolved_cols = evolve_schema(cursor, df, table_name)
+                    evolved_cols = evolve_schema(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
                     print(
                         f"CAUTION: Schema evolved at only {match_pct}% match. "
                         f"New columns added: {evolved_cols}. "
@@ -1118,7 +1282,7 @@ def load_to_db(df, option=None, table_name=None,
                     else:
                         df = df[matched_cols]
 
-            insert_data(cursor, df, table_name)
+            insert_data(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
 
         # if option == "1":
         #     if not table_exists(cursor, table_name):
@@ -1142,15 +1306,15 @@ def load_to_db(df, option=None, table_name=None,
                 cursor.execute(
                     sql.SQL("DROP TABLE {t}").format(t=sql.Identifier(table_name))
                 )
-            create_table(cursor, df, table_name)
-            insert_data(cursor, df, table_name)
+            create_table(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
+            insert_data(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
 
         # ── OPTION 3 — CREATE ONLY ───────────────────────
         elif option == "3":
             if table_exists(cursor, table_name):
                 raise ValueError(f"Table '{table_name}' already exists.")
-            create_table(cursor, df, table_name)
-            insert_data(cursor, df, table_name)
+            create_table(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
+            insert_data(cursor, df, table_name, custom_schema_sql=custom_schema_sql)
 
         else:
             raise ValueError(f"Invalid option '{option}'")
@@ -1171,6 +1335,24 @@ def load_to_db(df, option=None, table_name=None,
             option         = option,
             status         = "SUCCESS"
         )
+
+        # ── Lineage capture — one hook point covers every connector ──────
+        # (csv, salesforce, hubspot, zoho, ...) since they all funnel
+        # through this same load_to_db() success path.
+        try:
+            from lineage.router import record_lineage
+            record_lineage(
+                connector_type = connector_type,
+                source_name    = file_name,
+                table_name     = table_name,
+                pipeline_id    = pipeline_id or f"pipeline_{table_name}",
+                columns        = list(df.columns),
+                rows_loaded    = df.shape[0],
+                status         = "SUCCESS",
+            )
+        except Exception as lineage_err:
+            print(f"[lineage] skipped for this run (non-fatal): {lineage_err}")
+
         print("\nPipeline completed successfully!")
 
     except Exception as e:
@@ -1188,6 +1370,21 @@ def load_to_db(df, option=None, table_name=None,
             status         = "FAILED",
             error_message  = str(e)
         )
+
+        try:
+            from lineage.router import record_lineage
+            record_lineage(
+                connector_type = connector_type,
+                source_name    = file_name,
+                table_name     = table_name,
+                pipeline_id    = pipeline_id or f"pipeline_{table_name}",
+                columns        = None,
+                rows_loaded    = 0,
+                status         = "FAILED",
+            )
+        except Exception as lineage_err:
+            print(f"[lineage] skipped for this run (non-fatal): {lineage_err}")
+
         raise
 
     finally:

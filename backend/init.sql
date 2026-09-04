@@ -59,6 +59,31 @@ CREATE TABLE IF NOT EXISTS airflow_pipeline_runs (
     created_at     TIMESTAMP DEFAULT NOW()
 );
 
+-- Reverse ETL Pipelines (definitions; runs/logs reuse pipeline_runs/pipeline_logs/pipeline_metrics above)
+CREATE TABLE IF NOT EXISTS reverse_etl_pipelines (
+    id                  SERIAL PRIMARY KEY,
+    pipeline_name       VARCHAR(200) UNIQUE NOT NULL,
+    source_table        VARCHAR(200),
+    source_query        TEXT,
+    filter_sql          TEXT,
+    destination_type    VARCHAR(50) NOT NULL,
+    connection_id       INTEGER REFERENCES saved_connections(id) ON DELETE SET NULL,
+    destination_config  JSONB DEFAULT '{}'::jsonb,
+    destination_object  VARCHAR(300),
+    field_mapping       JSONB DEFAULT '{}'::jsonb,
+    upsert_key          VARCHAR(200),
+    write_mode          VARCHAR(20) DEFAULT 'upsert',
+    batch_size          INTEGER DEFAULT 200,
+    sync_mode           VARCHAR(20) DEFAULT 'full',
+    incremental_column  VARCHAR(200),
+    last_synced_value   TEXT,
+    schedule            VARCHAR(100) DEFAULT '*/15 * * * *',
+    timezone            VARCHAR(50) DEFAULT 'Asia/Kolkata',
+    status              VARCHAR(30) DEFAULT 'created',
+    created_at          TIMESTAMP DEFAULT NOW(),
+    updated_at          TIMESTAMP DEFAULT NOW()
+);
+
 -- Pipeline DAG Logs
 CREATE TABLE IF NOT EXISTS pipeline_dag_logs (
     id            SERIAL PRIMARY KEY,
@@ -73,51 +98,50 @@ CREATE TABLE IF NOT EXISTS pipeline_dag_logs (
 
 
 -- -- ─────────────────────────────────────────────
--- -- USERS & ROLES
+-- -- USERS
 -- -- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(200) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'viewer',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login TIMESTAMP
+);
 
--- CREATE TABLE IF NOT EXISTS app_users (
---     id SERIAL PRIMARY KEY,
---     username VARCHAR(100) UNIQUE NOT NULL,
---     email VARCHAR(200) UNIQUE NOT NULL,
---     password_hash VARCHAR(255) NOT NULL,
---     role VARCHAR(50) NOT NULL DEFAULT 'viewer',  -- 'admin' | 'editor' | 'viewer'
---     is_active BOOLEAN DEFAULT TRUE,
---     created_at TIMESTAMP DEFAULT NOW(),
---     last_login TIMESTAMP
--- );
+INSERT INTO app_users (id, username, email, password_hash, role)
+VALUES (1, 'default_user', 'default@example.com', 'x', 'admin')
+ON CONFLICT (id) DO NOTHING;
 
--- -- Optional: team/pipeline ownership for finer-grained access
--- CREATE TABLE IF NOT EXISTS pipeline_ownership (
---     id SERIAL PRIMARY KEY,
---     pipeline_id VARCHAR(200) NOT NULL,
---     owner_user_id INTEGER REFERENCES app_users(id),
---     team VARCHAR(100),
---     created_at TIMESTAMP DEFAULT NOW()
--- );
+SELECT setval('app_users_id_seq', GREATEST((SELECT MAX(id) FROM app_users), 1));
 
--- -- Audit log for who did what
--- CREATE TABLE IF NOT EXISTS audit_log (
---     id SERIAL PRIMARY KEY,
---     user_id INTEGER REFERENCES app_users(id),
---     username VARCHAR(100),
---     action VARCHAR(100) NOT NULL,        -- 'create_pipeline', 'delete_pipeline', 'edit_connection', etc.
---     resource_type VARCHAR(50),           -- 'pipeline', 'connection'
---     resource_id VARCHAR(200),
---     details JSONB,
---     created_at TIMESTAMP DEFAULT NOW()
--- );
+CREATE TABLE IF NOT EXISTS sql_query_history (
+    query_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    connection_id INTEGER NOT NULL REFERENCES saved_connections(id),
+    user_id INTEGER NOT NULL REFERENCES app_users(id),
+    query_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'success',
+    row_count INTEGER,
+    error_message TEXT,
+    duration_ms INTEGER,
+    executed_at TIMESTAMPTZ DEFAULT now()
+);
 
+CREATE TABLE IF NOT EXISTS sql_saved_queries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    connection_id INTEGER NOT NULL REFERENCES saved_connections(id),
+    user_id INTEGER NOT NULL REFERENCES app_users(id),
+    name TEXT NOT NULL,
+    query_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Roles & Permissions
--- Admin
--- Can do everything — manage users, create/edit/delete pipelines, and manage connections.
-
--- Editor
--- Can create/edit/delete pipelines and create/edit connections — but cannot manage users.
-
--- Viewer
--- Can only view — dashboards, pipeline status, and logs — with no permission to create, edit, or delete anything.
+CREATE INDEX IF NOT EXISTS idx_sql_query_history_user ON sql_query_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_sql_query_history_connection ON sql_query_history(connection_id);
+CREATE INDEX IF NOT EXISTS idx_sql_query_history_executed_at ON sql_query_history(executed_at DESC);
 
 
 

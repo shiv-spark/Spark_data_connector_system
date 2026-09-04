@@ -11,7 +11,7 @@ import { fdt } from "@/lib/format";
 import { FolderUpload } from "@/pages/FolderUpload";
 import { PageHeader } from "@/components/PageHeader";
 
-type SourceType = "local_folder" | "s3" | "postgres" | "snowflake" | "api" | "google_sheet" | "figma_design";
+type SourceType = "local_folder" | "s3" | "postgres" | "mysql" | "oracle" | "mongodb" | "snowflake" | "api" | "google_sheet" | "figma_design" | "salesforce" | "hubspot" | "zoho";
 
 const initial = {
   name: "",
@@ -41,20 +41,46 @@ const initial = {
   aws_access_key_id: "",
   aws_secret_access_key: "",
   pg_schema: "",
+  mongo_connection_string: "",
+  mongo_collection: "",
   account: "",
   warehouse: "",
   schema: "PUBLIC",
   sf_role: "",
+  // Salesforce CRM
+  sf_crm_access_token: "",
+  sf_crm_instance_url: "",
+  sf_crm_login_url: "https://login.salesforce.com",
+  sf_crm_client_id: "",
+  sf_crm_client_secret: "",
+  sf_crm_username: "",
+  sf_crm_password: "",
+  sf_crm_security_token: "",
+  // HubSpot
+  hs_access_token: "",
+  // Zoho CRM
+  zoho_access_token: "",
+  zoho_refresh_token: "",
+  zoho_client_id: "",
+  zoho_client_secret: "",
+  zoho_accounts_url: "https://accounts.zoho.com",
+  zoho_api_domain: "https://www.zohoapis.com",
 };
 
 const sourceTypeLabels: Record<string, string> = {
   local_folder: "Local / mounted folder",
   s3: "S3 bucket",
   postgres: "Postgres database",
+  mysql: "MySQL database",
+  oracle: "Oracle database",
+  mongodb: "MongoDB",
   snowflake: "Snowflake",
   api: "API base URL",
   google_sheet: "Google Sheet",
   figma_design: "Figma design",
+  salesforce: "Salesforce",
+  hubspot: "HubSpot",
+  zoho: "Zoho CRM",
 };
 
 const groupConnectionsByType = (connections: any[]): [string, any[]][] => {
@@ -78,8 +104,20 @@ export const Connections = () => {
   const [testResult, setTestResult] = useState<{success: boolean; message: string; category: string} | null>(null);
   const [testPassed, setTestPassed] = useState(false);
   const [apiAdvancedConfigError, setApiAdvancedConfigError] = useState<string>("");
+  const DEFAULT_PORTS: Record<string, string> = {
+    postgres: "5432",
+    mysql: "3306",
+    oracle: "1521",
+    mongodb: "27017",
+  };
   const update = (key: keyof typeof initial, value: string) => {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "source_type" && DEFAULT_PORTS[value] && Object.values(DEFAULT_PORTS).includes(current.port)) {
+        next.port = DEFAULT_PORTS[value];
+      }
+      return next;
+    });
     if (key === "source_type") {
       setTestResult(null);
       setTestPassed(false);
@@ -136,11 +174,40 @@ export const Connections = () => {
       config.schema = form.pg_schema;
     }
 
+    if (form.source_type === "mongodb") {
+      config.connection_string = form.mongo_connection_string.trim();
+      config.collection = form.mongo_collection.trim();
+    }
+
     if (form.source_type === "snowflake") {
       config.account = form.account;
       config.warehouse = form.warehouse;
       config.schema = form.schema;
       config.role = form.sf_role;
+    }
+
+    if (form.source_type === "salesforce") {
+      config.access_token = form.sf_crm_access_token;
+      config.instance_url = form.sf_crm_instance_url.trim();
+      config.login_url = form.sf_crm_login_url.trim() || "https://login.salesforce.com";
+      config.client_id = form.sf_crm_client_id.trim();
+      config.client_secret = form.sf_crm_client_secret;
+      config.username = form.sf_crm_username.trim();
+      config.password = form.sf_crm_password;
+      config.security_token = form.sf_crm_security_token;
+    }
+
+    if (form.source_type === "hubspot") {
+      config.access_token = form.hs_access_token;
+    }
+
+    if (form.source_type === "zoho") {
+      config.access_token = form.zoho_access_token;
+      config.refresh_token = form.zoho_refresh_token;
+      config.client_id = form.zoho_client_id.trim();
+      config.client_secret = form.zoho_client_secret;
+      config.accounts_url = form.zoho_accounts_url.trim() || "https://accounts.zoho.com";
+      config.api_domain = form.zoho_api_domain.trim() || "https://www.zohoapis.com";
     }
 
     if (form.source_type === "api") {
@@ -282,10 +349,32 @@ export const Connections = () => {
       aws_access_key_id: "",
       aws_secret_access_key: "",
       pg_schema: cfg.schema || "",
+      mongo_connection_string: "",
+      mongo_collection: cfg.collection || "",
       account: cfg.account || "",
       warehouse: cfg.warehouse || "",
       schema: cfg.schema || "PUBLIC",
       sf_role: cfg.role || "",
+      // Salesforce CRM — secrets (access_token/client_secret/password/
+      // security_token) come back masked, so leave those blank; non-secret
+      // fields are safe to prefill.
+      sf_crm_access_token: "",
+      sf_crm_instance_url: cfg.instance_url || "",
+      sf_crm_login_url: cfg.login_url || "https://login.salesforce.com",
+      sf_crm_client_id: cfg.client_id || "",
+      sf_crm_client_secret: "",
+      sf_crm_username: cfg.username || "",
+      sf_crm_password: "",
+      sf_crm_security_token: "",
+      // HubSpot
+      hs_access_token: "",
+      // Zoho CRM
+      zoho_access_token: "",
+      zoho_refresh_token: "",
+      zoho_client_id: cfg.client_id || "",
+      zoho_client_secret: "",
+      zoho_accounts_url: cfg.accounts_url || "https://accounts.zoho.com",
+      zoho_api_domain: cfg.api_domain || "https://www.zohoapis.com",
     });
     setEditingId(connection.id);
     setTestPassed(true);
@@ -345,7 +434,13 @@ export const Connections = () => {
                 <option value="local_folder">Local / mounted folder</option>
                 <option value="s3">S3 bucket</option>
                 <option value="postgres">Postgres database</option>
+                <option value="mysql">MySQL database</option>
+                <option value="oracle">Oracle database</option>
+                <option value="mongodb">MongoDB</option>
                 <option value="snowflake">Snowflake</option>
+                <option value="salesforce">Salesforce</option>
+                <option value="hubspot">HubSpot</option>
+                <option value="zoho">Zoho CRM</option>
                 <option value="api">API base URL</option>
                 <option value="google_sheet">Google Sheet</option>
                 <option value="figma_design">Figma design</option>
@@ -398,6 +493,58 @@ export const Connections = () => {
                   <Input placeholder="Schema (optional)" value={form.pg_schema || ""} onChange={(e) => update("pg_schema", e.target.value)} />
                 </div>
               )}
+              {form.source_type === "mysql" && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <Input placeholder="Host" value={form.host} onChange={(e) => update("host", e.target.value)} />
+                  <Input placeholder="Database" value={form.database} onChange={(e) => update("database", e.target.value)} />
+                  <Input placeholder="User" value={form.user} onChange={(e) => update("user", e.target.value)} />
+                  <Input
+                    placeholder={editingId ? "Password (leave blank to keep existing)" : "Password"}
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => update("password", e.target.value)}
+                  />
+                  <Input placeholder="Port" value={form.port} onChange={(e) => update("port", e.target.value)} />
+                </div>
+              )}
+              {form.source_type === "oracle" && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <Input placeholder="Host" value={form.host} onChange={(e) => update("host", e.target.value)} />
+                  <Input placeholder="Service name" value={form.database} onChange={(e) => update("database", e.target.value)} />
+                  <Input placeholder="User" value={form.user} onChange={(e) => update("user", e.target.value)} />
+                  <Input
+                    placeholder={editingId ? "Password (leave blank to keep existing)" : "Password"}
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => update("password", e.target.value)}
+                  />
+                  <Input placeholder="Port" value={form.port} onChange={(e) => update("port", e.target.value)} />
+                </div>
+              )}
+              {form.source_type === "mongodb" && (
+                <div className="space-y-3">
+                  <Input
+                    placeholder={editingId ? "Connection string (leave blank to keep existing)" : "Connection string (mongodb:// or mongodb+srv://) — optional"}
+                    value={form.mongo_connection_string}
+                    onChange={(e) => update("mongo_connection_string", e.target.value)}
+                  />
+                  <p className="field-hint">Or fill in host/user/password below instead of a connection string.</p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input placeholder="Host" value={form.host} onChange={(e) => update("host", e.target.value)} disabled={!!form.mongo_connection_string} />
+                    <Input placeholder="Database" value={form.database} onChange={(e) => update("database", e.target.value)} />
+                    <Input placeholder="User (optional)" value={form.user} onChange={(e) => update("user", e.target.value)} disabled={!!form.mongo_connection_string} />
+                    <Input
+                      placeholder={editingId ? "Password (leave blank to keep existing)" : "Password (optional)"}
+                      type="password"
+                      value={form.password}
+                      onChange={(e) => update("password", e.target.value)}
+                      disabled={!!form.mongo_connection_string}
+                    />
+                    <Input placeholder="Port" value={form.port} onChange={(e) => update("port", e.target.value)} disabled={!!form.mongo_connection_string} />
+                    <Input placeholder="Collection" value={form.mongo_collection} onChange={(e) => update("mongo_collection", e.target.value)} />
+                  </div>
+                </div>
+              )}
               {form.source_type === "snowflake" && (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
@@ -418,6 +565,88 @@ export const Connections = () => {
                     />
                   </div>
                   <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
+                </div>
+              )}
+              {form.source_type === "salesforce" && (
+                <div className="space-y-3">
+                  <p className="field-hint">
+                    Either paste a ready access token + instance URL below, or fill in client id/secret + username/password so we log in fresh on every run.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input
+                      placeholder={editingId ? "Access token (leave blank to keep existing)" : "Access token (optional)"}
+                      type="password"
+                      value={form.sf_crm_access_token}
+                      onChange={(e) => update("sf_crm_access_token", e.target.value)}
+                    />
+                    <Input placeholder="Instance URL (optional)" value={form.sf_crm_instance_url} onChange={(e) => update("sf_crm_instance_url", e.target.value)} />
+                  </div>
+                  <Input placeholder="Login URL (default https://login.salesforce.com)" value={form.sf_crm_login_url} onChange={(e) => update("sf_crm_login_url", e.target.value)} />
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input placeholder="Client ID" value={form.sf_crm_client_id} onChange={(e) => update("sf_crm_client_id", e.target.value)} />
+                    <Input
+                      placeholder={editingId ? "Client secret (leave blank to keep existing)" : "Client secret"}
+                      type="password"
+                      value={form.sf_crm_client_secret}
+                      onChange={(e) => update("sf_crm_client_secret", e.target.value)}
+                    />
+                    <Input placeholder="Username" value={form.sf_crm_username} onChange={(e) => update("sf_crm_username", e.target.value)} />
+                    <Input
+                      placeholder={editingId ? "Password (leave blank to keep existing)" : "Password"}
+                      type="password"
+                      value={form.sf_crm_password}
+                      onChange={(e) => update("sf_crm_password", e.target.value)}
+                    />
+                  </div>
+                  <Input
+                    placeholder={editingId ? "Security token (leave blank to keep existing)" : "Security token (optional)"}
+                    type="password"
+                    value={form.sf_crm_security_token}
+                    onChange={(e) => update("sf_crm_security_token", e.target.value)}
+                  />
+                </div>
+              )}
+              {form.source_type === "hubspot" && (
+                <div className="space-y-3">
+                  <p className="field-hint">HubSpot Private App access tokens don't expire, so this is the only credential needed.</p>
+                  <Input
+                    placeholder={editingId ? "Private App access token (leave blank to keep existing)" : "Private App access token"}
+                    type="password"
+                    value={form.hs_access_token}
+                    onChange={(e) => update("hs_access_token", e.target.value)}
+                  />
+                </div>
+              )}
+              {form.source_type === "zoho" && (
+                <div className="space-y-3">
+                  <p className="field-hint">
+                    Either paste a ready access token below, or fill in refresh token + client id/secret so we mint a fresh token every run (Zoho tokens expire hourly).
+                  </p>
+                  <Input
+                    placeholder={editingId ? "Access token (leave blank to keep existing)" : "Access token (optional)"}
+                    type="password"
+                    value={form.zoho_access_token}
+                    onChange={(e) => update("zoho_access_token", e.target.value)}
+                  />
+                  <Input
+                    placeholder={editingId ? "Refresh token (leave blank to keep existing)" : "Refresh token (optional)"}
+                    type="password"
+                    value={form.zoho_refresh_token}
+                    onChange={(e) => update("zoho_refresh_token", e.target.value)}
+                  />
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input placeholder="Client ID" value={form.zoho_client_id} onChange={(e) => update("zoho_client_id", e.target.value)} />
+                    <Input
+                      placeholder={editingId ? "Client secret (leave blank to keep existing)" : "Client secret"}
+                      type="password"
+                      value={form.zoho_client_secret}
+                      onChange={(e) => update("zoho_client_secret", e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input placeholder="Accounts URL (region, default .com)" value={form.zoho_accounts_url} onChange={(e) => update("zoho_accounts_url", e.target.value)} />
+                    <Input placeholder="API domain (region, default .com)" value={form.zoho_api_domain} onChange={(e) => update("zoho_api_domain", e.target.value)} />
+                  </div>
                 </div>
               )}
               {form.source_type === "api" && (

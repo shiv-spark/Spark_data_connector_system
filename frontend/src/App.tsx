@@ -19,12 +19,14 @@ import { DataPreview } from "@/pages/DataPreview";
 import { Metrics } from "@/pages/Metrics";
 import { Logs } from "@/pages/Logs";
 import { MultiSource } from "@/pages/MultiSource";
+import { ReverseETL } from "@/pages/ReverseETL";
 import { Assistant } from "@/pages/Assistant";
 import Text2SQL from "@/pages/Text2SQL";
 import DataGenerator from "@/pages/DataGenerator";
 import SqlEditor from "@/pages/SqlEditor";
 import { Settings } from "@/pages/Settings";
 import { QualityChecks } from "@/pages/QualityChecks";
+import { Lineage } from "@/pages/Lineage";
 
 /** Console paths that used to live at the root, kept working as redirects. */
 const MOVED_TO_APP = [
@@ -37,12 +39,14 @@ const MOVED_TO_APP = [
   "metrics",
   "logs",
   "multi-source",
+  "reverse-etl",
   "assistant",
   "text2sql",
   "datagenerator",
   "sql-editor",
   "settings",
-  "quality"
+  "quality",
+  "lineage"
 ];
 
 export default function App() {
@@ -72,9 +76,11 @@ export default function App() {
           <Route path="ingest" element={<DirectIngest />} />
           <Route path="preview" element={<DataPreview />} />
           <Route path="quality" element={<QualityChecks />} />
+          <Route path="lineage" element={<Lineage />} />
           <Route path="metrics" element={<Metrics />} />
           <Route path="logs" element={<Logs />} />
           <Route path="multi-source" element={<MultiSource />} />
+          <Route path="reverse-etl" element={<ReverseETL />} />
           <Route path="assistant" element={<Assistant />} />
           <Route path="text2sql" element={<Text2SQL />} />
           <Route path="datagenerator" element={<DataGenerator />} />

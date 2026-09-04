@@ -1,6 +1,6 @@
 import { FormEvent, useState, useEffect, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { DownloadCloud, Loader2, ShieldCheck, Link2, Link2Off } from "lucide-react";
+import { DownloadCloud, Loader2, Link2, Link2Off } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,8 +8,12 @@ import { Input } from "@/components/ui/input";
 import { FolderUpload } from "@/pages/FolderUpload";
 import { PageHeader } from "@/components/PageHeader";
 import { DataQualityBuilder, BuiltQuality } from "@/components/DataQualityBuilder";
+import { SchemaBuilder, BuiltSchema } from "@/components/SchemaBuilder";
+import { QualityGateSummary } from "@/components/console/QualityGateSummary";
+import { LiveTablePicker } from "@/components/LiveTablePicker";
+import { buildSelectQuery } from "@/lib/sourceQuery";
 
-type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
+type Connector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "mysql" | "oracle" | "mongodb" | "s3" | "snowflake" | "salesforce" | "hubspot" | "zoho";
 
 const connectorLabels: Record<Connector, string> = {
   csv: "CSV",
@@ -17,8 +21,14 @@ const connectorLabels: Record<Connector, string> = {
   google_sheets: "Google Sheets",
   api: "API",
   postgres: "Postgres",
+  mysql: "MySQL",
+  oracle: "Oracle",
+  mongodb: "MongoDB",
   s3: "S3",
   snowflake: "Snowflake",
+  salesforce: "Salesforce",
+  hubspot: "HubSpot",
+  zoho: "Zoho CRM",
 };
 
 // Maps a connector to the `source_type` saved connections are stored under —
@@ -29,8 +39,14 @@ const CONNECTOR_TO_SOURCE_TYPE: Record<Connector, string> = {
   google_sheets: "google_sheet",
   api: "api",
   postgres: "postgres",
+  mysql: "mysql",
+  oracle: "oracle",
+  mongodb: "mongodb",
   s3: "s3",
   snowflake: "snowflake",
+  salesforce: "salesforce",
+  hubspot: "hubspot",
+  zoho: "zoho",
 };
 
 const initial = {
@@ -49,6 +65,26 @@ const initial = {
   password: "",
   port: "5432",
   query: "",
+  my_host: "",
+  my_database: "",
+  my_user: "",
+  my_password: "",
+  my_port: "3306",
+  my_query: "",
+  ora_host: "",
+  ora_database: "",
+  ora_user: "",
+  ora_password: "",
+  ora_port: "1521",
+  ora_query: "",
+  mongo_host: "",
+  mongo_database: "",
+  mongo_user: "",
+  mongo_password: "",
+  mongo_port: "27017",
+  mongo_connection_string: "",
+  mongo_collection: "",
+  mongo_query: "",
   bucket: "",
   key: "",
   file_type: "csv",
@@ -62,17 +98,46 @@ const initial = {
   sf_schema: "PUBLIC",
   sf_role: "",
   sf_query: "",
+  // Salesforce CRM
+  sf_crm_access_token: "",
+  sf_crm_instance_url: "",
+  sf_crm_login_url: "https://login.salesforce.com",
+  sf_crm_client_id: "",
+  sf_crm_client_secret: "",
+  sf_crm_username: "",
+  sf_crm_password: "",
+  sf_crm_security_token: "",
+  sf_crm_object_name: "",
+  sf_crm_soql_query: "",
+  // HubSpot
+  hs_access_token: "",
+  hs_object_type: "contacts",
+  hs_properties: "",
+  // Zoho CRM
+  zoho_access_token: "",
+  zoho_refresh_token: "",
+  zoho_client_id: "",
+  zoho_client_secret: "",
+  zoho_accounts_url: "https://accounts.zoho.com",
+  zoho_api_domain: "https://www.zohoapis.com",
+  zoho_module: "",
+  zoho_criteria: "",
 };
 
 export const DirectIngest = () => {
   const [form, setForm] = useState(initial);
   const [quality, setQuality] = useState<BuiltQuality | null>(null);
+  const [customSchema, setCustomSchema] = useState<BuiltSchema | null>(null);
   const [result, setResult] = useState<any>(null);
   const [apiConfigError, setApiConfigError] = useState<string>("");
 
   // ── Saved connection support — same UX as CreatePipeline ──────────────
   const [useExistingConnection, setUseExistingConnection] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>("");
+  // ── Table-vs-query mode for Postgres — Direct Ingest had no "pick a
+  // table" option before; this brings it in line with Create Pipeline. ──
+  const [pgMode, setPgMode] = useState<"table" | "query">("table");
+  const [pgTableInput, setPgTableInput] = useState("");
   const [connectionError, setConnectionError] = useState<string>("");
   // The folder a saved csv/excel connection resolves to, purely so we can
   // list the files inside it — never submitted to the backend directly.
@@ -148,12 +213,46 @@ export const DirectIngest = () => {
     }
 
     if (form.connector === "postgres") {
-      if (!form.query.trim()) return null;
-      if (useExistingConnection) return connId ? { connection_id: connId, pg_query: form.query } : null;
+      const resolvedQuery = pgMode === "table" ? buildSelectQuery(pgTableInput) : form.query;
+      if (!resolvedQuery.trim()) return null;
+      if (useExistingConnection) return connId ? { connection_id: connId, pg_query: resolvedQuery } : null;
       if (!form.host || !form.database || !form.user) return null;
       return {
         src_pg_host: form.host, src_pg_db: form.database, src_pg_user: form.user,
-        src_pg_password: form.password, src_pg_port: form.port, pg_query: form.query,
+        src_pg_password: form.password, src_pg_port: form.port, pg_query: resolvedQuery,
+      };
+    }
+
+    if (form.connector === "mysql") {
+      if (!form.my_query.trim()) return null;
+      if (useExistingConnection) return connId ? { connection_id: connId, my_query: form.my_query } : null;
+      if (!form.my_host || !form.my_database || !form.my_user) return null;
+      return {
+        src_my_host: form.my_host, src_my_db: form.my_database, src_my_user: form.my_user,
+        src_my_password: form.my_password, src_my_port: form.my_port, my_query: form.my_query,
+      };
+    }
+
+    if (form.connector === "oracle") {
+      if (!form.ora_query.trim()) return null;
+      if (useExistingConnection) return connId ? { connection_id: connId, ora_query: form.ora_query } : null;
+      if (!form.ora_host || !form.ora_database || !form.ora_user) return null;
+      return {
+        src_ora_host: form.ora_host, src_ora_db: form.ora_database, src_ora_user: form.ora_user,
+        src_ora_password: form.ora_password, src_ora_port: form.ora_port, ora_query: form.ora_query,
+      };
+    }
+
+    if (form.connector === "mongodb") {
+      if (!form.mongo_collection.trim()) return null;
+      if (useExistingConnection) return connId ? { connection_id: connId, mongo_collection: form.mongo_collection, mongo_query: form.mongo_query } : null;
+      if (!form.mongo_connection_string && (!form.mongo_host || !form.mongo_database)) return null;
+      if (form.mongo_connection_string && !form.mongo_database) return null;
+      return {
+        src_mongo_host: form.mongo_host, src_mongo_db: form.mongo_database,
+        src_mongo_user: form.mongo_user, src_mongo_password: form.mongo_password,
+        src_mongo_port: form.mongo_port, src_mongo_connection_string: form.mongo_connection_string,
+        mongo_collection: form.mongo_collection, mongo_query: form.mongo_query,
       };
     }
 
@@ -177,6 +276,43 @@ export const DirectIngest = () => {
       };
     }
 
+    if (form.connector === "salesforce") {
+      if (useExistingConnection) {
+        if (!connId) return null;
+        if (!form.sf_crm_object_name.trim() && !form.sf_crm_soql_query.trim()) return null;
+        return { connection_id: connId, sf_crm_object_name: form.sf_crm_object_name, sf_crm_soql_query: form.sf_crm_soql_query };
+      }
+      const hasAuth = (form.sf_crm_access_token && form.sf_crm_instance_url) ||
+        (form.sf_crm_client_id && form.sf_crm_client_secret && form.sf_crm_username && form.sf_crm_password);
+      if (!hasAuth) return null;
+      if (!form.sf_crm_object_name.trim() && !form.sf_crm_soql_query.trim()) return null;
+      return {
+        sf_crm_access_token: form.sf_crm_access_token, sf_crm_instance_url: form.sf_crm_instance_url,
+        sf_crm_login_url: form.sf_crm_login_url, sf_crm_client_id: form.sf_crm_client_id,
+        sf_crm_client_secret: form.sf_crm_client_secret, sf_crm_username: form.sf_crm_username,
+        sf_crm_password: form.sf_crm_password, sf_crm_security_token: form.sf_crm_security_token,
+        sf_crm_object_name: form.sf_crm_object_name, sf_crm_soql_query: form.sf_crm_soql_query,
+      };
+    }
+
+    if (form.connector === "hubspot") {
+      if (useExistingConnection) return connId ? { connection_id: connId, hs_object_type: form.hs_object_type } : null;
+      if (!form.hs_access_token.trim()) return null;
+      return { hs_access_token: form.hs_access_token, hs_object_type: form.hs_object_type };
+    }
+
+    if (form.connector === "zoho") {
+      if (useExistingConnection) return connId && form.zoho_module.trim() ? { connection_id: connId, zoho_module: form.zoho_module, zoho_criteria: form.zoho_criteria } : null;
+      const hasAuth = form.zoho_access_token || (form.zoho_refresh_token && form.zoho_client_id && form.zoho_client_secret);
+      if (!hasAuth || !form.zoho_module.trim()) return null;
+      return {
+        zoho_access_token: form.zoho_access_token, zoho_refresh_token: form.zoho_refresh_token,
+        zoho_client_id: form.zoho_client_id, zoho_client_secret: form.zoho_client_secret,
+        zoho_accounts_url: form.zoho_accounts_url, zoho_api_domain: form.zoho_api_domain,
+        zoho_module: form.zoho_module, zoho_criteria: form.zoho_criteria,
+      };
+    }
+
     if (form.connector === "google_sheets") {
       if (useExistingConnection) return connId ? { connection_id: connId } : null;
       return form.sheet_url.trim() ? { sheet_url: form.sheet_url } : null;
@@ -197,10 +333,21 @@ export const DirectIngest = () => {
   }, [
     form.connector, form.file_path,
     useExistingConnection, selectedConnectionId,
+    pgMode, pgTableInput,
     form.query, form.host, form.database, form.user, form.password, form.port,
+    form.my_query, form.my_host, form.my_database, form.my_user, form.my_password, form.my_port,
+    form.ora_query, form.ora_host, form.ora_database, form.ora_user, form.ora_password, form.ora_port,
+    form.mongo_collection, form.mongo_query, form.mongo_host, form.mongo_database, form.mongo_user,
+    form.mongo_password, form.mongo_port, form.mongo_connection_string,
     form.sf_query, form.sf_account, form.sf_user, form.sf_password, form.sf_warehouse, form.sf_database, form.sf_schema, form.sf_role,
     form.bucket, form.key, form.file_type, form.s3_access_key, form.s3_secret_key,
     form.sheet_url, form.url, form.api_config,
+    form.sf_crm_access_token, form.sf_crm_instance_url, form.sf_crm_login_url, form.sf_crm_client_id,
+    form.sf_crm_client_secret, form.sf_crm_username, form.sf_crm_password, form.sf_crm_security_token,
+    form.sf_crm_object_name, form.sf_crm_soql_query,
+    form.hs_access_token, form.hs_object_type,
+    form.zoho_access_token, form.zoho_refresh_token, form.zoho_client_id, form.zoho_client_secret,
+    form.zoho_accounts_url, form.zoho_api_domain, form.zoho_module, form.zoho_criteria,
   ]);
 
   const ingest = useMutation({
@@ -223,6 +370,12 @@ export const DirectIngest = () => {
         ? { df_quality_config: quality.config, df_quality_on_fail: quality.on_fail }
         : {};
 
+      // Optional user-defined schema — {"column": "integer"|"float"|"boolean"|"date"|"timestamp"|"text"|"json"}.
+      // Enforced (with best-effort casting) instead of the auto-detected types. See utils/schema_applier.py.
+      const customSchemaFields = customSchema?.hasAnyCustomType
+        ? { custom_schema: customSchema.schema }
+        : {};
+
       const common = {
         option: form.option,
         table_name: form.table_name,
@@ -230,6 +383,7 @@ export const DirectIngest = () => {
         incremental_column: form.sync_mode === "incremental" ? form.incremental_column : null,
         connection_id: connectionId,
         ...dfQualityFields,
+        ...customSchemaFields,
       };
 
       let parsedApiConfig: Record<string, unknown> = {};
@@ -242,12 +396,31 @@ export const DirectIngest = () => {
         }
       }
 
+      // ── Force-resolve the final Postgres query at submit time — never
+      // rely on onChange having fired correctly. ──
+      const finalPgQuery = form.connector === "postgres"
+        ? (pgMode === "table" ? buildSelectQuery(pgTableInput) : form.query)
+        : form.query;
+
       const payloads = {
         csv: { ...common, file_path: form.file_path },
         excel: { ...common, file_path: form.file_path },
         google_sheets: { ...common, sheet_url: form.sheet_url },
         api: { ...common, url: form.url, ...parsedApiConfig },
-        postgres: { ...common, host: form.host, database: form.database, user: form.user, password: form.password, port: form.port, query: form.query },
+        postgres: { ...common, host: form.host, database: form.database, user: form.user, password: form.password, port: form.port, query: finalPgQuery },
+        mysql: { ...common, host: form.my_host, database: form.my_database, user: form.my_user, password: form.my_password, port: form.my_port, query: form.my_query },
+        oracle: { ...common, host: form.ora_host, database: form.ora_database, user: form.ora_user, password: form.ora_password, port: form.ora_port, query: form.ora_query },
+        mongodb: {
+          ...common,
+          host: form.mongo_host,
+          database: form.mongo_database,
+          user: form.mongo_user,
+          password: form.mongo_password,
+          port: form.mongo_port,
+          connection_string: form.mongo_connection_string || null,
+          collection: form.mongo_collection,
+          query: form.mongo_query || null,
+        },
         s3: {
           ...common,
           bucket: form.bucket,
@@ -267,6 +440,38 @@ export const DirectIngest = () => {
           role: form.sf_role || null,
           query: form.sf_query,
         },
+        salesforce: {
+          ...common,
+          access_token: form.sf_crm_access_token || null,
+          instance_url: form.sf_crm_instance_url || null,
+          login_url: form.sf_crm_login_url || "https://login.salesforce.com",
+          client_id: form.sf_crm_client_id || null,
+          client_secret: form.sf_crm_client_secret || null,
+          username: form.sf_crm_username || null,
+          password: form.sf_crm_password || null,
+          security_token: form.sf_crm_security_token || null,
+          object_name: form.sf_crm_object_name || null,
+          soql_query: form.sf_crm_soql_query || null,
+        },
+        hubspot: {
+          ...common,
+          access_token: form.hs_access_token || null,
+          object_type: form.hs_object_type || "contacts",
+          properties: form.hs_properties.trim()
+            ? form.hs_properties.split(",").map((p) => p.trim()).filter(Boolean)
+            : null,
+        },
+        zoho: {
+          ...common,
+          access_token: form.zoho_access_token || null,
+          refresh_token: form.zoho_refresh_token || null,
+          client_id: form.zoho_client_id || null,
+          client_secret: form.zoho_client_secret || null,
+          accounts_url: form.zoho_accounts_url || "https://accounts.zoho.com",
+          api_domain: form.zoho_api_domain || "https://www.zohoapis.com",
+          module: form.zoho_module || null,
+          criteria: form.zoho_criteria || null,
+        },
       };
       const endpoints = {
         csv: "/ingest_csv",
@@ -274,8 +479,14 @@ export const DirectIngest = () => {
         google_sheets: "/ingest_google_sheet",
         api: "/ingest_api",
         postgres: "/ingest_postgres",
+        mysql: "/ingest_mysql",
+        oracle: "/ingest_oracle",
+        mongodb: "/ingest_mongodb",
         s3: "/ingest_s3",
         snowflake: "/ingest_snowflake",
+        salesforce: "/ingest_salesforce",
+        hubspot: "/ingest_hubspot",
+        zoho: "/ingest_zoho",
       };
       const response = await api.post(endpoints[form.connector], payloads[form.connector]);
       return response.data;
@@ -462,6 +673,40 @@ export const DirectIngest = () => {
                     <Input placeholder="Port" value={form.port} onChange={(e) => update("port", e.target.value)} />
                   </div>
                 )}
+                {form.connector === "mysql" && (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Input placeholder="Host" value={form.my_host} onChange={(e) => update("my_host", e.target.value)} required />
+                    <Input placeholder="Database" value={form.my_database} onChange={(e) => update("my_database", e.target.value)} required />
+                    <Input placeholder="User" value={form.my_user} onChange={(e) => update("my_user", e.target.value)} required />
+                    <Input placeholder="Password" type="password" value={form.my_password} onChange={(e) => update("my_password", e.target.value)} required />
+                    <Input placeholder="Port" value={form.my_port} onChange={(e) => update("my_port", e.target.value)} />
+                  </div>
+                )}
+                {form.connector === "oracle" && (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Input placeholder="Host" value={form.ora_host} onChange={(e) => update("ora_host", e.target.value)} required />
+                    <Input placeholder="Service name" value={form.ora_database} onChange={(e) => update("ora_database", e.target.value)} required />
+                    <Input placeholder="User" value={form.ora_user} onChange={(e) => update("ora_user", e.target.value)} required />
+                    <Input placeholder="Password" type="password" value={form.ora_password} onChange={(e) => update("ora_password", e.target.value)} required />
+                    <Input placeholder="Port" value={form.ora_port} onChange={(e) => update("ora_port", e.target.value)} />
+                  </div>
+                )}
+                {form.connector === "mongodb" && (
+                  <div className="space-y-3">
+                    <Input
+                      placeholder="Connection string (mongodb:// or mongodb+srv://) — optional, overrides host/user/password"
+                      value={form.mongo_connection_string}
+                      onChange={(e) => update("mongo_connection_string", e.target.value)}
+                    />
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Input placeholder="Host" value={form.mongo_host} onChange={(e) => update("mongo_host", e.target.value)} disabled={!!form.mongo_connection_string} />
+                      <Input placeholder="Database" value={form.mongo_database} onChange={(e) => update("mongo_database", e.target.value)} required />
+                      <Input placeholder="User (optional)" value={form.mongo_user} onChange={(e) => update("mongo_user", e.target.value)} disabled={!!form.mongo_connection_string} />
+                      <Input placeholder="Password (optional)" type="password" value={form.mongo_password} onChange={(e) => update("mongo_password", e.target.value)} disabled={!!form.mongo_connection_string} />
+                      <Input placeholder="Port" value={form.mongo_port} onChange={(e) => update("mongo_port", e.target.value)} disabled={!!form.mongo_connection_string} />
+                    </div>
+                  </div>
+                )}
                 {form.connector === "s3" && (
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <Input placeholder="Bucket" value={form.bucket} onChange={(e) => update("bucket", e.target.value)} required />
@@ -482,16 +727,125 @@ export const DirectIngest = () => {
                     <Input placeholder="Role (optional)" value={form.sf_role} onChange={(e) => update("sf_role", e.target.value)} />
                   </div>
                 )}
+                {form.connector === "salesforce" && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Either paste a ready access token + instance URL, or fill in client id/secret + username/password to log in fresh on every run.
+                    </p>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Input placeholder="Access token (optional)" type="password" value={form.sf_crm_access_token} onChange={(e) => update("sf_crm_access_token", e.target.value)} />
+                      <Input placeholder="Instance URL (optional)" value={form.sf_crm_instance_url} onChange={(e) => update("sf_crm_instance_url", e.target.value)} />
+                    </div>
+                    <Input placeholder="Login URL (default https://login.salesforce.com)" value={form.sf_crm_login_url} onChange={(e) => update("sf_crm_login_url", e.target.value)} />
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Input placeholder="Client ID" value={form.sf_crm_client_id} onChange={(e) => update("sf_crm_client_id", e.target.value)} />
+                      <Input placeholder="Client secret" type="password" value={form.sf_crm_client_secret} onChange={(e) => update("sf_crm_client_secret", e.target.value)} />
+                      <Input placeholder="Username" value={form.sf_crm_username} onChange={(e) => update("sf_crm_username", e.target.value)} />
+                      <Input placeholder="Password" type="password" value={form.sf_crm_password} onChange={(e) => update("sf_crm_password", e.target.value)} />
+                    </div>
+                    <Input placeholder="Security token (optional)" type="password" value={form.sf_crm_security_token} onChange={(e) => update("sf_crm_security_token", e.target.value)} />
+                  </div>
+                )}
+                {form.connector === "hubspot" && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">HubSpot Private App access tokens don't expire, so this is the only credential needed.</p>
+                    <Input placeholder="Private App access token" type="password" value={form.hs_access_token} onChange={(e) => update("hs_access_token", e.target.value)} required />
+                  </div>
+                )}
+                {form.connector === "zoho" && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Either paste a ready access token, or fill in refresh token + client id/secret to mint a fresh one every run (Zoho tokens expire hourly).
+                    </p>
+                    <Input placeholder="Access token (optional)" type="password" value={form.zoho_access_token} onChange={(e) => update("zoho_access_token", e.target.value)} />
+                    <Input placeholder="Refresh token (optional)" type="password" value={form.zoho_refresh_token} onChange={(e) => update("zoho_refresh_token", e.target.value)} />
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Input placeholder="Client ID" value={form.zoho_client_id} onChange={(e) => update("zoho_client_id", e.target.value)} />
+                      <Input placeholder="Client secret" type="password" value={form.zoho_client_secret} onChange={(e) => update("zoho_client_secret", e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Input placeholder="Accounts URL (region, default .com)" value={form.zoho_accounts_url} onChange={(e) => update("zoho_accounts_url", e.target.value)} />
+                      <Input placeholder="API domain (region, default .com)" value={form.zoho_api_domain} onChange={(e) => update("zoho_api_domain", e.target.value)} />
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
             {/* ── Query fields — always shown regardless of new vs saved connection,
                  same as CreatePipeline's Postgres/Snowflake table/query toggle area. ── */}
             {form.connector === "postgres" && (
-              <textarea className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground" placeholder="SQL query" value={form.query} onChange={(e) => update("query", e.target.value)} required />
+              <LiveTablePicker
+                fieldKey="direct-ingest-postgres"
+                mode={pgMode}
+                onModeChange={setPgMode}
+                tableInput={pgTableInput}
+                onTableInputChange={setPgTableInput}
+                queryValue={form.query}
+                onQueryChange={(v) => update("query", v)}
+                buildQuery={buildSelectQuery}
+                canFetch={
+                  useExistingConnection
+                    ? !!selectedConnectionId
+                    : !!(form.host && form.database && form.user)
+                }
+                buildPayload={() =>
+                  useExistingConnection && selectedConnectionId
+                    ? { connector_type: "postgres", connection_id: parseInt(selectedConnectionId, 10) }
+                    : {
+                        connector_type: "postgres",
+                        src_pg_host: form.host,
+                        src_pg_db: form.database,
+                        src_pg_user: form.user,
+                        src_pg_password: form.password,
+                        src_pg_port: form.port,
+                      }
+                }
+              />
+            )}
+            {form.connector === "mysql" && (
+              <textarea className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground" placeholder="SQL query" value={form.my_query} onChange={(e) => update("my_query", e.target.value)} required />
+            )}
+            {form.connector === "oracle" && (
+              <textarea className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground" placeholder="SQL query" value={form.ora_query} onChange={(e) => update("ora_query", e.target.value)} required />
+            )}
+            {form.connector === "mongodb" && (
+              <div className="space-y-2">
+                <Input placeholder="Collection" value={form.mongo_collection} onChange={(e) => update("mongo_collection", e.target.value)} required />
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground"
+                  placeholder='Filter (optional JSON), e.g. {"status": "active"} — leave blank to match all documents'
+                  value={form.mongo_query}
+                  onChange={(e) => update("mongo_query", e.target.value)}
+                />
+              </div>
             )}
             {form.connector === "snowflake" && (
               <textarea className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground" placeholder="SQL query" value={form.sf_query} onChange={(e) => update("sf_query", e.target.value)} required />
+            )}
+            {form.connector === "salesforce" && (
+              <div className="space-y-2">
+                <Input placeholder="Object name, e.g. Account, Contact, Lead, Opportunity" value={form.sf_crm_object_name} onChange={(e) => update("sf_crm_object_name", e.target.value)} />
+                <p className="text-xs text-muted-foreground">Or provide an explicit SOQL query below — it overrides the object name entirely.</p>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground dark:bg-background dark:text-foreground"
+                  placeholder="SOQL query (optional), e.g. SELECT Id, Name FROM Account"
+                  value={form.sf_crm_soql_query}
+                  onChange={(e) => update("sf_crm_soql_query", e.target.value)}
+                />
+              </div>
+            )}
+            {form.connector === "hubspot" && (
+              <div className="space-y-2">
+                <Input placeholder="Object type (default contacts)" value={form.hs_object_type} onChange={(e) => update("hs_object_type", e.target.value)} />
+                <Input placeholder="Properties (comma-separated, optional — default set returned if omitted)" value={form.hs_properties} onChange={(e) => update("hs_properties", e.target.value)} />
+              </div>
+            )}
+            {form.connector === "zoho" && (
+              <div className="space-y-2">
+                <Input placeholder="Module, e.g. Leads, Contacts, Deals, Accounts" value={form.zoho_module} onChange={(e) => update("zoho_module", e.target.value)} required />
+                <Input placeholder="Search criteria (optional), e.g. (Email:equals:a@b.com)" value={form.zoho_criteria} onChange={(e) => update("zoho_criteria", e.target.value)} />
+              </div>
             )}
 
             {/* ── Friendly data preview + quality checks — works for every
@@ -504,6 +858,15 @@ export const DirectIngest = () => {
               onChange={setQuality}
             />
 
+            {/* ── Optional user-defined schema — works for every connector,
+                 any file/source type, via the same /preview_source data. ── */}
+            <SchemaBuilder
+              connector={form.connector}
+              params={previewParams}
+              auto={["csv", "excel"].includes(form.connector)}
+              onChange={setCustomSchema}
+            />
+
             <Button type="submit" disabled={ingest.isPending}>
               {ingest.isPending ? <Loader2 className="animate-spin" /> : <DownloadCloud />} Run Ingest
             </Button>
@@ -514,13 +877,25 @@ export const DirectIngest = () => {
       {(result || ingest.error) && (
         <Card className={ingest.error ? "border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950" : "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950"}>
           <CardContent className="p-4 space-y-3">
-            {result?.df_quality && (
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <ShieldCheck className="h-4 w-4" />
-                Data quality: {result.df_quality.status} ({result.df_quality.passed}/{result.df_quality.total_checks} checks passed)
+            {result?.status === "FAILED" && (
+              <div className="text-sm font-medium text-rose-700 dark:text-rose-400">
+                Ingest failed{result?.error ? `: ${result.error}` : "."}
               </div>
             )}
-            <pre className="max-h-80 overflow-auto text-xs text-foreground">{JSON.stringify(result ?? (ingest.error as any)?.response?.data ?? (ingest.error as Error).message, null, 2)}</pre>
+            <QualityGateSummary
+              title="Pre-ingest data quality"
+              gate={result?.df_quality}
+              connectionId={useExistingConnection && selectedConnectionId ? parseInt(selectedConnectionId, 10) : undefined}
+            />
+            <QualityGateSummary
+              title="Post-load data quality"
+              gate={result?.quality}
+              connectionId={useExistingConnection && selectedConnectionId ? parseInt(selectedConnectionId, 10) : undefined}
+            />
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none">Raw response</summary>
+              <pre className="mt-2 max-h-80 overflow-auto text-xs text-foreground">{JSON.stringify(result ?? (ingest.error as any)?.response?.data ?? (ingest.error as Error).message, null, 2)}</pre>
+            </details>
           </CardContent>
         </Card>
       )}

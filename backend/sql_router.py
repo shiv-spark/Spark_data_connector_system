@@ -18,6 +18,7 @@ from psycopg2 import pool
 
 from sql_executors import get_executor, is_sql_capable, get_supported_types
 from sql_executors.base import QueryError as SqlQueryError
+from utils import history_store
 
 router = APIRouter(prefix="/sql", tags=["sql"])
 
@@ -374,3 +375,249 @@ async def get_connection_schema(
             status_code=500,
             detail={"error_type": "schema", "message": str(e)}
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Saved queries — CRUD + version history
+#
+# `sql_saved_queries` (created in init.sql) previously had no endpoints at
+# all — no way to save, list, edit, or delete a named query existed
+# anywhere in the app. This adds the full CRUD, plus versioning on PUT
+# using the same generic entity_history table pipelines/reverse_etl use
+# (entity_type="sql_query", entity_id=str(query id)).
+# ─────────────────────────────────────────────────────────────────────────
+
+class SavedQueryCreate(BaseModel):
+    connection_id: int
+    name: str
+    query_text: str
+
+
+class SavedQueryUpdate(BaseModel):
+    name: Optional[str] = None
+    query_text: Optional[str] = None
+    connection_id: Optional[int] = None
+
+
+class SavedQueryItem(BaseModel):
+    id: str
+    connection_id: int
+    connection_name: Optional[str] = ""
+    connection_type: Optional[str] = ""
+    name: str
+    query_text: str
+    created_at: str
+    updated_at: str
+
+
+def _saved_query_row_to_item(row) -> SavedQueryItem:
+    return SavedQueryItem(
+        id=str(row[0]),
+        connection_id=row[1],
+        name=row[2],
+        query_text=row[3],
+        created_at=str(row[4]) if row[4] else "",
+        updated_at=str(row[5]) if row[5] else "",
+        connection_name=row[6] if len(row) > 6 and row[6] else "",
+        connection_type=row[7] if len(row) > 7 and row[7] else "",
+    )
+
+
+@router.post("/saved_queries", response_model=SavedQueryItem)
+async def create_saved_query(req: SavedQueryCreate):
+    """Save the current editor query under a name, so it can be reloaded/edited later."""
+    user_id = 1  # TODO: replace with actual user ID from authentication
+
+    conn = DB_POOL.getconn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO sql_saved_queries (connection_id, user_id, name, query_text)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, connection_id, name, query_text, created_at, updated_at
+            """,
+            (req.connection_id, user_id, req.name, req.query_text),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return _saved_query_row_to_item(row)
+    except psycopg2.errors.ForeignKeyViolation:
+        conn.rollback()
+        raise HTTPException(status_code=404, detail=f"Connection {req.connection_id} not found")
+    finally:
+        cur.close()
+        DB_POOL.putconn(conn)
+
+
+@router.get("/saved_queries", response_model=List[SavedQueryItem])
+async def list_saved_queries(connection_id: Optional[int] = Query(None)):
+    """List saved queries for the current user, newest-edited first."""
+    user_id = 1  # TODO: replace with actual user ID from authentication
+
+    conn = DB_POOL.getconn()
+    cur = conn.cursor()
+    try:
+        if connection_id:
+            cur.execute(
+                """
+                SELECT q.id, q.connection_id, q.name, q.query_text, q.created_at, q.updated_at,
+                       c.name AS connection_name, c.source_type AS connection_type
+                FROM sql_saved_queries q
+                LEFT JOIN saved_connections c ON q.connection_id = c.id
+                WHERE q.user_id = %s AND q.connection_id = %s
+                ORDER BY q.updated_at DESC
+                """,
+                (user_id, connection_id),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT q.id, q.connection_id, q.name, q.query_text, q.created_at, q.updated_at,
+                       c.name AS connection_name, c.source_type AS connection_type
+                FROM sql_saved_queries q
+                LEFT JOIN saved_connections c ON q.connection_id = c.id
+                WHERE q.user_id = %s
+                ORDER BY q.updated_at DESC
+                """,
+                (user_id,),
+            )
+        return [_saved_query_row_to_item(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        DB_POOL.putconn(conn)
+
+
+@router.get("/saved_queries/{query_id}", response_model=SavedQueryItem)
+async def get_saved_query(query_id: str):
+    conn = DB_POOL.getconn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT q.id, q.connection_id, q.name, q.query_text, q.created_at, q.updated_at,
+                   c.name AS connection_name, c.source_type AS connection_type
+            FROM sql_saved_queries q
+            LEFT JOIN saved_connections c ON q.connection_id = c.id
+            WHERE q.id = %s
+            """,
+            (query_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Saved query not found")
+        return _saved_query_row_to_item(row)
+    finally:
+        cur.close()
+        DB_POOL.putconn(conn)
+
+
+@router.put("/saved_queries/{query_id}", response_model=SavedQueryItem)
+async def update_saved_query(query_id: str, req: SavedQueryUpdate):
+    """Edit a saved query. The version being replaced is snapshotted first,
+    so it can be recovered via /saved_queries/{id}/restore/{version_id}."""
+    conn = DB_POOL.getconn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, connection_id, name, query_text FROM sql_saved_queries WHERE id = %s",
+            (query_id,),
+        )
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Saved query not found")
+
+        if req.name is None and req.query_text is None and req.connection_id is None:
+            raise HTTPException(status_code=400, detail="At least one field required for update.")
+
+        # Only a real query_text change is a "version" worth recovering —
+        # renaming or repointing the connection alone shouldn't clutter
+        # history with entries that have nothing to actually restore.
+        if req.query_text is not None and req.query_text != existing[3]:
+            history_store.push_history(
+                entity_type="sql_query",
+                entity_id=str(query_id),
+                config={
+                    "connection_id": existing[1],
+                    "name": existing[2],
+                    "query_text": existing[3],
+                },
+                label="Edited query",
+            )
+
+        cur.execute(
+            """
+            UPDATE sql_saved_queries
+            SET name = COALESCE(%s, name),
+                query_text = COALESCE(%s, query_text),
+                connection_id = COALESCE(%s, connection_id),
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, connection_id, name, query_text, created_at, updated_at
+            """,
+            (req.name, req.query_text, req.connection_id, query_id),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return _saved_query_row_to_item(row)
+    except psycopg2.errors.ForeignKeyViolation:
+        conn.rollback()
+        raise HTTPException(status_code=404, detail=f"Connection {req.connection_id} not found")
+    finally:
+        cur.close()
+        DB_POOL.putconn(conn)
+
+
+@router.delete("/saved_queries/{query_id}")
+async def delete_saved_query(query_id: str):
+    conn = DB_POOL.getconn()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM sql_saved_queries WHERE id = %s RETURNING id", (query_id,))
+        deleted = cur.fetchone()
+        conn.commit()
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Saved query not found")
+        return {"status": "DELETED", "id": query_id}
+    finally:
+        cur.close()
+        DB_POOL.putconn(conn)
+
+
+@router.get("/saved_queries/{query_id}/history")
+async def get_saved_query_history(query_id: str):
+    return {"history": history_store.list_history("sql_query", str(query_id))}
+
+
+@router.post("/saved_queries/{query_id}/restore/{version_id}", response_model=SavedQueryItem)
+async def restore_saved_query_version(query_id: str, version_id: int):
+    """Restore = UPDATE name + query_text back to the snapshotted values.
+    The restored version and anything newer than it is then dropped from
+    history — no redo, same rule as pipelines/reverse-etl/dashboards."""
+    version = history_store.get_version("sql_query", str(query_id), version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="History version not found.")
+    cfg = version["config"]
+
+    conn = DB_POOL.getconn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE sql_saved_queries
+            SET name = %s, query_text = %s, connection_id = %s, updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, connection_id, name, query_text, created_at, updated_at
+            """,
+            (cfg.get("name"), cfg.get("query_text"), cfg.get("connection_id"), query_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Saved query not found")
+        conn.commit()
+    finally:
+        cur.close()
+        DB_POOL.putconn(conn)
+
+    history_store.discard_from("sql_query", str(query_id), version_id)
+    return _saved_query_row_to_item(row)

@@ -1,37 +1,50 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, Loader2, RotateCcw, X } from "lucide-react";
-import {
-  fetchDashboardHistory,
-  restoreDashboardVersion,
-  type DashboardVersion,
-} from "@/lib/api";
 import { fdt } from "@/lib/format";
+
+export interface HistoryVersion {
+  version_id: number;
+  label: string | null;
+  created_at: string | null;
+}
 
 /**
  * The version log. Rewinding discards everything after the chosen point, which
  * is why there's no redo — the panel says so rather than letting people find
  * out afterwards.
+ *
+ * Generic across entities (dashboards, pipelines, reverse ETL, saved queries):
+ * the caller supplies `queryKey` (for cache scoping/invalidation) plus
+ * `fetchHistory` / `restoreVersion` functions instead of this component
+ * knowing which API to call. Each page wires its own thin fetch/restore
+ * functions from its own api client — see lib/api.ts (dashboards),
+ * Pipelines.tsx and ReverseETL.tsx for the pattern.
  */
 export function HistoryPanel({
-  dashboardId,
+  queryKey,
+  fetchHistory,
+  restoreVersion,
   onClose,
   onRestored,
 }: {
-  dashboardId: string;
+  /** Unique cache key for this entity's history, e.g. ["pipeline-history", pipelineName]. */
+  queryKey: readonly unknown[];
+  fetchHistory: () => Promise<HistoryVersion[]>;
+  restoreVersion: (versionId: number) => Promise<unknown>;
   onClose: () => void;
   onRestored: () => void;
 }) {
   const queryClient = useQueryClient();
 
   const history = useQuery({
-    queryKey: ["dashboard-history", dashboardId],
-    queryFn: () => fetchDashboardHistory(dashboardId),
+    queryKey,
+    queryFn: fetchHistory,
   });
 
   const restore = useMutation({
-    mutationFn: (versionId: number) => restoreDashboardVersion(dashboardId, versionId),
+    mutationFn: (versionId: number) => restoreVersion(versionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dashboard-history", dashboardId] });
+      queryClient.invalidateQueries({ queryKey });
       onRestored();
     },
   });
@@ -62,12 +75,11 @@ export function HistoryPanel({
             </span>
             <p className="text-[13px] font-semibold text-foreground">No earlier versions</p>
             <p className="max-w-[15rem] text-[12px] leading-relaxed text-muted-foreground">
-              Every edit you or the agent makes is recorded here, so you can step back to any of
-              them.
+              Every edit you make is recorded here, so you can step back to any of them.
             </p>
           </div>
         ) : (
-          versions.map((version: DashboardVersion, i: number) => (
+          versions.map((version, i) => (
             <div key={version.version_id} className="row" data-state={i === 0 ? "active" : "unknown"}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -79,7 +91,7 @@ export function HistoryPanel({
                 <button
                   onClick={() => restore.mutate(version.version_id)}
                   disabled={restore.isPending}
-                  title="Restore the board as it was before this change"
+                  title="Restore to how it was before this change"
                   className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11.5px] font-semibold text-foreground ring-1 ring-inset ring-border transition hover:bg-[hsl(var(--surface-2))] disabled:opacity-50"
                 >
                   {restore.isPending && restore.variables === version.version_id ? (

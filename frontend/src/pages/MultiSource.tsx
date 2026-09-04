@@ -12,6 +12,8 @@ import { FolderUpload } from "@/pages/FolderUpload";
 import { buildCron, defaultSchedule } from "@/lib/schedule";
 import { PageHeader } from "@/components/PageHeader";
 import { DataQualityBuilder, BuiltQuality } from "@/components/DataQualityBuilder";
+import { SchemaBuilder, BuiltSchema } from "@/components/SchemaBuilder";
+import { LiveTablePicker } from "@/components/LiveTablePicker";
 
 const splitList = (value: string): string[] =>
   value.split(",").map((v) => v.trim()).filter(Boolean);
@@ -22,8 +24,14 @@ const CONNECTOR_TO_SOURCE_TYPE: Record<string, string> = {
   google_sheets: "google_sheet",
   api: "api",
   postgres: "postgres",
+  mysql: "mysql",
+  oracle: "oracle",
+  mongodb: "mongodb",
   s3: "s3",
   snowflake: "snowflake",
+  salesforce: "salesforce",
+  hubspot: "hubspot",
+  zoho: "zoho",
 };
 
 const CONNECTOR_LABELS: Record<string, string> = {
@@ -32,13 +40,19 @@ const CONNECTOR_LABELS: Record<string, string> = {
   google_sheets: "Google Sheets",
   api: "API",
   postgres: "Postgres",
+  mysql: "MySQL",
+  oracle: "Oracle",
+  mongodb: "MongoDB",
   s3: "S3",
   snowflake: "Snowflake",
+  salesforce: "Salesforce",
+  hubspot: "HubSpot",
+  zoho: "Zoho CRM",
 };
 
-const SUPPORTS_CONNECTIONS = ["csv", "excel", "google_sheets", "api", "postgres", "s3", "snowflake"];
+const SUPPORTS_CONNECTIONS = ["csv", "excel", "google_sheets", "api", "postgres", "mysql", "oracle", "mongodb", "s3", "snowflake", "salesforce", "hubspot", "zoho"];
 
-const SECRET_FIELDS: Array<keyof Source> = ["src_pg_password", "sf_password", "s3_secret_key"];
+const SECRET_FIELDS: Array<keyof Source> = ["src_pg_password", "src_my_password", "src_ora_password", "src_mongo_password", "sf_password", "s3_secret_key", "sf_crm_access_token", "sf_crm_client_secret", "sf_crm_password", "sf_crm_security_token", "hs_access_token", "zoho_access_token", "zoho_refresh_token", "zoho_client_secret"];
 const STEPS = [
   { id: 1, label: "Basic Info" },
   { id: 2, label: "Sources" },
@@ -83,6 +97,26 @@ type Source = {
   src_pg_password: string;
   src_pg_port: string;
   pg_query: string;
+  src_my_host: string;
+  src_my_db: string;
+  src_my_user: string;
+  src_my_password: string;
+  src_my_port: string;
+  my_query: string;
+  src_ora_host: string;
+  src_ora_db: string;
+  src_ora_user: string;
+  src_ora_password: string;
+  src_ora_port: string;
+  ora_query: string;
+  src_mongo_host: string;
+  src_mongo_db: string;
+  src_mongo_user: string;
+  src_mongo_password: string;
+  src_mongo_port: string;
+  src_mongo_connection_string: string;
+  mongo_collection: string;
+  mongo_query: string;
   sf_account: string;
   sf_user: string;
   sf_password: string;
@@ -91,6 +125,30 @@ type Source = {
   sf_schema: string;
   sf_query: string;
   sf_role: string;
+  // ── Salesforce CRM ──
+  sf_crm_access_token: string;
+  sf_crm_instance_url: string;
+  sf_crm_login_url: string;
+  sf_crm_client_id: string;
+  sf_crm_client_secret: string;
+  sf_crm_username: string;
+  sf_crm_password: string;
+  sf_crm_security_token: string;
+  sf_crm_object_name: string;
+  sf_crm_soql_query: string;
+  // ── HubSpot ──
+  hs_access_token: string;
+  hs_object_type: string;
+  hs_properties: string;
+  // ── Zoho CRM ──
+  zoho_access_token: string;
+  zoho_refresh_token: string;
+  zoho_client_id: string;
+  zoho_client_secret: string;
+  zoho_accounts_url: string;
+  zoho_api_domain: string;
+  zoho_module: string;
+  zoho_criteria: string;
   // ── table-name-vs-custom-SQL mode ──
   pg_query_mode: "table" | "custom";
   pg_source_table: string;
@@ -117,6 +175,26 @@ const blankSource = (): Source => ({
   src_pg_password: "",
   src_pg_port: "5432",
   pg_query: "",
+  src_my_host: "",
+  src_my_db: "",
+  src_my_user: "",
+  src_my_password: "",
+  src_my_port: "3306",
+  my_query: "",
+  src_ora_host: "",
+  src_ora_db: "",
+  src_ora_user: "",
+  src_ora_password: "",
+  src_ora_port: "1521",
+  ora_query: "",
+  src_mongo_host: "",
+  src_mongo_db: "",
+  src_mongo_user: "",
+  src_mongo_password: "",
+  src_mongo_port: "27017",
+  src_mongo_connection_string: "",
+  mongo_collection: "",
+  mongo_query: "",
   sf_account: "",
   sf_user: "",
   sf_password: "",
@@ -125,6 +203,27 @@ const blankSource = (): Source => ({
   sf_schema: "PUBLIC",
   sf_query: "",
   sf_role: "",
+  sf_crm_access_token: "",
+  sf_crm_instance_url: "",
+  sf_crm_login_url: "https://login.salesforce.com",
+  sf_crm_client_id: "",
+  sf_crm_client_secret: "",
+  sf_crm_username: "",
+  sf_crm_password: "",
+  sf_crm_security_token: "",
+  sf_crm_object_name: "",
+  sf_crm_soql_query: "",
+  hs_access_token: "",
+  hs_object_type: "contacts",
+  hs_properties: "",
+  zoho_access_token: "",
+  zoho_refresh_token: "",
+  zoho_client_id: "",
+  zoho_client_secret: "",
+  zoho_accounts_url: "https://accounts.zoho.com",
+  zoho_api_domain: "https://www.zohoapis.com",
+  zoho_module: "",
+  zoho_criteria: "",
   pg_query_mode: "table",
   pg_source_table: "",
   sf_query_mode: "table",
@@ -152,6 +251,9 @@ export const MultiSource = () => {
   // index, filled in by <DataQualityBuilder>, same shape/behavior as
   // CreatePipeline.tsx / DirectIngest.tsx. ──────────────────────────────
   const [sourceQualities, setSourceQualities] = useState<Record<number, BuiltQuality | null>>({});
+  // ── Optional user-defined schema override — one per source index, same
+  // idea as sourceQualities above. ──────────────────────────────────────
+  const [sourceSchemas, setSourceSchemas] = useState<Record<number, BuiltSchema | null>>({});
   // Which file the user picked to preview/build checks against, when a
   // saved csv/excel connection resolves to a whole folder rather than a
   // single file — one per source index, same idea as CreatePipeline's
@@ -193,7 +295,12 @@ export const MultiSource = () => {
 
     if (["csv", "excel"].includes(source.connector_type)) {
       const path = connState.useExisting ? existingFilePath : source.file_path;
-      return path ? { file_path: path } : null;
+      if (path) return { file_path: path };
+      // No single file picked yet — fall back to the whole folder, same as
+      // CreatePipeline.tsx/Pipelines.tsx, so folder-based sources still get
+      // a working preview/schema builder instead of always rendering nothing.
+      if (source.folder_path) return { folder_path: source.folder_path };
+      return null;
     }
 
     if (source.connector_type === "postgres") {
@@ -204,6 +311,39 @@ export const MultiSource = () => {
       return {
         src_pg_host: source.src_pg_host, src_pg_db: source.src_pg_db, src_pg_user: source.src_pg_user,
         src_pg_password: source.src_pg_password, src_pg_port: source.src_pg_port, pg_query: resolvedQuery,
+      };
+    }
+
+    if (source.connector_type === "mysql") {
+      if (!source.my_query.trim()) return null;
+      if (connState.useExisting) return connId ? { connection_id: connId, my_query: source.my_query } : null;
+      if (!source.src_my_host || !source.src_my_db || !source.src_my_user) return null;
+      return {
+        src_my_host: source.src_my_host, src_my_db: source.src_my_db, src_my_user: source.src_my_user,
+        src_my_password: source.src_my_password, src_my_port: source.src_my_port, my_query: source.my_query,
+      };
+    }
+
+    if (source.connector_type === "oracle") {
+      if (!source.ora_query.trim()) return null;
+      if (connState.useExisting) return connId ? { connection_id: connId, ora_query: source.ora_query } : null;
+      if (!source.src_ora_host || !source.src_ora_db || !source.src_ora_user) return null;
+      return {
+        src_ora_host: source.src_ora_host, src_ora_db: source.src_ora_db, src_ora_user: source.src_ora_user,
+        src_ora_password: source.src_ora_password, src_ora_port: source.src_ora_port, ora_query: source.ora_query,
+      };
+    }
+
+    if (source.connector_type === "mongodb") {
+      if (!source.mongo_collection.trim()) return null;
+      if (connState.useExisting) return connId ? { connection_id: connId, mongo_collection: source.mongo_collection, mongo_query: source.mongo_query } : null;
+      if (!source.src_mongo_connection_string && (!source.src_mongo_host || !source.src_mongo_db)) return null;
+      if (source.src_mongo_connection_string && !source.src_mongo_db) return null;
+      return {
+        src_mongo_host: source.src_mongo_host, src_mongo_db: source.src_mongo_db,
+        src_mongo_user: source.src_mongo_user, src_mongo_password: source.src_mongo_password,
+        src_mongo_port: source.src_mongo_port, src_mongo_connection_string: source.src_mongo_connection_string,
+        mongo_collection: source.mongo_collection, mongo_query: source.mongo_query,
       };
     }
 
@@ -225,6 +365,42 @@ export const MultiSource = () => {
       return {
         s3_bucket: source.s3_bucket, s3_key: source.s3_key, s3_file_type: source.s3_file_type,
         s3_access_key: source.s3_access_key, s3_secret_key: source.s3_secret_key,
+      };
+    }
+
+    if (source.connector_type === "salesforce") {
+      if (!source.sf_crm_object_name.trim() && !source.sf_crm_soql_query.trim()) return null;
+      if (connState.useExisting) {
+        return connId ? { connection_id: connId, sf_crm_object_name: source.sf_crm_object_name, sf_crm_soql_query: source.sf_crm_soql_query } : null;
+      }
+      const hasAuth = (source.sf_crm_access_token && source.sf_crm_instance_url) ||
+        (source.sf_crm_client_id && source.sf_crm_client_secret && source.sf_crm_username && source.sf_crm_password);
+      if (!hasAuth) return null;
+      return {
+        sf_crm_access_token: source.sf_crm_access_token, sf_crm_instance_url: source.sf_crm_instance_url,
+        sf_crm_login_url: source.sf_crm_login_url, sf_crm_client_id: source.sf_crm_client_id,
+        sf_crm_client_secret: source.sf_crm_client_secret, sf_crm_username: source.sf_crm_username,
+        sf_crm_password: source.sf_crm_password, sf_crm_security_token: source.sf_crm_security_token,
+        sf_crm_object_name: source.sf_crm_object_name, sf_crm_soql_query: source.sf_crm_soql_query,
+      };
+    }
+
+    if (source.connector_type === "hubspot") {
+      if (connState.useExisting) return connId ? { connection_id: connId, hs_object_type: source.hs_object_type } : null;
+      if (!source.hs_access_token.trim()) return null;
+      return { hs_access_token: source.hs_access_token, hs_object_type: source.hs_object_type };
+    }
+
+    if (source.connector_type === "zoho") {
+      if (!source.zoho_module.trim()) return null;
+      if (connState.useExisting) return connId ? { connection_id: connId, zoho_module: source.zoho_module, zoho_criteria: source.zoho_criteria } : null;
+      const hasAuth = source.zoho_access_token || (source.zoho_refresh_token && source.zoho_client_id && source.zoho_client_secret);
+      if (!hasAuth) return null;
+      return {
+        zoho_access_token: source.zoho_access_token, zoho_refresh_token: source.zoho_refresh_token,
+        zoho_client_id: source.zoho_client_id, zoho_client_secret: source.zoho_client_secret,
+        zoho_accounts_url: source.zoho_accounts_url, zoho_api_domain: source.zoho_api_domain,
+        zoho_module: source.zoho_module, zoho_criteria: source.zoho_criteria,
       };
     }
 
@@ -272,6 +448,26 @@ export const MultiSource = () => {
         updateSource(index, "src_pg_user", cfg.user || "");
         updateSource(index, "src_pg_password", "");
         updateSource(index, "src_pg_port", cfg.port || "5432");
+      } else if (connectorType === "mysql") {
+        updateSource(index, "src_my_host", cfg.host || "");
+        updateSource(index, "src_my_db", cfg.database || "");
+        updateSource(index, "src_my_user", cfg.user || "");
+        updateSource(index, "src_my_password", "");
+        updateSource(index, "src_my_port", cfg.port || "3306");
+      } else if (connectorType === "oracle") {
+        updateSource(index, "src_ora_host", cfg.host || "");
+        updateSource(index, "src_ora_db", cfg.database || "");
+        updateSource(index, "src_ora_user", cfg.user || "");
+        updateSource(index, "src_ora_password", "");
+        updateSource(index, "src_ora_port", cfg.port || "1521");
+      } else if (connectorType === "mongodb") {
+        updateSource(index, "src_mongo_host", cfg.host || "");
+        updateSource(index, "src_mongo_db", cfg.database || "");
+        updateSource(index, "src_mongo_user", cfg.user || "");
+        updateSource(index, "src_mongo_password", "");
+        updateSource(index, "src_mongo_port", cfg.port || "27017");
+        updateSource(index, "src_mongo_connection_string", "");
+        updateSource(index, "mongo_collection", cfg.collection || "");
       } else if (connectorType === "s3") {
         updateSource(index, "s3_bucket", cfg.bucket || "");
         updateSource(index, "s3_key", cfg.prefix || "");
@@ -286,6 +482,12 @@ export const MultiSource = () => {
         updateSource(index, "sf_database", cfg.database || "");
         updateSource(index, "sf_schema", cfg.schema || "PUBLIC");
         updateSource(index, "sf_role", cfg.role || "");
+      } else if (connectorType === "salesforce") {
+        updateSource(index, "sf_crm_login_url", cfg.login_url || "https://login.salesforce.com");
+        updateSource(index, "sf_crm_instance_url", cfg.instance_url || "");
+      } else if (connectorType === "zoho") {
+        updateSource(index, "zoho_accounts_url", cfg.accounts_url || "https://accounts.zoho.com");
+        updateSource(index, "zoho_api_domain", cfg.api_domain || "https://www.zohoapis.com");
       } else if (connectorType === "api") {
         updateSource(index, "api_url", cfg.base_url || "");
       } else if (connectorType === "google_sheets") {
@@ -323,6 +525,26 @@ export const MultiSource = () => {
     updateSource(index, "pg_query", "");
     updateSource(index, "pg_query_mode", "table");
     updateSource(index, "pg_source_table", "");
+    updateSource(index, "src_my_host", "");
+    updateSource(index, "src_my_db", "");
+    updateSource(index, "src_my_user", "");
+    updateSource(index, "src_my_password", "");
+    updateSource(index, "src_my_port", "3306");
+    updateSource(index, "my_query", "");
+    updateSource(index, "src_ora_host", "");
+    updateSource(index, "src_ora_db", "");
+    updateSource(index, "src_ora_user", "");
+    updateSource(index, "src_ora_password", "");
+    updateSource(index, "src_ora_port", "1521");
+    updateSource(index, "ora_query", "");
+    updateSource(index, "src_mongo_host", "");
+    updateSource(index, "src_mongo_db", "");
+    updateSource(index, "src_mongo_user", "");
+    updateSource(index, "src_mongo_password", "");
+    updateSource(index, "src_mongo_port", "27017");
+    updateSource(index, "src_mongo_connection_string", "");
+    updateSource(index, "mongo_collection", "");
+    updateSource(index, "mongo_query", "");
     updateSource(index, "sf_account", "");
     updateSource(index, "sf_user", "");
     updateSource(index, "sf_password", "");
@@ -333,8 +555,30 @@ export const MultiSource = () => {
     updateSource(index, "sf_role", "");
     updateSource(index, "sf_query_mode", "table");
     updateSource(index, "sf_source_table", "");
+    updateSource(index, "sf_crm_access_token", "");
+    updateSource(index, "sf_crm_instance_url", "");
+    updateSource(index, "sf_crm_login_url", "https://login.salesforce.com");
+    updateSource(index, "sf_crm_client_id", "");
+    updateSource(index, "sf_crm_client_secret", "");
+    updateSource(index, "sf_crm_username", "");
+    updateSource(index, "sf_crm_password", "");
+    updateSource(index, "sf_crm_security_token", "");
+    updateSource(index, "sf_crm_object_name", "");
+    updateSource(index, "sf_crm_soql_query", "");
+    updateSource(index, "hs_access_token", "");
+    updateSource(index, "hs_object_type", "contacts");
+    updateSource(index, "hs_properties", "");
+    updateSource(index, "zoho_access_token", "");
+    updateSource(index, "zoho_refresh_token", "");
+    updateSource(index, "zoho_client_id", "");
+    updateSource(index, "zoho_client_secret", "");
+    updateSource(index, "zoho_accounts_url", "https://accounts.zoho.com");
+    updateSource(index, "zoho_api_domain", "https://www.zohoapis.com");
+    updateSource(index, "zoho_module", "");
+    updateSource(index, "zoho_criteria", "");
     setExistingConnFilePath(index, "");
     setSourceQualities((current) => ({ ...current, [index]: null }));
+    setSourceSchemas((current) => ({ ...current, [index]: null }));
   };
 
   const addSource = () => {
@@ -355,6 +599,15 @@ export const MultiSource = () => {
     });
     setSourceQualities((current) => {
       const next: Record<number, BuiltQuality | null> = {};
+      Object.entries(current).forEach(([key, val]) => {
+        const i = Number(key);
+        if (i < index) next[i] = val;
+        else if (i > index) next[i - 1] = val;
+      });
+      return next;
+    });
+    setSourceSchemas((current) => {
+      const next: Record<number, BuiltSchema | null> = {};
       Object.entries(current).forEach(([key, val]) => {
         const i = Number(key);
         if (i < index) next[i] = val;
@@ -405,6 +658,9 @@ export const MultiSource = () => {
             ? buildSnowflakeSelectQuery(source.sf_source_table)
             : source.sf_query;
         }
+        if (source.connector_type === "hubspot") {
+          cleaned.hs_properties = splitList(source.hs_properties).length ? splitList(source.hs_properties) : null;
+        }
 
         if (connectionId) {
           for (const field of SECRET_FIELDS) {
@@ -425,6 +681,11 @@ export const MultiSource = () => {
         const dfQuality = sourceQualities[index];
         cleaned.df_quality_config = dfQuality?.hasAnyCheck ? dfQuality.config : null;
         cleaned.df_quality_on_fail = dfQuality?.on_fail ?? "warn";
+
+        // ── Optional user-defined schema override for this source — built
+        // by <SchemaBuilder> from the same preview data. ──
+        const schemaBuilt = sourceSchemas[index];
+        cleaned.custom_schema = schemaBuilt?.hasAnyCustomType ? schemaBuilt.schema : null;
 
         return cleaned;
       });
@@ -457,6 +718,7 @@ export const MultiSource = () => {
       setSourceConnectionStates({});
       setApiConfigErrors({});
       setSourceQualities({});
+      setSourceSchemas({});
       setExistingConnFilePaths({});
       setStepError("");
       setCurrentStep(1);
@@ -490,6 +752,29 @@ export const MultiSource = () => {
       const hasQuery = source.pg_query_mode === "table" ? source.pg_source_table.trim() : source.pg_query.trim();
       if (!hasQuery) return `${label}: table name or SQL query is required.`;
     }
+    if (source.connector_type === "mysql") {
+      if (!connState?.useExisting && (!source.src_my_host || !source.src_my_db || !source.src_my_user)) {
+        return `${label}: host, database, and user are required.`;
+      }
+      if (!source.my_query.trim()) return `${label}: SQL query is required.`;
+    }
+    if (source.connector_type === "oracle") {
+      if (!connState?.useExisting && (!source.src_ora_host || !source.src_ora_db || !source.src_ora_user)) {
+        return `${label}: host, service name, and user are required.`;
+      }
+      if (!source.ora_query.trim()) return `${label}: SQL query is required.`;
+    }
+    if (source.connector_type === "mongodb") {
+      if (!connState?.useExisting) {
+        if (!source.src_mongo_connection_string && (!source.src_mongo_host || !source.src_mongo_db)) {
+          return `${label}: host and database (or a connection string) are required.`;
+        }
+        if (source.src_mongo_connection_string && !source.src_mongo_db) {
+          return `${label}: database is required.`;
+        }
+      }
+      if (!source.mongo_collection.trim()) return `${label}: collection is required.`;
+    }
     if (source.connector_type === "s3" && (!source.s3_bucket || !source.s3_key)) return `${label}: bucket and key are required.`;
     if (source.connector_type === "snowflake") {
       if (!connState?.useExisting && (!source.sf_account || !source.sf_user || !source.sf_warehouse || !source.sf_database)) {
@@ -497,6 +782,27 @@ export const MultiSource = () => {
       }
       const hasQuery = source.sf_query_mode === "table" ? source.sf_source_table.trim() : source.sf_query.trim();
       if (!hasQuery) return `${label}: table name or SQL query is required.`;
+    }
+    if (source.connector_type === "salesforce") {
+      if (!connState?.useExisting) {
+        const hasAuth = (source.sf_crm_access_token && source.sf_crm_instance_url) ||
+          (source.sf_crm_client_id && source.sf_crm_client_secret && source.sf_crm_username && source.sf_crm_password);
+        if (!hasAuth) return `${label}: Salesforce needs an access token + instance URL, or client id/secret + username/password.`;
+      }
+      if (!source.sf_crm_object_name.trim() && !source.sf_crm_soql_query.trim()) {
+        return `${label}: object name or SOQL query is required for Salesforce.`;
+      }
+    }
+    if (source.connector_type === "hubspot") {
+      if (!connState?.useExisting && !source.hs_access_token.trim()) return `${label}: HubSpot access token is required.`;
+    }
+    if (source.connector_type === "zoho") {
+      if (!connState?.useExisting) {
+        const hasAuth = source.zoho_access_token.trim() ||
+          (source.zoho_refresh_token.trim() && source.zoho_client_id.trim() && source.zoho_client_secret.trim());
+        if (!hasAuth) return `${label}: Zoho needs an access token, or refresh token + client id/secret.`;
+      }
+      if (!source.zoho_module.trim()) return `${label}: module is required for Zoho.`;
     }
     return "";
   };
@@ -866,37 +1172,119 @@ export const MultiSource = () => {
                             <Input placeholder="Port" value={source.src_pg_port} onChange={(e) => updateSource(index, "src_pg_port", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
                           </div>
 
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-4 text-sm font-medium">
-                              <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name={`pgMode-${index}`} checked={source.pg_query_mode === "table"} onChange={() => updateSource(index, "pg_query_mode", "table")} />
-                                Table name
-                              </label>
-                              <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name={`pgMode-${index}`} checked={source.pg_query_mode === "custom"} onChange={() => updateSource(index, "pg_query_mode", "custom")} />
-                                Custom SQL query
-                              </label>
-                            </div>
+                          <LiveTablePicker
+                            fieldKey={`multisource-postgres-${index}`}
+                            mode={source.pg_query_mode === "table" ? "table" : "query"}
+                            onModeChange={(m) => updateSource(index, "pg_query_mode", m === "table" ? "table" : "custom")}
+                            tableInput={source.pg_source_table}
+                            onTableInputChange={(v) => updateSource(index, "pg_source_table", v)}
+                            queryValue={source.pg_query}
+                            onQueryChange={(v) => updateSource(index, "pg_query", v)}
+                            buildQuery={buildSelectQuery}
+                            canFetch={
+                              connState.useExisting
+                                ? !!connState.selectedConnectionId
+                                : !!(source.src_pg_host && source.src_pg_db && source.src_pg_user)
+                            }
+                            buildPayload={() =>
+                              connState.useExisting && connState.selectedConnectionId
+                                ? { connector_type: "postgres", connection_id: parseInt(connState.selectedConnectionId, 10) }
+                                : {
+                                    connector_type: "postgres",
+                                    src_pg_host: source.src_pg_host,
+                                    src_pg_db: source.src_pg_db,
+                                    src_pg_user: source.src_pg_user,
+                                    src_pg_password: source.src_pg_password,
+                                    src_pg_port: source.src_pg_port,
+                                  }
+                            }
+                          />
+                        </div>
+                      )}
 
-                            {source.pg_query_mode === "table" ? (
-                              <Input
-                                placeholder="e.g. public.orders or orders"
-                                value={source.pg_source_table}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  updateSource(index, "pg_source_table", v);
-                                  updateSource(index, "pg_query", buildSelectQuery(v));
-                                }}
-                              />
-                            ) : (
-                              <textarea
-                                className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                placeholder="SQL query"
-                                value={source.pg_query}
-                                onChange={(e) => updateSource(index, "pg_query", e.target.value)}
-                              />
-                            )}
+                      {/* ── MySQL — credentials (new connection only) + SQL query ── */}
+                      {source.connector_type === "mysql" && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <Input placeholder="Host" value={source.src_my_host} onChange={(e) => updateSource(index, "src_my_host", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                            <Input placeholder="Database" value={source.src_my_db} onChange={(e) => updateSource(index, "src_my_db", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                            <Input placeholder="User" value={source.src_my_user} onChange={(e) => updateSource(index, "src_my_user", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                            <Input
+                              type="password"
+                              placeholder={connState.useExisting ? "(using saved connection)" : "Password"}
+                              value={connState.useExisting ? "" : source.src_my_password}
+                              onChange={(e) => updateSource(index, "src_my_password", e.target.value)}
+                              required={fieldsRequired}
+                              disabled={connState.useExisting}
+                            />
+                            <Input placeholder="Port" value={source.src_my_port} onChange={(e) => updateSource(index, "src_my_port", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
                           </div>
+                          <textarea
+                            className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            placeholder="SQL query"
+                            value={source.my_query}
+                            onChange={(e) => updateSource(index, "my_query", e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      {/* ── Oracle — credentials (new connection only) + SQL query ── */}
+                      {source.connector_type === "oracle" && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <Input placeholder="Host" value={source.src_ora_host} onChange={(e) => updateSource(index, "src_ora_host", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                            <Input placeholder="Service name" value={source.src_ora_db} onChange={(e) => updateSource(index, "src_ora_db", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                            <Input placeholder="User" value={source.src_ora_user} onChange={(e) => updateSource(index, "src_ora_user", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                            <Input
+                              type="password"
+                              placeholder={connState.useExisting ? "(using saved connection)" : "Password"}
+                              value={connState.useExisting ? "" : source.src_ora_password}
+                              onChange={(e) => updateSource(index, "src_ora_password", e.target.value)}
+                              required={fieldsRequired}
+                              disabled={connState.useExisting}
+                            />
+                            <Input placeholder="Port" value={source.src_ora_port} onChange={(e) => updateSource(index, "src_ora_port", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                          </div>
+                          <textarea
+                            className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            placeholder="SQL query"
+                            value={source.ora_query}
+                            onChange={(e) => updateSource(index, "ora_query", e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      {/* ── MongoDB — credentials (new connection only) + collection/filter ── */}
+                      {source.connector_type === "mongodb" && (
+                        <div className="space-y-4">
+                          <div className="space-y-3">
+                            <Input
+                              placeholder="Connection string (mongodb:// or mongodb+srv://) — optional"
+                              value={source.src_mongo_connection_string}
+                              onChange={(e) => updateSource(index, "src_mongo_connection_string", e.target.value)}
+                              disabled={connState.useExisting}
+                            />
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                              <Input placeholder="Host" value={source.src_mongo_host} onChange={(e) => updateSource(index, "src_mongo_host", e.target.value)} disabled={connState.useExisting || !!source.src_mongo_connection_string} />
+                              <Input placeholder="Database" value={source.src_mongo_db} onChange={(e) => updateSource(index, "src_mongo_db", e.target.value)} required={fieldsRequired} disabled={connState.useExisting} />
+                              <Input placeholder="User (optional)" value={source.src_mongo_user} onChange={(e) => updateSource(index, "src_mongo_user", e.target.value)} disabled={connState.useExisting || !!source.src_mongo_connection_string} />
+                              <Input
+                                type="password"
+                                placeholder={connState.useExisting ? "(using saved connection)" : "Password (optional)"}
+                                value={connState.useExisting ? "" : source.src_mongo_password}
+                                onChange={(e) => updateSource(index, "src_mongo_password", e.target.value)}
+                                disabled={connState.useExisting || !!source.src_mongo_connection_string}
+                              />
+                              <Input placeholder="Port" value={source.src_mongo_port} onChange={(e) => updateSource(index, "src_mongo_port", e.target.value)} disabled={connState.useExisting || !!source.src_mongo_connection_string} />
+                            </div>
+                          </div>
+                          <Input placeholder="Collection" value={source.mongo_collection} onChange={(e) => updateSource(index, "mongo_collection", e.target.value)} required={fieldsRequired} />
+                          <textarea
+                            className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            placeholder='Filter (optional JSON), e.g. {"status": "active"} — leave blank to match all documents'
+                            value={source.mongo_query}
+                            onChange={(e) => updateSource(index, "mongo_query", e.target.value)}
+                          />
                         </div>
                       )}
 
@@ -920,36 +1308,122 @@ export const MultiSource = () => {
                             <Input placeholder="Role (optional)" value={source.sf_role} onChange={(e) => updateSource(index, "sf_role", e.target.value)} disabled={connState.useExisting} />
                           </div>
 
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-4 text-sm font-medium">
-                              <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name={`sfMode-${index}`} checked={source.sf_query_mode === "table"} onChange={() => updateSource(index, "sf_query_mode", "table")} />
-                                Table name
-                              </label>
-                              <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" name={`sfMode-${index}`} checked={source.sf_query_mode === "custom"} onChange={() => updateSource(index, "sf_query_mode", "custom")} />
-                                Custom SQL query
-                              </label>
-                            </div>
+                          <LiveTablePicker
+                            fieldKey={`multisource-snowflake-${index}`}
+                            mode={source.sf_query_mode === "table" ? "table" : "query"}
+                            onModeChange={(m) => updateSource(index, "sf_query_mode", m === "table" ? "table" : "custom")}
+                            tableInput={source.sf_source_table}
+                            onTableInputChange={(v) => updateSource(index, "sf_source_table", v)}
+                            queryValue={source.sf_query}
+                            onQueryChange={(v) => updateSource(index, "sf_query", v)}
+                            buildQuery={buildSnowflakeSelectQuery}
+                            canFetch={
+                              connState.useExisting
+                                ? !!connState.selectedConnectionId
+                                : !!(source.sf_account && source.sf_user && source.sf_database)
+                            }
+                            buildPayload={() =>
+                              connState.useExisting && connState.selectedConnectionId
+                                ? { connector_type: "snowflake", connection_id: parseInt(connState.selectedConnectionId, 10) }
+                                : {
+                                    connector_type: "snowflake",
+                                    sf_account: source.sf_account,
+                                    sf_user: source.sf_user,
+                                    sf_password: source.sf_password,
+                                    sf_warehouse: source.sf_warehouse,
+                                    sf_database: source.sf_database,
+                                    sf_schema: source.sf_schema,
+                                    sf_role: source.sf_role,
+                                  }
+                            }
+                          />
+                        </div>
+                      )}
 
-                            {source.sf_query_mode === "table" ? (
-                              <Input
-                                placeholder="e.g. SCHEMA.TABLE or TABLE"
-                                value={source.sf_source_table}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  updateSource(index, "sf_source_table", v);
-                                  updateSource(index, "sf_query", buildSnowflakeSelectQuery(v));
-                                }}
-                              />
-                            ) : (
-                              <textarea
-                                className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                placeholder="SQL query"
-                                value={source.sf_query}
-                                onChange={(e) => updateSource(index, "sf_query", e.target.value)}
-                              />
-                            )}
+                      {/* ── Salesforce CRM — credentials (new connection only) + object/SOQL ── */}
+                      {source.connector_type === "salesforce" && (
+                        <div className="space-y-4">
+                          {!connState.useExisting && (
+                            <div className="space-y-3">
+                              <p className="text-xs text-muted-foreground">
+                                Either paste a ready access token + instance URL, or fill in client id/secret + username/password to log in fresh on every run.
+                              </p>
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <Input placeholder="Access token (optional)" type="password" value={source.sf_crm_access_token} onChange={(e) => updateSource(index, "sf_crm_access_token", e.target.value)} required={fieldsRequired} />
+                                <Input placeholder="Instance URL (optional)" value={source.sf_crm_instance_url} onChange={(e) => updateSource(index, "sf_crm_instance_url", e.target.value)} />
+                              </div>
+                              <Input placeholder="Login URL (default https://login.salesforce.com)" value={source.sf_crm_login_url} onChange={(e) => updateSource(index, "sf_crm_login_url", e.target.value)} disabled={connState.useExisting} />
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <Input placeholder="Client ID" value={source.sf_crm_client_id} onChange={(e) => updateSource(index, "sf_crm_client_id", e.target.value)} disabled={connState.useExisting} />
+                                <Input placeholder="Client secret" type="password" value={connState.useExisting ? "" : source.sf_crm_client_secret} onChange={(e) => updateSource(index, "sf_crm_client_secret", e.target.value)} disabled={connState.useExisting} />
+                                <Input placeholder="Username" value={source.sf_crm_username} onChange={(e) => updateSource(index, "sf_crm_username", e.target.value)} disabled={connState.useExisting} />
+                                <Input placeholder="Password" type="password" value={connState.useExisting ? "" : source.sf_crm_password} onChange={(e) => updateSource(index, "sf_crm_password", e.target.value)} disabled={connState.useExisting} />
+                              </div>
+                              <Input placeholder="Security token (optional)" type="password" value={connState.useExisting ? "" : source.sf_crm_security_token} onChange={(e) => updateSource(index, "sf_crm_security_token", e.target.value)} disabled={connState.useExisting} />
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            <Input placeholder="Object name, e.g. Account, Contact, Lead, Opportunity" value={source.sf_crm_object_name} onChange={(e) => updateSource(index, "sf_crm_object_name", e.target.value)} />
+                            <p className="text-xs text-muted-foreground">Or provide an explicit SOQL query below — it overrides the object name entirely.</p>
+                            <textarea
+                              className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                              placeholder="SOQL query (optional), e.g. SELECT Id, Name FROM Account"
+                              value={source.sf_crm_soql_query}
+                              onChange={(e) => updateSource(index, "sf_crm_soql_query", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── HubSpot — access token (new connection only) + object type ── */}
+                      {source.connector_type === "hubspot" && (
+                        <div className="space-y-4">
+                          {!connState.useExisting && (
+                            <div className="space-y-3">
+                              <p className="text-xs text-muted-foreground">HubSpot Private App access tokens don't expire, so this is the only credential needed.</p>
+                              <Input placeholder="Private App access token" type="password" value={source.hs_access_token} onChange={(e) => updateSource(index, "hs_access_token", e.target.value)} required={fieldsRequired} />
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            <label className="block max-w-xs space-y-1 text-sm font-medium">
+                              Object type
+                              <select className="select-control" value={source.hs_object_type} onChange={(e) => updateSource(index, "hs_object_type", e.target.value)}>
+                                <option value="contacts">Contacts</option>
+                                <option value="companies">Companies</option>
+                                <option value="deals">Deals</option>
+                                <option value="tickets">Tickets</option>
+                                <option value="products">Products</option>
+                                <option value="line_items">Line items</option>
+                              </select>
+                            </label>
+                            <Input placeholder="Properties (comma-separated, optional — default set returned if omitted)" value={source.hs_properties} onChange={(e) => updateSource(index, "hs_properties", e.target.value)} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Zoho CRM — credentials (new connection only) + module/criteria ── */}
+                      {source.connector_type === "zoho" && (
+                        <div className="space-y-4">
+                          {!connState.useExisting && (
+                            <div className="space-y-3">
+                              <p className="text-xs text-muted-foreground">
+                                Either paste a ready access token, or fill in refresh token + client id/secret to mint a fresh one every run (Zoho tokens expire hourly).
+                              </p>
+                              <Input placeholder="Access token (optional)" type="password" value={source.zoho_access_token} onChange={(e) => updateSource(index, "zoho_access_token", e.target.value)} />
+                              <Input placeholder="Refresh token (optional)" type="password" value={source.zoho_refresh_token} onChange={(e) => updateSource(index, "zoho_refresh_token", e.target.value)} />
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <Input placeholder="Client ID" value={source.zoho_client_id} onChange={(e) => updateSource(index, "zoho_client_id", e.target.value)} />
+                                <Input placeholder="Client secret" type="password" value={source.zoho_client_secret} onChange={(e) => updateSource(index, "zoho_client_secret", e.target.value)} />
+                              </div>
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <Input placeholder="Accounts URL (region, default .com)" value={source.zoho_accounts_url} onChange={(e) => updateSource(index, "zoho_accounts_url", e.target.value)} />
+                                <Input placeholder="API domain (region, default .com)" value={source.zoho_api_domain} onChange={(e) => updateSource(index, "zoho_api_domain", e.target.value)} />
+                              </div>
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            <Input placeholder="Module, e.g. Leads, Contacts, Deals, Accounts" value={source.zoho_module} onChange={(e) => updateSource(index, "zoho_module", e.target.value)} required={fieldsRequired} />
+                            <Input placeholder="Search criteria (optional), e.g. (Email:equals:a@b.com)" value={source.zoho_criteria} onChange={(e) => updateSource(index, "zoho_criteria", e.target.value)} />
                           </div>
                         </div>
                       )}
@@ -964,6 +1438,15 @@ export const MultiSource = () => {
                         params={getPreviewParams(source, connState, existingConnFilePaths[index] ?? "")}
                         auto={["csv", "excel"].includes(source.connector_type)}
                         onChange={(built) => setSourceQualities((current) => ({ ...current, [index]: built }))}
+                      />
+
+                      {/* ── Optional user-defined schema for this source —
+                           any connector, any source shape. ── */}
+                      <SchemaBuilder
+                        connector={source.connector_type as any}
+                        params={getPreviewParams(source, connState, existingConnFilePaths[index] ?? "")}
+                        auto={["csv", "excel"].includes(source.connector_type)}
+                        onChange={(built) => setSourceSchemas((current) => ({ ...current, [index]: built }))}
                       />
                     </div>
                   );
@@ -992,12 +1475,24 @@ export const MultiSource = () => {
                    {sources.map((source, index) => {
                      const connState = sourceConnectionStates[index];
                      const dfQuality = sourceQualities[index];
-                     const querySummary =
-                       source.connector_type === "postgres"
-                         ? (source.pg_query_mode === "table" ? buildSelectQuery(source.pg_source_table) : source.pg_query)
-                         : source.connector_type === "snowflake"
-                         ? (source.sf_query_mode === "table" ? buildSnowflakeSelectQuery(source.sf_source_table) : source.sf_query)
-                         : null;
+                      const querySummary =
+                        source.connector_type === "postgres"
+                          ? (source.pg_query_mode === "table" ? buildSelectQuery(source.pg_source_table) : source.pg_query)
+                          : source.connector_type === "snowflake"
+                          ? (source.sf_query_mode === "table" ? buildSnowflakeSelectQuery(source.sf_source_table) : source.sf_query)
+                          : source.connector_type === "mysql"
+                          ? source.my_query
+                          : source.connector_type === "oracle"
+                          ? source.ora_query
+                          : source.connector_type === "mongodb"
+                          ? `${source.mongo_collection}${source.mongo_query ? ` — ${source.mongo_query}` : ""}`
+                          : source.connector_type === "salesforce"
+                          ? (source.sf_crm_soql_query || source.sf_crm_object_name)
+                          : source.connector_type === "hubspot"
+                          ? source.hs_object_type
+                          : source.connector_type === "zoho"
+                          ? `${source.zoho_module}${source.zoho_criteria ? ` — ${source.zoho_criteria}` : ""}`
+                          : null;
                      return (
                        <div key={index} className="rounded-md border border-border bg-card p-3 text-sm">
                         <div className="flex items-center justify-between">
@@ -1007,7 +1502,11 @@ export const MultiSource = () => {
                         <p className="mt-1 text-muted-foreground">
                           {connState?.useExisting
                             ? `Saved connection: ${getFilteredConnections(source.connector_type).find((c: any) => String(c.id) === connState.selectedConnectionId)?.name || connState.selectedConnectionId}`
-                            : source.file_path || source.folder_path || source.sheet_url || source.api_url || source.src_pg_host || source.s3_bucket || source.sf_account || "—"}
+                            : source.file_path || source.folder_path || source.sheet_url || source.api_url
+                              || source.src_pg_host || source.src_my_host || source.src_ora_host
+                              || source.src_mongo_host || source.src_mongo_connection_string
+                              || source.s3_bucket || source.sf_account
+                              || source.sf_crm_instance_url || source.zoho_api_domain || "—"}
                         </p>
                         {querySummary && (
                           <p className="mt-1 font-mono text-xs text-muted-foreground break-all">{querySummary || "—"}</p>

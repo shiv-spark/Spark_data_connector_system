@@ -526,6 +526,15 @@ GET  /quality/connections                 list connections quality checks can ru
 POST /quality/run                          run a set of checks, store + return results
 GET  /quality/runs                         list past runs (paginated)
 GET  /quality/runs/{run_id}                get one run + its individual check results
+POST /quality/ai-fix                       LLM-powered remediation help for failed check(s)
+
+Every non-PASS result returned by /quality/run (and by the ingest-time
+gates in utils/ingest_runner.py) already carries a rule-based
+`fix_suggestion` field — see quality/fix_suggestions.py — so a suggestion
+is always present with zero extra latency/cost. /quality/ai-fix is the
+optional deeper layer on top of that: send it one or more failed results
+and it asks an LLM (same OpenRouter setup as the /chatbot endpoint in
+main.py) to reason about the specific table/column/values involved.
 """
 
 import os
@@ -534,6 +543,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import httpx
 import psycopg2
 import psycopg2.extras
 from fastapi import APIRouter, HTTPException
@@ -636,8 +646,14 @@ def _ensure_tables():
             source_value  TEXT,
             target_value  TEXT,
             message       TEXT,
+            fix_suggestion TEXT,
             checked_at    TIMESTAMPTZ NOT NULL DEFAULT now()
         )
+    """)
+    # Added after initial release — idempotent for existing DBs that already
+    # have quality_results without this column.
+    cur.execute("""
+        ALTER TABLE quality_results ADD COLUMN IF NOT EXISTS fix_suggestion TEXT
     """)
     # Baseline snapshot for Schema Validation (drift mode): one row per
     # column, captured the first time a table's schema check runs with
@@ -702,6 +718,16 @@ class RunQualityRequest(BaseModel):
     connection_id: int
     tables: List[TableCheckSpec]
     consistency_checks: Optional[List[ConsistencyCheckSpec]] = None  # cross-table, same connection
+
+
+class AiFixRequest(BaseModel):
+    # The failed/errored result dict(s) as returned by /quality/run,
+    # /quality/runs/{run_id}, or the df_quality/quality blocks of an ingest
+    # response — pass them straight through, no reshaping needed.
+    results: List[Dict[str, Any]]
+    connection_id: Optional[int] = None   # optional extra context (source type) if available
+    openrouter_key: Optional[str] = None  # falls back to OPENROUTER_KEY env var
+    model: Optional[str] = None           # falls back to OPENROUTER_MODEL env var
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -943,6 +969,9 @@ async def run_quality_checks(request: RunQualityRequest):
     finally:
         await executor.close()
 
+    from quality.fix_suggestions import annotate_results
+    annotate_results(results, source="table")
+
     completed_at = datetime.utcnow()
     passed = sum(1 for r in results if r["status"] == "PASS")
     failed = sum(1 for r in results if r["status"] in ("FAIL", "ERROR"))
@@ -968,14 +997,15 @@ async def run_quality_checks(request: RunQualityRequest):
         cur.execute("""
             INSERT INTO quality_results
                 (run_id, table_name, check_name, status, failed_rows,
-                 source_value, target_value, message)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                 source_value, target_value, message, fix_suggestion)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             run_id, r["table_name"], r["check_name"], r["status"],
             r.get("failed_rows"),
             str(r["source_value"]) if r.get("source_value") is not None else None,
             str(r["target_value"]) if r.get("target_value") is not None else None,
             r.get("message", ""),
+            r.get("fix_suggestion", ""),
         ))
     conn.commit()
     cur.close()
@@ -1053,3 +1083,105 @@ def get_quality_run(run_id: str):
     cur.close()
     conn.close()
     return {"run": dict(run), "results": results}
+
+
+# ── AI-powered remediation help ────────────────────────────────────────────
+DEFAULT_OPENROUTER_KEY   = os.getenv("OPENROUTER_KEY", "")
+DEFAULT_OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "")
+
+_AI_FIX_SYSTEM_PROMPT = """
+You are a data-quality remediation assistant. You will be given one or more
+failed or errored data-quality check results (table/column, check type,
+message, and a baseline rule-based suggestion). Your job:
+
+1. Explain in plain terms what specifically went wrong, referencing the
+   actual table/column/values given — don't be generic.
+2. Give a concrete, actionable fix: what to change at the source, in the
+   pipeline config, or in the quality-check config itself.
+3. If several results share one root cause, say so and give one fix instead
+   of repeating yourself per check.
+4. Keep it tight — bullet points, no fluff, no repeating the raw message
+   back verbatim.
+
+You are not able to run anything yourself; you are advising a human who can.
+"""
+
+
+@router.post("/ai-fix")
+async def ai_fix(request: AiFixRequest):
+    """
+    Optional LLM-powered layer on top of the rule-based `fix_suggestion`
+    already attached to every non-PASS result. Useful when the canned
+    suggestion isn't specific enough and the user wants help reasoning
+    about their actual data.
+    """
+    failing = [r for r in request.results if r.get("status") in ("FAIL", "ERROR")]
+    if not failing:
+        return {"advice": "Nothing to fix — all provided results are PASS."}
+
+    effective_key   = request.openrouter_key or DEFAULT_OPENROUTER_KEY
+    effective_model = request.model or DEFAULT_OPENROUTER_MODEL
+    if not effective_key:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No OpenRouter API key available for AI-assisted fixes. Provide one "
+                "in the request, or set OPENROUTER_KEY in the backend .env. The "
+                "rule-based `fix_suggestion` on each result still works without this."
+            ),
+        )
+
+    source_type = None
+    if request.connection_id is not None:
+        try:
+            source_type = _load_connection(request.connection_id).get("source_type")
+        except Exception:
+            pass
+
+    failures_text = "\n\n".join(
+        f"- Table: {r.get('table_name')}\n"
+        f"  Check: {r.get('check_name')}\n"
+        f"  Status: {r.get('status')}\n"
+        f"  Failed rows: {r.get('failed_rows')}\n"
+        f"  Message: {r.get('message')}\n"
+        f"  Baseline suggestion: {r.get('fix_suggestion', '')}"
+        for r in failing
+    )
+    user_content = (
+        (f"Source type: {source_type}\n\n" if source_type else "")
+        + f"Failed data quality checks:\n\n{failures_text}\n\n"
+        + "Help me fix these."
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {effective_key}",
+                    "Content-Type":  "application/json",
+                    "HTTP-Referer":  "http://localhost:8000",
+                    "X-Title":       "SparkBrains Data Quality Assistant",
+                },
+                json={
+                    "model":       effective_model,
+                    "messages": [
+                        {"role": "system", "content": _AI_FIX_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ],
+                    "max_tokens":  900,
+                    "temperature": 0.3,
+                },
+            )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Could not reach OpenRouter: {e}")
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"OpenRouter error ({response.status_code}): {response.text[:500]}",
+        )
+
+    data = response.json()
+    advice = data["choices"][0]["message"]["content"]
+    return {"advice": advice, "checks_analyzed": len(failing)}

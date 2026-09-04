@@ -1,4 +1,5 @@
 
+
 import re
 import json
 import httpx
@@ -33,6 +34,9 @@ from datetime import datetime
 from connectors.postgres_connector import postgres_connector
 from connectors.s3_connector import s3_connector
 from connectors.snowflake_connector import snowflake_connector  # ADDED
+from connectors.salesforce_connector import salesforce_connector
+from connectors.hubspot_connector import hubspot_connector
+from connectors.zoho_connector import zoho_connector
 import polars as pl
 
 from fastapi import FastAPI
@@ -67,6 +71,28 @@ except ImportError as e:
     print(f"Traceback: {traceback.format_exc()}")
     QUALITY_AVAILABLE = False
     quality_router = None
+
+try:
+    from reverse_etl.router import router as reverse_etl_router
+    REVERSE_ETL_AVAILABLE = True
+    print("✓ Reverse ETL router imported successfully")
+except ImportError as e:
+    import traceback
+    print(f"Warning: Reverse ETL module not available: {e}")
+    print(f"Traceback: {traceback.format_exc()}")
+    REVERSE_ETL_AVAILABLE = False
+    reverse_etl_router = None
+
+try:
+    from lineage.router import router as lineage_router
+    LINEAGE_AVAILABLE = True
+    print("✓ Data Lineage router imported successfully")
+except ImportError as e:
+    import traceback
+    print(f"Warning: Data Lineage module not available: {e}")
+    print(f"Traceback: {traceback.format_exc()}")
+    LINEAGE_AVAILABLE = False
+    lineage_router = None
 
 # Load environment variables from project root .env file
 project_root = Path(__file__).resolve().parent.parent
@@ -155,6 +181,28 @@ if QUALITY_AVAILABLE:
             print(f"    {list(route.methods)} {route.path}")
 else:
     print("⚠ Data Quality router not available - check import errors above")
+
+# Include Data Lineage router if available
+if LINEAGE_AVAILABLE:
+    app.include_router(lineage_router)
+    print("✓ Data Lineage router loaded")
+    print("✓ Data Lineage routes registered:")
+    for route in lineage_router.routes:
+        if hasattr(route, 'methods'):
+            print(f"    {list(route.methods)} {route.path}")
+else:
+    print("⚠ Data Lineage router not available - check import errors above")
+
+# Include Reverse ETL router if available
+if REVERSE_ETL_AVAILABLE:
+    app.include_router(reverse_etl_router)
+    print("✓ Reverse ETL router loaded")
+    print("✓ Reverse ETL routes registered:")
+    for route in reverse_etl_router.routes:
+        if hasattr(route, 'methods'):
+            print(f"    {list(route.methods)} {route.path}")
+else:
+    print("⚠ Reverse ETL router not available - check import errors above")
 
 # Include SQL Editor router
 from sql_router import router as sql_router
@@ -430,8 +478,14 @@ def test_connector(req: ConnectionTestRequest):
     Validates connectivity, authentication, and permissions for:
     - snowflake
     - postgres
+    - mysql
+    - oracle
+    - mongodb
     - s3
     - api
+    - salesforce
+    - hubspot
+    - zoho
     - local_folder
     - google_sheet
     - figma_design
@@ -523,7 +577,7 @@ def test_connector(req: ConnectionTestRequest):
     if tester is None:
         return {
             "success": False,
-            "message": f"Unknown source_type: {source_type}. Valid types: snowflake, postgres, s3, api, local_folder, google_sheet, figma_design",
+            "message": f"Unknown source_type: {source_type}. Valid types: snowflake, postgres, mysql, oracle, mongodb, s3, api, salesforce, hubspot, zoho, local_folder, google_sheet, figma_design",
             "category": "connectivity",
             "details": {}
         }
@@ -598,6 +652,7 @@ class CSVRequest(BaseModel):
     sync_mode:  str        = "full"
     incremental_column: str | None = None
     connection_id: int | None = None   # informational only — file_path is already fully resolved client-side
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -605,6 +660,7 @@ class CSVRequest(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
 def _resolve_saved_connection(connection_id: int) -> tuple[dict, str]:
@@ -635,6 +691,7 @@ def ingest_csv(req: CSVRequest):
         req.file_path,
         option=req.option,
         table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
         quality_connection_id = req.quality_connection_id,
@@ -642,6 +699,7 @@ def ingest_csv(req: CSVRequest):
         quality_on_fail        = req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
     )
 
 # ─────────────────────────────────────────────
@@ -657,6 +715,7 @@ class ExcelRequest(BaseModel):
     sheet_name: str | None = None      # ← NEW
     all_sheets: bool = False
     connection_id: int | None = None   # informational only — file_path is already fully resolved client-side
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -664,6 +723,7 @@ class ExcelRequest(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
 @app.post("/ingest_excel")
@@ -678,6 +738,7 @@ def ingest_excel(req: ExcelRequest):
         req.all_sheets,
         option=req.option,
         table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
         quality_connection_id = req.quality_connection_id,
@@ -685,6 +746,7 @@ def ingest_excel(req: ExcelRequest):
         quality_on_fail        = req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
     )
 
 # ─────────────────────────────────────────────
@@ -698,6 +760,7 @@ class GoogleSheetRequest(BaseModel):
     sync_mode:  str        = "full"
     incremental_column: str | None = None
     connection_id: int | None = None   # use a saved connection's sheet_url instead of the field above
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -705,6 +768,7 @@ class GoogleSheetRequest(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
 @app.post("/ingest_google_sheet")
@@ -722,6 +786,7 @@ def ingest_google_sheet(req: GoogleSheetRequest):
         "pandas",
         option=req.option,
         table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
         quality_connection_id = req.quality_connection_id,
@@ -729,6 +794,7 @@ def ingest_google_sheet(req: GoogleSheetRequest):
         quality_on_fail        = req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
     )
 
 # ─────────────────────────────────────────────
@@ -742,6 +808,7 @@ class GoogleSheetMultiRequest(BaseModel):
     engine:     str        = "pandas"
     sync_mode:  str        = "full"
     incremental_column: str | None = None
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -749,6 +816,7 @@ class GoogleSheetMultiRequest(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
 @app.post("/ingest_google_sheets_multi")
@@ -769,6 +837,7 @@ def ingest_google_sheets_multi(req: GoogleSheetMultiRequest):
         req.engine,
         option             = req.option,
         table_name         = req.table_name,
+        pipeline_id        = req.pipeline_id,
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
         quality_connection_id = req.quality_connection_id,
@@ -776,6 +845,7 @@ def ingest_google_sheets_multi(req: GoogleSheetMultiRequest):
         quality_on_fail        = req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
     )
 
 # ─────────────────────────────────────────────
@@ -790,6 +860,7 @@ class APIRequest(BaseModel):
     sync_mode: str = "full"
     incremental_column: str | None = None
     connection_id: int | None = None   # use a saved connection's URL + auth instead of the fields below
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -797,6 +868,7 @@ class APIRequest(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
     # ── auth ──
@@ -844,8 +916,9 @@ def ingest_api(req: APIRequest):
 
     connector_kwargs = req.model_dump(
         exclude={"option", "table_name", "sync_mode", "incremental_column", "connection_id",
+                 "pipeline_id",
                  "quality_connection_id", "quality_config", "quality_on_fail",
-                 "df_quality_config", "df_quality_on_fail"}
+                 "df_quality_config", "df_quality_on_fail", "custom_schema"}
     )
 
     if req.connection_id:
@@ -875,6 +948,7 @@ def ingest_api(req: APIRequest):
         **connector_kwargs,          # url, method, auth_type, body, custom_fields, pagination_* 
         option=req.option,
         table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
         sync_mode=req.sync_mode,
         incremental_column=req.incremental_column,
         quality_connection_id=req.quality_connection_id,
@@ -882,6 +956,7 @@ def ingest_api(req: APIRequest):
         quality_on_fail=req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
     )
 
 # ─────────────────────────────────────────────
@@ -901,6 +976,7 @@ class PostgresRequest(BaseModel):
     sync_mode:  str        = "full"
     incremental_column: str | None = None
     connection_id: int | None = None   # use a saved connection's real credentials instead of the fields above
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -908,6 +984,7 @@ class PostgresRequest(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
 @app.post("/ingest_postgres")
@@ -931,6 +1008,7 @@ def ingest_postgres(req: PostgresRequest):
         req.query,
         option=req.option,
         table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
         sync_mode          = req.sync_mode,
         incremental_column = req.incremental_column,
         quality_connection_id = req.quality_connection_id,
@@ -938,6 +1016,381 @@ def ingest_postgres(req: PostgresRequest):
         quality_on_fail        = req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
+    )
+
+# ─────────────────────────────────────────────
+# MYSQL CONNECTOR
+# ─────────────────────────────────────────────
+from connectors.mysql_connector import mysql_connector
+
+class MySQLRequest(BaseModel):
+    host: str = ""
+    database: str = ""
+    user: str = ""
+    password: str = ""
+    port: str = "3306"
+    query: str
+    option: str
+    table_name: str | None = None
+    sync_mode:  str        = "full"
+    incremental_column: str | None = None
+    connection_id: int | None = None
+    pipeline_id: str | None = None
+    quality_connection_id: int | None = None
+    quality_config: dict | None = None
+    quality_on_fail: str = "warn"
+    df_quality_config: dict | None = None
+    df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+
+
+@app.post("/ingest_mysql")
+def ingest_mysql(req: MySQLRequest):
+    validate_inputs(req.option, req.table_name)
+    host, database, user, password, port = req.host, req.database, req.user, req.password, req.port
+    if req.connection_id:
+        cfg, _ = _resolve_saved_connection(req.connection_id)
+        host, database, user, password = cfg.get("host", ""), cfg.get("database", ""), cfg.get("user", ""), cfg.get("password", "")
+        port = cfg.get("port", "3306")
+    source = f"{host}/{database}"
+    return run_ingestion(
+        mysql_connector,
+        source,
+        "MySQLConnector",
+        host,
+        database,
+        user,
+        password,
+        port,
+        req.query,
+        option=req.option,
+        table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
+        sync_mode          = req.sync_mode,
+        incremental_column = req.incremental_column,
+        quality_connection_id = req.quality_connection_id,
+        quality_config         = req.quality_config,
+        quality_on_fail        = req.quality_on_fail,
+        df_quality_config      = req.df_quality_config,
+        df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
+    )
+
+# ─────────────────────────────────────────────
+# ORACLE CONNECTOR
+# ─────────────────────────────────────────────
+from connectors.oracle_connector import oracle_connector
+
+class OracleRequest(BaseModel):
+    host: str = ""
+    database: str = ""   # service name
+    user: str = ""
+    password: str = ""
+    port: str = "1521"
+    query: str
+    option: str
+    table_name: str | None = None
+    sync_mode:  str        = "full"
+    incremental_column: str | None = None
+    connection_id: int | None = None
+    pipeline_id: str | None = None
+    quality_connection_id: int | None = None
+    quality_config: dict | None = None
+    quality_on_fail: str = "warn"
+    df_quality_config: dict | None = None
+    df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+
+
+@app.post("/ingest_oracle")
+def ingest_oracle(req: OracleRequest):
+    validate_inputs(req.option, req.table_name)
+    host, database, user, password, port = req.host, req.database, req.user, req.password, req.port
+    if req.connection_id:
+        cfg, _ = _resolve_saved_connection(req.connection_id)
+        host, database, user, password = cfg.get("host", ""), cfg.get("database", ""), cfg.get("user", ""), cfg.get("password", "")
+        port = cfg.get("port", "1521")
+    source = f"{host}/{database}"
+    return run_ingestion(
+        oracle_connector,
+        source,
+        "OracleConnector",
+        host,
+        database,
+        user,
+        password,
+        port,
+        req.query,
+        option=req.option,
+        table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
+        sync_mode          = req.sync_mode,
+        incremental_column = req.incremental_column,
+        quality_connection_id = req.quality_connection_id,
+        quality_config         = req.quality_config,
+        quality_on_fail        = req.quality_on_fail,
+        df_quality_config      = req.df_quality_config,
+        df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
+    )
+
+# ─────────────────────────────────────────────
+# MONGODB CONNECTOR
+# ─────────────────────────────────────────────
+from connectors.mongodb_connector import mongodb_connector
+
+class MongoDBRequest(BaseModel):
+    host: str | None = None
+    database: str = ""
+    user: str | None = None
+    password: str | None = None
+    port: str = "27017"
+    connection_string: str | None = None   # mongodb:// / mongodb+srv:// URI; overrides host/port/user/password when set
+    collection: str
+    query: str | None = None               # JSON filter document, e.g. '{"status": "active"}'
+    option: str
+    table_name: str | None = None
+    sync_mode:  str        = "full"
+    incremental_column: str | None = None
+    connection_id: int | None = None
+    pipeline_id: str | None = None
+    quality_connection_id: int | None = None
+    quality_config: dict | None = None
+    quality_on_fail: str = "warn"
+    df_quality_config: dict | None = None
+    df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+
+
+@app.post("/ingest_mongodb")
+def ingest_mongodb(req: MongoDBRequest):
+    validate_inputs(req.option, req.table_name)
+    host, database, user, password, port = req.host, req.database, req.user, req.password, req.port
+    connection_string = req.connection_string
+    if req.connection_id:
+        cfg, _ = _resolve_saved_connection(req.connection_id)
+        host, database, user, password = cfg.get("host", ""), cfg.get("database", ""), cfg.get("user", ""), cfg.get("password", "")
+        port = cfg.get("port", "27017")
+        connection_string = cfg.get("connection_string") or connection_string
+    source = f"{host or connection_string}/{database}.{req.collection}"
+    return run_ingestion(
+        mongodb_connector,
+        source,
+        "MongoDBConnector",
+        host,
+        database,
+        user,
+        password,
+        port,
+        req.collection,
+        req.query,
+        connection_string,
+        option=req.option,
+        table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
+        sync_mode          = req.sync_mode,
+        incremental_column = req.incremental_column,
+        quality_connection_id = req.quality_connection_id,
+        quality_config         = req.quality_config,
+        quality_on_fail        = req.quality_on_fail,
+        df_quality_config      = req.df_quality_config,
+        df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
+    )
+
+# ─────────────────────────────────────────────
+# SALESFORCE CONNECTOR
+# ─────────────────────────────────────────────
+
+class SalesforceRequest(BaseModel):
+    access_token: str | None = None
+    instance_url: str | None = None
+    login_url: str = "https://login.salesforce.com"
+    client_id: str | None = None
+    client_secret: str | None = None
+    username: str | None = None
+    password: str | None = None
+    security_token: str | None = None
+    object_name: str | None = None      # e.g. "Account", "Contact", "Lead", "Opportunity"
+    fields: list | None = None
+    soql_query: str | None = None       # overrides object_name/fields entirely
+    option: str
+    table_name: str | None = None
+    sync_mode:  str        = "full"
+    incremental_column: str | None = None
+    connection_id: int | None = None
+    pipeline_id: str | None = None
+    quality_connection_id: int | None = None
+    quality_config: dict | None = None
+    quality_on_fail: str = "warn"
+    df_quality_config: dict | None = None
+    df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+
+
+@app.post("/ingest_salesforce")
+def ingest_salesforce(req: SalesforceRequest):
+    validate_inputs(req.option, req.table_name)
+    access_token, instance_url = req.access_token, req.instance_url
+    login_url, client_id, client_secret = req.login_url, req.client_id, req.client_secret
+    username, password, security_token = req.username, req.password, req.security_token
+    if req.connection_id:
+        cfg, _ = _resolve_saved_connection(req.connection_id)
+        access_token = cfg.get("access_token") or access_token
+        instance_url = cfg.get("instance_url") or instance_url
+        login_url = cfg.get("login_url", login_url)
+        client_id = cfg.get("client_id") or client_id
+        client_secret = cfg.get("client_secret") or client_secret
+        username = cfg.get("username") or username
+        password = cfg.get("password") or password
+        security_token = cfg.get("security_token") or security_token
+    source = req.soql_query or f"{instance_url or login_url}/{req.object_name}"
+    return run_ingestion(
+        salesforce_connector,
+        source,
+        "SalesforceConnector",
+        option=req.option,
+        table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
+        sync_mode          = req.sync_mode,
+        incremental_column = req.incremental_column,
+        quality_connection_id = req.quality_connection_id,
+        quality_config         = req.quality_config,
+        quality_on_fail        = req.quality_on_fail,
+        df_quality_config      = req.df_quality_config,
+        df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
+        access_token=access_token,
+        instance_url=instance_url,
+        login_url=login_url,
+        client_id=client_id,
+        client_secret=client_secret,
+        username=username,
+        password=password,
+        security_token=security_token,
+        object_name=req.object_name,
+        fields=req.fields,
+        soql_query=req.soql_query,
+    )
+
+# ─────────────────────────────────────────────
+# HUBSPOT CONNECTOR
+# ─────────────────────────────────────────────
+
+class HubSpotRequest(BaseModel):
+    access_token: str | None = None
+    object_type: str = "contacts"       # contacts | companies | deals | tickets | line_items | products | custom
+    properties: list | None = None
+    option: str
+    table_name: str | None = None
+    sync_mode:  str        = "full"
+    incremental_column: str | None = None
+    connection_id: int | None = None
+    pipeline_id: str | None = None
+    quality_connection_id: int | None = None
+    quality_config: dict | None = None
+    quality_on_fail: str = "warn"
+    df_quality_config: dict | None = None
+    df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+
+
+@app.post("/ingest_hubspot")
+def ingest_hubspot(req: HubSpotRequest):
+    validate_inputs(req.option, req.table_name)
+    access_token = req.access_token
+    if req.connection_id:
+        cfg, _ = _resolve_saved_connection(req.connection_id)
+        access_token = cfg.get("access_token") or access_token
+    source = f"hubspot/{req.object_type}"
+    return run_ingestion(
+        hubspot_connector,
+        source,
+        "HubSpotConnector",
+        option=req.option,
+        table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
+        sync_mode          = req.sync_mode,
+        incremental_column = req.incremental_column,
+        quality_connection_id = req.quality_connection_id,
+        quality_config         = req.quality_config,
+        quality_on_fail        = req.quality_on_fail,
+        df_quality_config      = req.df_quality_config,
+        df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
+        access_token=access_token,
+        object_type=req.object_type,
+        properties=req.properties,
+    )
+
+# ─────────────────────────────────────────────
+# ZOHO CRM CONNECTOR
+# ─────────────────────────────────────────────
+
+class ZohoRequest(BaseModel):
+    access_token: str | None = None
+    refresh_token: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    accounts_url: str = "https://accounts.zoho.com"
+    api_domain: str = "https://www.zohoapis.com"
+    module: str | None = None           # e.g. "Leads", "Contacts", "Deals", "Accounts"
+    fields: list | None = None
+    criteria: str | None = None
+    option: str
+    table_name: str | None = None
+    sync_mode:  str        = "full"
+    incremental_column: str | None = None
+    connection_id: int | None = None
+    pipeline_id: str | None = None
+    quality_connection_id: int | None = None
+    quality_config: dict | None = None
+    quality_on_fail: str = "warn"
+    df_quality_config: dict | None = None
+    df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+
+
+@app.post("/ingest_zoho")
+def ingest_zoho(req: ZohoRequest):
+    validate_inputs(req.option, req.table_name)
+    access_token, refresh_token = req.access_token, req.refresh_token
+    client_id, client_secret = req.client_id, req.client_secret
+    accounts_url, api_domain = req.accounts_url, req.api_domain
+    if req.connection_id:
+        cfg, _ = _resolve_saved_connection(req.connection_id)
+        access_token = cfg.get("access_token") or access_token
+        refresh_token = cfg.get("refresh_token") or refresh_token
+        client_id = cfg.get("client_id") or client_id
+        client_secret = cfg.get("client_secret") or client_secret
+        accounts_url = cfg.get("accounts_url", accounts_url)
+        api_domain = cfg.get("api_domain", api_domain)
+    source = f"{api_domain}/{req.module}"
+    return run_ingestion(
+        zoho_connector,
+        source,
+        "ZohoConnector",
+        option=req.option,
+        table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
+        sync_mode          = req.sync_mode,
+        incremental_column = req.incremental_column,
+        quality_connection_id = req.quality_connection_id,
+        quality_config         = req.quality_config,
+        quality_on_fail        = req.quality_on_fail,
+        df_quality_config      = req.df_quality_config,
+        df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        client_id=client_id,
+        client_secret=client_secret,
+        accounts_url=accounts_url,
+        api_domain=api_domain,
+        module=req.module,
+        fields=req.fields,
+        criteria=req.criteria,
     )
 
 # ─────────────────────────────────────────────
@@ -955,6 +1408,7 @@ class S3Request(BaseModel):
     sync_mode:    str = "full"
     incremental_column: str | None = None
     connection_id: int | None = None   # use a saved connection's real credentials instead of the fields above
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -962,6 +1416,7 @@ class S3Request(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
 @app.post("/ingest_s3")
@@ -985,6 +1440,7 @@ def ingest_s3(req: S3Request):
         secret_key,
         option              = req.option,
         table_name          = req.table_name,
+        pipeline_id         = req.pipeline_id,
         sync_mode           = req.sync_mode,
         incremental_column  = req.incremental_column,
         quality_connection_id = req.quality_connection_id,
@@ -992,6 +1448,7 @@ def ingest_s3(req: S3Request):
         quality_on_fail        = req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
     )
 
 # ─────────────────────────────────────────────
@@ -1012,6 +1469,7 @@ class SnowflakeRequest(BaseModel):
     incremental_column: str | None = None
     role: str | None = None
     connection_id: int | None = None   # use a saved connection's real credentials instead of the fields above
+    pipeline_id: str | None = None     # set by the scheduler DAG so metrics/logs stay keyed by the real pipeline
     # ── optional data-quality gate, run right after load_to_db() succeeds ──
     quality_connection_id: int | None = None   # saved_connections id to run checks against (usually the warehouse this loads into)
     quality_config: dict | None = None          # same shape as quality.router.TableCheckSpec, minus table_name
@@ -1019,6 +1477,7 @@ class SnowflakeRequest(BaseModel):
     # ── optional PRE-INGEST dataframe-level quality gate, runs BEFORE load_to_db() ──
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 
 
@@ -1048,6 +1507,7 @@ def ingest_snowflake(req: SnowflakeRequest):
         role,
         option=req.option,
         table_name=req.table_name,
+        pipeline_id=req.pipeline_id,
         sync_mode=req.sync_mode,
         incremental_column=req.incremental_column,
         quality_connection_id=req.quality_connection_id,
@@ -1055,6 +1515,7 @@ def ingest_snowflake(req: SnowflakeRequest):
         quality_on_fail=req.quality_on_fail,
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
+        custom_schema          = req.custom_schema,
     )
 
 @app.get("/runs")
@@ -1230,6 +1691,29 @@ class CreatePipelineRequest(BaseModel):
     src_pg_password: Optional[str] = None
     src_pg_port:     Optional[str] = "5432"
     pg_query:        Optional[str] = None
+    # ── MySQL fields ──────────────────────
+    src_my_host:     Optional[str] = None
+    src_my_db:       Optional[str] = None
+    src_my_user:     Optional[str] = None
+    src_my_password: Optional[str] = None
+    src_my_port:     Optional[str] = "3306"
+    my_query:        Optional[str] = None
+    # ── Oracle fields ─────────────────────
+    src_ora_host:     Optional[str] = None
+    src_ora_db:       Optional[str] = None   # service name
+    src_ora_user:     Optional[str] = None
+    src_ora_password: Optional[str] = None
+    src_ora_port:     Optional[str] = "1521"
+    ora_query:        Optional[str] = None
+    # ── MongoDB fields ────────────────────
+    src_mongo_host:     Optional[str] = None
+    src_mongo_db:       Optional[str] = None
+    src_mongo_user:     Optional[str] = None
+    src_mongo_password: Optional[str] = None
+    src_mongo_port:     Optional[str] = "27017"
+    src_mongo_connection_string: Optional[str] = None
+    mongo_collection:   Optional[str] = None
+    mongo_query:        Optional[str] = None   # JSON filter document, e.g. '{"status": "active"}'
     # ── S3 fields ────────────────────────
     s3_bucket:       Optional[str] = None
     s3_key:          Optional[str] = None
@@ -1245,6 +1729,32 @@ class CreatePipelineRequest(BaseModel):
     sf_schema:       Optional[str] = "PUBLIC"
     sf_query:        Optional[str] = None
     sf_role:         Optional[str] = None
+    # ── Salesforce CRM fields ─────────────
+    sf_crm_access_token:    Optional[str] = None
+    sf_crm_instance_url:    Optional[str] = None
+    sf_crm_login_url:       Optional[str] = "https://login.salesforce.com"
+    sf_crm_client_id:       Optional[str] = None
+    sf_crm_client_secret:   Optional[str] = None
+    sf_crm_username:        Optional[str] = None
+    sf_crm_password:        Optional[str] = None
+    sf_crm_security_token:  Optional[str] = None
+    sf_crm_object_name:     Optional[str] = None
+    sf_crm_fields:          Optional[list] = None
+    sf_crm_soql_query:      Optional[str] = None
+    # ── HubSpot fields ────────────────────
+    hs_access_token: Optional[str] = None
+    hs_object_type:  Optional[str] = "contacts"
+    hs_properties:   Optional[list] = None
+    # ── Zoho CRM fields ───────────────────
+    zoho_access_token:  Optional[str] = None
+    zoho_refresh_token: Optional[str] = None
+    zoho_client_id:      Optional[str] = None
+    zoho_client_secret:  Optional[str] = None
+    zoho_accounts_url:   Optional[str] = "https://accounts.zoho.com"
+    zoho_api_domain:     Optional[str] = "https://www.zohoapis.com"
+    zoho_module:         Optional[str] = None
+    zoho_fields:         Optional[list] = None
+    zoho_criteria:       Optional[str] = None
     # ─── Incremental fields ─────────────────────
     sync_mode:     Optional[str] = "full"   # "full" or "incremental"
     incremental_column:    Optional[str] = None     # required if load_type is "incremental"
@@ -1254,6 +1764,7 @@ class CreatePipelineRequest(BaseModel):
     quality_on_fail: str = "warn"
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 CONNECTOR_TYPE_MAP = {
     "csv": "local_folder",
@@ -1261,8 +1772,14 @@ CONNECTOR_TYPE_MAP = {
     "google_sheets": "google_sheet",
     "api": "api",
     "postgres": "postgres",
+    "mysql": "mysql",
+    "oracle": "oracle",
+    "mongodb": "mongodb",
     "s3": "s3",
     "snowflake": "snowflake",
+    "salesforce": "salesforce",
+    "hubspot": "hubspot",
+    "zoho": "zoho",
 }
 
 def _resolve_connection_config(req: CreatePipelineRequest) -> dict:
@@ -1298,6 +1815,26 @@ def _resolve_connection_config(req: CreatePipelineRequest) -> dict:
         merged["src_pg_user"] = config.get("user", "")
         merged["src_pg_password"] = config.get("password", "")
         merged["src_pg_port"] = config.get("port", "5432")
+    elif req.connector_type == "mysql":
+        merged["src_my_host"] = config.get("host", "")
+        merged["src_my_db"] = config.get("database", "")
+        merged["src_my_user"] = config.get("user", "")
+        merged["src_my_password"] = config.get("password", "")
+        merged["src_my_port"] = config.get("port", "3306")
+    elif req.connector_type == "oracle":
+        merged["src_ora_host"] = config.get("host", "")
+        merged["src_ora_db"] = config.get("database", "")
+        merged["src_ora_user"] = config.get("user", "")
+        merged["src_ora_password"] = config.get("password", "")
+        merged["src_ora_port"] = config.get("port", "1521")
+    elif req.connector_type == "mongodb":
+        merged["src_mongo_host"] = config.get("host", "")
+        merged["src_mongo_db"] = config.get("database", "")
+        merged["src_mongo_user"] = config.get("user", "")
+        merged["src_mongo_password"] = config.get("password", "")
+        merged["src_mongo_port"] = config.get("port", "27017")
+        merged["src_mongo_connection_string"] = config.get("connection_string", "")
+        merged["mongo_collection"] = merged.get("mongo_collection") or config.get("collection", "")
     elif req.connector_type == "s3":
         merged["s3_bucket"] = config.get("bucket", "")
         merged["s3_key"] = config.get("prefix", "")
@@ -1349,6 +1886,24 @@ def _resolve_connection_config(req: CreatePipelineRequest) -> dict:
     elif req.connector_type in ("csv", "excel"):
         merged["folder_path"] = config.get("base_path", "")
         merged["s3_file_type"] = config.get("file_type", "csv")
+    elif req.connector_type == "salesforce":
+        merged["sf_crm_access_token"] = config.get("access_token", "")
+        merged["sf_crm_instance_url"] = config.get("instance_url", "")
+        merged["sf_crm_login_url"] = config.get("login_url", "https://login.salesforce.com")
+        merged["sf_crm_client_id"] = config.get("client_id", "")
+        merged["sf_crm_client_secret"] = config.get("client_secret", "")
+        merged["sf_crm_username"] = config.get("username", "")
+        merged["sf_crm_password"] = config.get("password", "")
+        merged["sf_crm_security_token"] = config.get("security_token", "")
+    elif req.connector_type == "hubspot":
+        merged["hs_access_token"] = config.get("access_token", "")
+    elif req.connector_type == "zoho":
+        merged["zoho_access_token"] = config.get("access_token", "")
+        merged["zoho_refresh_token"] = config.get("refresh_token", "")
+        merged["zoho_client_id"] = config.get("client_id", "")
+        merged["zoho_client_secret"] = config.get("client_secret", "")
+        merged["zoho_accounts_url"] = config.get("accounts_url", "https://accounts.zoho.com")
+        merged["zoho_api_domain"] = config.get("api_domain", "https://www.zohoapis.com")
 
     return merged
 
@@ -1409,6 +1964,29 @@ class SourceConfig(BaseModel):
     src_pg_password:Optional[str] = None
     src_pg_port:    Optional[str] = "5432"
     pg_query:       Optional[str] = None
+    # MySQL fields
+    src_my_host:     Optional[str] = None
+    src_my_db:       Optional[str] = None
+    src_my_user:     Optional[str] = None
+    src_my_password: Optional[str] = None
+    src_my_port:     Optional[str] = "3306"
+    my_query:        Optional[str] = None
+    # Oracle fields
+    src_ora_host:     Optional[str] = None
+    src_ora_db:       Optional[str] = None
+    src_ora_user:     Optional[str] = None
+    src_ora_password: Optional[str] = None
+    src_ora_port:     Optional[str] = "1521"
+    ora_query:        Optional[str] = None
+    # MongoDB fields
+    src_mongo_host:     Optional[str] = None
+    src_mongo_db:       Optional[str] = None
+    src_mongo_user:     Optional[str] = None
+    src_mongo_password: Optional[str] = None
+    src_mongo_port:     Optional[str] = "27017"
+    src_mongo_connection_string: Optional[str] = None
+    mongo_collection:   Optional[str] = None
+    mongo_query:        Optional[str] = None
     # Snowflake fields
     sf_account:     Optional[str] = None
     sf_user:        Optional[str] = None
@@ -1418,14 +1996,41 @@ class SourceConfig(BaseModel):
     sf_schema:      Optional[str] = "PUBLIC"
     sf_query:       Optional[str] = None
     sf_role:        Optional[str] = None
+    # Salesforce CRM fields
+    sf_crm_access_token:    Optional[str] = None
+    sf_crm_instance_url:    Optional[str] = None
+    sf_crm_login_url:       Optional[str] = "https://login.salesforce.com"
+    sf_crm_client_id:       Optional[str] = None
+    sf_crm_client_secret:   Optional[str] = None
+    sf_crm_username:        Optional[str] = None
+    sf_crm_password:        Optional[str] = None
+    sf_crm_security_token:  Optional[str] = None
+    sf_crm_object_name:     Optional[str] = None
+    sf_crm_fields:          Optional[list] = None
+    sf_crm_soql_query:      Optional[str] = None
+    # HubSpot fields
+    hs_access_token: Optional[str] = None
+    hs_object_type:  Optional[str] = "contacts"
+    hs_properties:   Optional[list] = None
+    # Zoho CRM fields
+    zoho_access_token:   Optional[str] = None
+    zoho_refresh_token:  Optional[str] = None
+    zoho_client_id:      Optional[str] = None
+    zoho_client_secret:  Optional[str] = None
+    zoho_accounts_url:   Optional[str] = "https://accounts.zoho.com"
+    zoho_api_domain:     Optional[str] = "https://www.zohoapis.com"
+    zoho_module:         Optional[str] = None
+    zoho_fields:         Optional[list] = None
+    zoho_criteria:       Optional[str] = None
     # Saved connection
-    # connection_id:  Optional[int] = None
+    connection_id:  Optional[int] = None
     # ── optional per-source data-quality gates, same shape as Direct Ingest ──
     quality_connection_id: int | None = None
     quality_config: dict | None = None
     quality_on_fail: str = "warn"
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
+    custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
 
 class MultiSourcePipelineRequest(BaseModel):
     pipeline_name: str
@@ -1469,6 +2074,26 @@ def _resolve_source_connection(source: SourceConfig) -> dict:
         merged["src_pg_user"] = config.get("user", "")
         merged["src_pg_password"] = config.get("password", "")
         merged["src_pg_port"] = config.get("port", "5432")
+    elif source.connector_type == "mysql":
+        merged["src_my_host"] = config.get("host", "")
+        merged["src_my_db"] = config.get("database", "")
+        merged["src_my_user"] = config.get("user", "")
+        merged["src_my_password"] = config.get("password", "")
+        merged["src_my_port"] = config.get("port", "3306")
+    elif source.connector_type == "oracle":
+        merged["src_ora_host"] = config.get("host", "")
+        merged["src_ora_db"] = config.get("database", "")
+        merged["src_ora_user"] = config.get("user", "")
+        merged["src_ora_password"] = config.get("password", "")
+        merged["src_ora_port"] = config.get("port", "1521")
+    elif source.connector_type == "mongodb":
+        merged["src_mongo_host"] = config.get("host", "")
+        merged["src_mongo_db"] = config.get("database", "")
+        merged["src_mongo_user"] = config.get("user", "")
+        merged["src_mongo_password"] = config.get("password", "")
+        merged["src_mongo_port"] = config.get("port", "27017")
+        merged["src_mongo_connection_string"] = config.get("connection_string", "")
+        merged["mongo_collection"] = merged.get("mongo_collection") or config.get("collection", "")
     elif source.connector_type == "s3":
         merged["s3_bucket"] = config.get("bucket", "")
         merged["s3_key"] = config.get("prefix", "")
@@ -1516,6 +2141,24 @@ def _resolve_source_connection(source: SourceConfig) -> dict:
     elif source.connector_type in ("csv", "excel"):
         merged["folder_path"] = config.get("base_path", "")
         merged["s3_file_type"] = config.get("file_type", "csv")
+    elif source.connector_type == "salesforce":
+        merged["sf_crm_access_token"] = config.get("access_token", "")
+        merged["sf_crm_instance_url"] = config.get("instance_url", "")
+        merged["sf_crm_login_url"] = config.get("login_url", "https://login.salesforce.com")
+        merged["sf_crm_client_id"] = config.get("client_id", "")
+        merged["sf_crm_client_secret"] = config.get("client_secret", "")
+        merged["sf_crm_username"] = config.get("username", "")
+        merged["sf_crm_password"] = config.get("password", "")
+        merged["sf_crm_security_token"] = config.get("security_token", "")
+    elif source.connector_type == "hubspot":
+        merged["hs_access_token"] = config.get("access_token", "")
+    elif source.connector_type == "zoho":
+        merged["zoho_access_token"] = config.get("access_token", "")
+        merged["zoho_refresh_token"] = config.get("refresh_token", "")
+        merged["zoho_client_id"] = config.get("client_id", "")
+        merged["zoho_client_secret"] = config.get("client_secret", "")
+        merged["zoho_accounts_url"] = config.get("accounts_url", "https://accounts.zoho.com")
+        merged["zoho_api_domain"] = config.get("api_domain", "https://www.zohoapis.com")
 
     return merged
 
@@ -1549,7 +2192,13 @@ def create_multi_pipeline(req: MultiSourcePipelineRequest):
 # Edit existing pipeline
 # ────────────────────────────────────────────
 
-from utils.dag_generator import create_dag_file, delete_dag_file, list_dag_files, edit_dag_file
+from utils.dag_generator import (
+    create_dag_file, delete_dag_file, list_dag_files, edit_dag_file,
+    get_dag_config, get_dag_raw_content, restore_dag_raw_content,
+    get_dag_source_credentials,
+    _safe_id as _safe_pipeline_id,
+)
+from utils import history_store
 
 class EditPipelineRequest(BaseModel):
     # source config
@@ -1574,6 +2223,29 @@ class EditPipelineRequest(BaseModel):
     src_pg_password:    Optional[str] = None
     src_pg_port:        Optional[str] = None
     pg_query:           Optional[str] = None
+    # mysql
+    src_my_host:        Optional[str] = None
+    src_my_db:          Optional[str] = None
+    src_my_user:        Optional[str] = None
+    src_my_password:    Optional[str] = None
+    src_my_port:        Optional[str] = None
+    my_query:           Optional[str] = None
+    # oracle
+    src_ora_host:        Optional[str] = None
+    src_ora_db:          Optional[str] = None
+    src_ora_user:        Optional[str] = None
+    src_ora_password:    Optional[str] = None
+    src_ora_port:        Optional[str] = None
+    ora_query:           Optional[str] = None
+    # mongodb
+    src_mongo_host:              Optional[str] = None
+    src_mongo_db:                Optional[str] = None
+    src_mongo_user:              Optional[str] = None
+    src_mongo_password:          Optional[str] = None
+    src_mongo_port:              Optional[str] = None
+    src_mongo_connection_string: Optional[str] = None
+    mongo_collection:            Optional[str] = None
+    mongo_query:                 Optional[str] = None
     # s3
     s3_bucket:          Optional[str] = None
     s3_key:             Optional[str] = None
@@ -1589,12 +2261,60 @@ class EditPipelineRequest(BaseModel):
     sf_schema:          Optional[str] = None
     sf_query:           Optional[str] = None
     sf_role:            Optional[str] = None
+    # salesforce (crm)
+    sf_crm_access_token:    Optional[str] = None
+    sf_crm_instance_url:    Optional[str] = None
+    sf_crm_login_url:       Optional[str] = None
+    sf_crm_client_id:       Optional[str] = None
+    sf_crm_client_secret:   Optional[str] = None
+    sf_crm_username:        Optional[str] = None
+    sf_crm_password:        Optional[str] = None
+    sf_crm_security_token:  Optional[str] = None
+    sf_crm_object_name:     Optional[str] = None
+    sf_crm_fields:           Optional[list] = None
+    sf_crm_soql_query:      Optional[str] = None
+    # hubspot
+    hs_access_token: Optional[str] = None
+    hs_object_type:  Optional[str] = None
+    hs_properties:   Optional[list] = None
+    # zoho
+    zoho_access_token:   Optional[str] = None
+    zoho_refresh_token:  Optional[str] = None
+    zoho_client_id:      Optional[str] = None
+    zoho_client_secret:  Optional[str] = None
+    zoho_accounts_url:   Optional[str] = None
+    zoho_api_domain:     Optional[str] = None
+    zoho_module:         Optional[str] = None
+    zoho_fields:         Optional[list] = None
+    zoho_criteria:       Optional[str] = None
+    # data quality — pre-ingest dataframe checks (dtype, nulls, ranges, etc.)
+    # edit_dag_file() already knows how to write DF_QUALITY_CONFIG /
+    # DF_QUALITY_ON_FAIL; this model just never exposed them for editing.
+    df_quality_config:   Optional[dict] = None
+    df_quality_on_fail:  Optional[str] = None
+    # BUGFIX: custom_schema was never exposed on the edit model at all, so
+    # edit_pipeline() could never change (or clear) a pipeline's schema
+    # override even after edit_dag_file() learned how to write it.
+    custom_schema:       Optional[dict] = None
 
 
 
 @app.patch("/edit_pipeline/{pipeline_name}")
 def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
-    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    # NOTE: df_quality_config/df_quality_on_fail/custom_schema are always
+    # sent by the frontend on every save (even as null, meaning "no checks
+    # configured" / "no schema override"). A blanket "drop every None"
+    # filter silently swallows that intent — the field never reaches
+    # edit_dag_file(), so the DAG file variable is never touched and the
+    # OLD value sticks around forever, even though the save appeared to
+    # succeed. Carve these fields out of the generic None-filter so an
+    # explicit null still gets applied.
+    raw = req.model_dump()
+    always_include = {"df_quality_config", "df_quality_on_fail", "custom_schema"}
+    updates = {
+        k: v for k, v in raw.items()
+        if v is not None or k in always_include
+    }
 
     if not updates:
         raise HTTPException(status_code=400, detail="At least one field required for update.")
@@ -1604,6 +2324,22 @@ def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
 
     if "sync_mode" in updates and updates["sync_mode"] not in ("full", "incremental"):
         raise HTTPException(status_code=400, detail="sync_mode 'full' or 'incremental' is required.")
+
+    # ── Snapshot the pipeline as it is RIGHT NOW, before the regex edit ──────
+    # edit_dag_file() only ever sees the partial `updates` dict, never the
+    # pre-edit whole file — so the "what it looked like before" snapshot has
+    # to be built here, from the live file, not from `updates`.
+    pre_edit_config = get_dag_config(pipeline_name)
+    pre_edit_raw = get_dag_raw_content(pipeline_name)
+    if pre_edit_config is not None:
+        changed_fields = ", ".join(sorted(updates.keys()))
+        history_store.push_history(
+            entity_type="pipeline",
+            entity_id=_safe_pipeline_id(pipeline_name),
+            config=pre_edit_config,
+            raw_content=pre_edit_raw,
+            label=f"Edited: {changed_fields}",
+        )
 
     result = edit_dag_file(pipeline_name, updates)
 
@@ -1628,6 +2364,119 @@ def edit_pipeline(pipeline_name: str, req: EditPipelineRequest):
         print(f"DB update failed (non-critical): {e}")
 
     return result
+
+# ── Pipeline version history ─────────────────────────────────────────────────
+
+@app.get("/pipeline/{pipeline_name}/history")
+def get_pipeline_history(pipeline_name: str):
+    pipeline_id = _safe_pipeline_id(pipeline_name)
+    return {"history": history_store.list_history("pipeline", pipeline_id)}
+
+
+# ── Last-run data quality snapshot ───────────────────────────────────────
+# Structured version of what utils/ingest_runner.py already writes to plain-
+# text pipeline logs after every run: the df_quality (pre-ingest) and/or
+# quality (post-load) gate result, each failed check already carrying a
+# rule-based fix_suggestion (quality/fix_suggestions.py). Lets the Pipelines
+# page render this with QualityGateSummary instead of the person having to
+# read raw log text to find out why a run was blocked and what to do about it.
+@app.get("/pipeline/{pipeline_name}/quality-latest")
+def get_pipeline_quality_latest(pipeline_name: str):
+    from quality.pipeline_quality_store import get_latest_quality_snapshot
+
+    # Matches the PIPELINE_ID convention used by utils/dag_static_body.py
+    # and utils/ingest_runner.py (see get_pipeline_logs_latest above for
+    # the same normalization) — the stored pipeline_id is always
+    # "pipeline_"-prefixed, but the name in the URL usually isn't.
+    pipeline_id = (
+        pipeline_name if pipeline_name.startswith("pipeline_")
+        else f"pipeline_{pipeline_name}"
+    )
+    snapshot = get_latest_quality_snapshot(pipeline_id)
+    if not snapshot:
+        return {"pipeline": pipeline_id, "has_snapshot": False}
+    return {"pipeline": pipeline_id, "has_snapshot": True, **snapshot}
+
+
+# ── Source table list — powers the "pick a table" edit UI ───────────────────
+# So a non-technical user editing a Postgres/Snowflake pipeline can choose a
+# table from a dropdown instead of writing/reading raw SQL. Credentials are
+# read server-side from the pipeline's own DAG file and never sent to the
+# browser — only the resulting table names are returned.
+
+@app.get("/pipeline/{pipeline_name}/source_tables")
+def get_pipeline_source_tables(pipeline_name: str):
+    creds = get_dag_source_credentials(pipeline_name)
+    if creds is None:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    connector_type = creds.get("connector_type")
+
+    if connector_type == "postgres":
+        if not (creds.get("src_pg_host") and creds.get("src_pg_db") and creds.get("src_pg_user")):
+            raise HTTPException(status_code=400, detail="This pipeline has no Postgres credentials saved yet.")
+        try:
+            conn = psycopg2.connect(
+                host=creds["src_pg_host"], dbname=creds["src_pg_db"],
+                user=creds["src_pg_user"], password=creds.get("src_pg_password"),
+                port=creds.get("src_pg_port") or "5432",
+            )
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+                ORDER BY table_name
+            """)
+            tables = [r[0] for r in cur.fetchall()]
+            cur.close(); conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Couldn't connect to the source database: {e}")
+        return {"connector_type": connector_type, "tables": tables}
+
+    if connector_type == "snowflake":
+        if not (creds.get("sf_account") and creds.get("sf_user") and creds.get("sf_database")):
+            raise HTTPException(status_code=400, detail="This pipeline has no Snowflake credentials saved yet.")
+        try:
+            import snowflake.connector
+            conn = snowflake.connector.connect(
+                account=creds["sf_account"], user=creds["sf_user"], password=creds.get("sf_password"),
+                warehouse=creds.get("sf_warehouse"), database=creds.get("sf_database"),
+                schema=creds.get("sf_schema") or "PUBLIC", role=creds.get("sf_role") or None,
+            )
+            cur = conn.cursor()
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s ORDER BY table_name", (creds.get("sf_schema") or "PUBLIC",))
+            tables = [r[0] for r in cur.fetchall()]
+            cur.close(); conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Couldn't connect to Snowflake: {e}")
+        return {"connector_type": connector_type, "tables": tables}
+
+    raise HTTPException(status_code=400, detail=f"Table listing isn't supported for '{connector_type}' pipelines yet — use custom SQL.")
+
+
+@app.post("/pipeline/{pipeline_name}/restore/{version_id}")
+def restore_pipeline_version(pipeline_name: str, version_id: int):
+    """
+    Restore = write the snapshotted .py file back verbatim (NOT a re-render
+    from JSON config — config snapshots never contain passwords, see
+    get_dag_config's docstring). The version being restored, and anything
+    saved after it, is then dropped from history — same "no redo" rule as
+    dashboard restore.
+    """
+    pipeline_id = _safe_pipeline_id(pipeline_name)
+    version = history_store.get_version("pipeline", pipeline_id, version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="History version not found.")
+    if not version.get("raw_content"):
+        raise HTTPException(status_code=409, detail="This version has no recoverable file content.")
+
+    result = restore_dag_raw_content(pipeline_name, version["raw_content"])
+    if result.get("status") == "FAILED":
+        raise HTTPException(status_code=404, detail=result)
+
+    history_store.discard_from("pipeline", pipeline_id, version_id)
+    return {"status": "SUCCESS", "restored_label": version.get("label"), "dag": result}
+
 
 # ── DELETE /delete_pipeline/{pipeline_name} ──────────────────────────────────
 
@@ -3305,6 +4154,12 @@ class PreviewSourceRequest(BaseModel):
 
     # csv / excel
     file_path: Optional[str] = None
+    # BUGFIX: folder-based CSV/Excel pipelines (folder_path set, no single
+    # file_path) had no way to preview at all — preview_source() only knew
+    # about file_path, so DataQualityBuilder/SchemaBuilder always got
+    # params=null for these pipelines and silently rendered nothing (see
+    # SchemaBuilder.tsx's `if (!params) return null`).
+    folder_path: Optional[str] = None
 
     # google sheets
     sheet_url: Optional[str] = None
@@ -3320,6 +4175,32 @@ class PreviewSourceRequest(BaseModel):
     src_pg_password: Optional[str] = None
     src_pg_port: Optional[str] = "5432"
     pg_query: Optional[str] = None
+
+    # mysql
+    src_my_host: Optional[str] = None
+    src_my_db: Optional[str] = None
+    src_my_user: Optional[str] = None
+    src_my_password: Optional[str] = None
+    src_my_port: Optional[str] = "3306"
+    my_query: Optional[str] = None
+
+    # oracle
+    src_ora_host: Optional[str] = None
+    src_ora_db: Optional[str] = None
+    src_ora_user: Optional[str] = None
+    src_ora_password: Optional[str] = None
+    src_ora_port: Optional[str] = "1521"
+    ora_query: Optional[str] = None
+
+    # mongodb
+    src_mongo_host: Optional[str] = None
+    src_mongo_db: Optional[str] = None
+    src_mongo_user: Optional[str] = None
+    src_mongo_password: Optional[str] = None
+    src_mongo_port: Optional[str] = "27017"
+    src_mongo_connection_string: Optional[str] = None
+    mongo_collection: Optional[str] = None
+    mongo_query: Optional[str] = None
 
     # s3
     s3_bucket: Optional[str] = None
@@ -3366,6 +4247,26 @@ def _resolve_preview_config(req: "PreviewSourceRequest") -> dict:
         merged["src_pg_user"] = config.get("user", "")
         merged["src_pg_password"] = config.get("password", "")
         merged["src_pg_port"] = config.get("port", "5432")
+    elif req.connector_type == "mysql":
+        merged["src_my_host"] = config.get("host", "")
+        merged["src_my_db"] = config.get("database", "")
+        merged["src_my_user"] = config.get("user", "")
+        merged["src_my_password"] = config.get("password", "")
+        merged["src_my_port"] = config.get("port", "3306")
+    elif req.connector_type == "oracle":
+        merged["src_ora_host"] = config.get("host", "")
+        merged["src_ora_db"] = config.get("database", "")
+        merged["src_ora_user"] = config.get("user", "")
+        merged["src_ora_password"] = config.get("password", "")
+        merged["src_ora_port"] = config.get("port", "1521")
+    elif req.connector_type == "mongodb":
+        merged["src_mongo_host"] = config.get("host", "")
+        merged["src_mongo_db"] = config.get("database", "")
+        merged["src_mongo_user"] = config.get("user", "")
+        merged["src_mongo_password"] = config.get("password", "")
+        merged["src_mongo_port"] = config.get("port", "27017")
+        merged["src_mongo_connection_string"] = config.get("connection_string", "")
+        merged["mongo_collection"] = merged.get("mongo_collection") or config.get("collection", "")
     elif req.connector_type == "s3":
         merged["s3_bucket"] = config.get("bucket", "")
         merged["s3_key"] = config.get("prefix", "")
@@ -3424,6 +4325,23 @@ def preview_source(req: PreviewSourceRequest):
     try:
         if connector_type in ("csv", "excel"):
             file_path = cfg.get("file_path")
+            # BUGFIX: folder-based pipelines only ever had folder_path set —
+            # file_path was always empty, so preview_source used to 400 on
+            # every one of them. Fall back to the first matching file in the
+            # folder, same extension rule /list_folder_files uses, so the
+            # quality/schema builders have something real to preview against.
+            if not file_path:
+                folder_path = cfg.get("folder_path")
+                if folder_path and os.path.isdir(folder_path):
+                    ext_filter = (".csv",) if connector_type == "csv" else (".xlsx", ".xls")
+                    candidates = sorted(
+                        f for f in os.listdir(folder_path)
+                        if not f.startswith(".")
+                        and os.path.isfile(os.path.join(folder_path, f))
+                        and os.path.splitext(f)[1].lower() in ext_filter
+                    )
+                    if candidates:
+                        file_path = os.path.join(folder_path, candidates[0])
             if not file_path:
                 raise HTTPException(status_code=400, detail="Select a file to preview.")
             if not os.path.exists(file_path):
@@ -3439,6 +4357,42 @@ def preview_source(req: PreviewSourceRequest):
                 host=cfg.get("src_pg_host"), database=cfg.get("src_pg_db"),
                 user=cfg.get("src_pg_user"), password=cfg.get("src_pg_password"),
                 port=cfg.get("src_pg_port"), query=preview_query,
+            )
+
+        elif connector_type == "mysql":
+            base_query = (cfg.get("my_query") or "").strip()
+            if not base_query:
+                raise HTTPException(status_code=400, detail="Provide a table name or SQL query.")
+            preview_query = f"SELECT * FROM ({base_query.rstrip(';')}) AS _preview_src LIMIT {sample_rows}"
+            df = mysql_connector(
+                host=cfg.get("src_my_host"), database=cfg.get("src_my_db"),
+                user=cfg.get("src_my_user"), password=cfg.get("src_my_password"),
+                port=cfg.get("src_my_port"), query=preview_query,
+            )
+
+        elif connector_type == "oracle":
+            base_query = (cfg.get("ora_query") or "").strip()
+            if not base_query:
+                raise HTTPException(status_code=400, detail="Provide a table name or SQL query.")
+            # Oracle table aliases can't use the AS keyword, and ROWNUM is the
+            # portable way to cap rows without requiring 12c+ FETCH FIRST.
+            preview_query = f"SELECT * FROM ({base_query.rstrip(';')}) _preview_src WHERE ROWNUM <= {sample_rows}"
+            df = oracle_connector(
+                host=cfg.get("src_ora_host"), database=cfg.get("src_ora_db"),
+                user=cfg.get("src_ora_user"), password=cfg.get("src_ora_password"),
+                port=cfg.get("src_ora_port"), query=preview_query,
+            )
+
+        elif connector_type == "mongodb":
+            collection = cfg.get("mongo_collection")
+            if not collection:
+                raise HTTPException(status_code=400, detail="Provide a collection name.")
+            df = mongodb_connector(
+                host=cfg.get("src_mongo_host"), database=cfg.get("src_mongo_db"),
+                user=cfg.get("src_mongo_user"), password=cfg.get("src_mongo_password"),
+                port=cfg.get("src_mongo_port"), collection=collection,
+                query=cfg.get("mongo_query"), connection_string=cfg.get("src_mongo_connection_string"),
+                limit=sample_rows,
             )
 
         elif connector_type == "snowflake":
@@ -3505,6 +4459,103 @@ def preview_source(req: PreviewSourceRequest):
         "total_rows": total_rows,
         "sample_row_count": len(rows),
     }
+
+
+# ── Live table list for the CREATE flow (pipeline doesn't exist yet) ────────
+# GET /pipeline/{pipeline_name}/source_tables (above) only works for a
+# pipeline that's already been saved, because it reads credentials back out
+# of that pipeline's DAG file. Create Pipeline / Multi-Source / Direct
+# Ingest need the same "pick a table" dropdown *before* anything is saved,
+# so this takes credentials (or a saved connection_id) straight from the
+# form instead — reusing the same _resolve_preview_config merge that
+# /preview_source uses, so "table name" mode always sees the same source
+# preview mode would read from.
+
+@app.post("/list_source_tables")
+def list_source_tables_live(req: PreviewSourceRequest):
+    cfg = _resolve_preview_config(req)
+    connector_type = req.connector_type
+
+    if connector_type == "postgres":
+        host, db, user = cfg.get("src_pg_host"), cfg.get("src_pg_db"), cfg.get("src_pg_user")
+        if not (host and db and user):
+            raise HTTPException(status_code=400, detail="Enter host, database, and user first.")
+        try:
+            conn = psycopg2.connect(
+                host=host, dbname=db, user=user,
+                password=cfg.get("src_pg_password"), port=cfg.get("src_pg_port") or "5432",
+            )
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+                ORDER BY table_name
+            """)
+            tables = [r[0] for r in cur.fetchall()]
+            cur.close(); conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Couldn't connect to the source database: {e}")
+        return {"connector_type": connector_type, "tables": tables}
+
+    if connector_type == "mysql":
+        host, db, user = cfg.get("src_my_host"), cfg.get("src_my_db"), cfg.get("src_my_user")
+        if not (host and db and user):
+            raise HTTPException(status_code=400, detail="Enter host, database, and user first.")
+        try:
+            import pymysql
+            conn = pymysql.connect(
+                host=host, database=db, user=user,
+                password=cfg.get("src_my_password") or "",
+                port=int(cfg.get("src_my_port") or 3306),
+            )
+            cur = conn.cursor()
+            cur.execute("SHOW TABLES")
+            tables = [r[0] for r in cur.fetchall()]
+            cur.close(); conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Couldn't connect to MySQL: {e}")
+        return {"connector_type": connector_type, "tables": tables}
+
+    if connector_type == "oracle":
+        host, user = cfg.get("src_ora_host"), cfg.get("src_ora_user")
+        db = cfg.get("src_ora_db")
+        if not (host and user):
+            raise HTTPException(status_code=400, detail="Enter host and user first.")
+        try:
+            import oracledb
+            dsn = oracledb.makedsn(host, int(cfg.get("src_ora_port") or 1521), service_name=db) if db else host
+            conn = oracledb.connect(user=user, password=cfg.get("src_ora_password"), dsn=dsn)
+            cur = conn.cursor()
+            cur.execute("SELECT table_name FROM user_tables ORDER BY table_name")
+            tables = [r[0] for r in cur.fetchall()]
+            cur.close(); conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Couldn't connect to Oracle: {e}")
+        return {"connector_type": connector_type, "tables": tables}
+
+    if connector_type == "snowflake":
+        if not (cfg.get("sf_account") and cfg.get("sf_user") and cfg.get("sf_database")):
+            raise HTTPException(status_code=400, detail="Enter account, user, and database first.")
+        try:
+            import snowflake.connector
+            conn = snowflake.connector.connect(
+                account=cfg["sf_account"], user=cfg["sf_user"], password=cfg.get("sf_password"),
+                warehouse=cfg.get("sf_warehouse"), database=cfg.get("sf_database"),
+                schema=cfg.get("sf_schema") or "PUBLIC", role=cfg.get("sf_role") or None,
+            )
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = %s ORDER BY table_name",
+                (cfg.get("sf_schema") or "PUBLIC",),
+            )
+            tables = [r[0] for r in cur.fetchall()]
+            cur.close(); conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Couldn't connect to Snowflake: {e}")
+        return {"connector_type": connector_type, "tables": tables}
+
+    raise HTTPException(status_code=400, detail=f"Table listing isn't supported for '{connector_type}' yet — use custom SQL.")
+
 
 # ─────────────────────────────────────────────
 # DELETE a file from a user folder (optional cleanup)

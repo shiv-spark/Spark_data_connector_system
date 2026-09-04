@@ -360,3 +360,58 @@ export const restoreDashboardVersion = async (dashboardId: string, versionId: nu
   const r = await api.post(`/agent/dashboard/${dashboardId}/restore/${versionId}`);
   return r.data;
 };
+
+/* --- Pipeline version history --------------------------------------------
+   Same HistoryVersion shape as dashboards (version_id/label/created_at) —
+   see components/console/HistoryPanel.tsx, which takes these as injected
+   fetchHistory/restoreVersion functions rather than knowing about any
+   specific entity type itself. */
+
+export const fetchPipelineHistory = async (pipelineName: string) => {
+  const r = await api.get(`/pipeline/${pipelineName}/history`);
+  return r.data?.history ?? [];
+};
+
+export const restorePipelineVersion = async (pipelineName: string, versionId: number) => {
+  const r = await api.post(`/pipeline/${pipelineName}/restore/${versionId}`);
+  return r.data;
+};
+
+/* --- Pipeline source tables ------------------------------------------------
+   Lets the edit UI offer a "pick a table" dropdown for Postgres/Snowflake
+   pipelines instead of forcing everyone to write/read raw SQL. Credentials
+   never leave the backend — this only returns table names. */
+
+export const fetchPipelineSourceTables = async (pipelineName: string): Promise<string[]> => {
+  const r = await api.get(`/pipeline/${pipelineName}/source_tables`);
+  return r.data?.tables ?? [];
+};
+
+/* --- Live table list for the CREATE flow -----------------------------------
+   Same idea as fetchPipelineSourceTables, but usable *before* a pipeline
+   exists — Create Pipeline / Multi-Source / Direct Ingest have no saved DAG
+   file yet to read credentials from, so this sends the credentials (or a
+   saved connection_id) straight from the form instead. */
+
+export type ListSourceTablesPayload = {
+  connector_type: string;
+  connection_id?: string | number | null;
+  [key: string]: unknown; // src_pg_host, src_my_db, sf_account, etc. — whichever the connector needs
+};
+
+export const fetchLiveSourceTables = async (payload: ListSourceTablesPayload): Promise<string[]> => {
+  const r = await api.post("/list_source_tables", payload);
+  return r.data?.tables ?? [];
+};
+
+/* --- Reverse ETL version history ------------------------------------------ */
+
+export const fetchReverseEtlHistory = async (pipelineName: string) => {
+  const r = await api.get(`/reverse_etl/pipelines/${pipelineName}/history`);
+  return r.data?.history ?? [];
+};
+
+export const restoreReverseEtlVersion = async (pipelineName: string, versionId: number) => {
+  const r = await api.post(`/reverse_etl/pipelines/${pipelineName}/restore/${versionId}`);
+  return r.data;
+};

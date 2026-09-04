@@ -553,6 +553,9 @@ def run_dataframe_quality_checks(df: Any, config: Dict[str, Any]) -> Dict[str, A
     if allowed_values:
         results.extend(check_allowed_values(df, allowed_values))
 
+    from quality.fix_suggestions import annotate_results
+    annotate_results(results, source="dataframe")
+
     passed = sum(1 for r in results if r["status"] == "PASS")
     failed = sum(1 for r in results if r["status"] == "FAIL")
     overall_status = "PASS" if failed == 0 else "FAIL"

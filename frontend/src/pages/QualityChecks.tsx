@@ -14,6 +14,8 @@ import {
   Wifi,
   CheckCircle,
   X,
+  Sparkles,
+  Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -67,6 +69,7 @@ interface CheckResult {
   source_value: string | null;
   target_value: string | null;
   message: string;
+  fix_suggestion?: string;
 }
 
 interface QualityRunResponse {
@@ -118,6 +121,13 @@ const runQualityChecks = async (payload: Record<string, unknown>): Promise<Quali
 
 const resetSchemaBaseline = async (payload: { connection_id: number; table_name: string }) => {
   const r = await api.post("/quality/schema-baseline/reset", payload);
+  return r.data;
+};
+
+// Optional LLM-powered remediation help on top of the rule-based
+// `fix_suggestion` every failed/errored result already carries.
+const askAiFix = async (payload: { results: CheckResult[]; connection_id?: number }): Promise<{ advice: string; checks_analyzed?: number }> => {
+  const r = await api.post("/quality/ai-fix", payload);
   return r.data;
 };
 
@@ -582,6 +592,21 @@ export const QualityChecks = () => {
     },
   });
 
+  // AI-assisted fix help for the checks that failed in the most recent run.
+  const [aiFixAdvice, setAiFixAdvice] = useState<string | null>(null);
+  const aiFixMutation = useMutation({
+    mutationFn: askAiFix,
+    onSuccess: (data) => setAiFixAdvice(data.advice),
+    onError: () => setAiFixAdvice(null),
+  });
+
+  const askAiForFixHelp = () => {
+    const failing = (runMutation.data?.results ?? []).filter((r) => r.status !== "PASS");
+    if (!failing.length) return;
+    setAiFixAdvice(null);
+    aiFixMutation.mutate({ results: failing, connection_id: connectionId ? Number(connectionId) : undefined });
+  };
+
   const resetBaselineMutation = useMutation({
     mutationFn: resetSchemaBaseline,
   });
@@ -603,6 +628,7 @@ export const QualityChecks = () => {
     setConsistencyRules([]);
     setNoChecksWarning(false);
     runMutation.reset();
+    setAiFixAdvice(null);
   }, [connectionId, tableName]);
 
   useEffect(() => {
@@ -1411,12 +1437,28 @@ export const QualityChecks = () => {
 
       {runMutation.isSuccess && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
             <CardTitle className="text-sm">
               Results — <StatusBadge status={runMutation.data.status} /> ({runMutation.data.passed}/{runMutation.data.total_checks} passed)
             </CardTitle>
+            {runMutation.data.status === "FAIL" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={askAiForFixHelp}
+                disabled={aiFixMutation.isPending}
+              >
+                {aiFixMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                Ask AI to help fix
+              </Button>
+            )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="overflow-auto rounded-md border border-border">
               <table className="w-full text-sm">
                 <thead className="bg-muted">
@@ -1435,12 +1477,35 @@ export const QualityChecks = () => {
                       <td className="px-3 py-2 font-mono text-xs text-foreground">{r.check_name}</td>
                       <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
                       <td className="px-3 py-2 text-foreground">{r.failed_rows ?? "—"}</td>
-                      <td className="max-w-md whitespace-pre-wrap break-words px-3 py-2 text-muted-foreground">{r.message}</td>
+                      <td className="max-w-md whitespace-pre-wrap break-words px-3 py-2 text-muted-foreground">
+                        <div>{r.message}</div>
+                        {r.status !== "PASS" && r.fix_suggestion && (
+                          <div className="mt-1.5 flex gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                            <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>{r.fix_suggestion}</span>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            {aiFixMutation.isError && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-400">
+                {formatApiError(aiFixMutation.error)}
+              </div>
+            )}
+
+            {aiFixAdvice && (
+              <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200">
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                  <Sparkles className="h-3.5 w-3.5" /> AI fix suggestions
+                </div>
+                <div className="whitespace-pre-wrap">{aiFixAdvice}</div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

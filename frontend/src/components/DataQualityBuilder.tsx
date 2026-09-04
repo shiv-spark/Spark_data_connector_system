@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Calendar,
@@ -99,6 +99,46 @@ const blankCheck: ColumnCheckState = {
   allowedValues: "",
 };
 
+// Inverse of buildQualityFromChecks — turns a previously-saved df_quality_config
+// back into per-column UI state, so editing an existing pipeline starts from
+// what's actually configured instead of a blank slate. One caveat: pattern_checks
+// stores a compiled regex (not the original friendly "%"/"_" wildcard string), so
+// that direction can't be perfectly inverted — the pattern format is restored but
+// the LIKE-pattern text box is left for the user to re-enter if they touch it.
+function checksFromConfig(
+  config: Record<string, unknown> | null | undefined,
+): Record<string, ColumnCheckState> {
+  if (!config) return {};
+  const checks: Record<string, ColumnCheckState> = {};
+  const ensure = (col: string) => (checks[col] ??= { ...blankCheck });
+
+  const nullThresholds = (config.null_thresholds ?? {}) as Record<string, number>;
+  Object.keys(nullThresholds).forEach((col) => { ensure(col).noEmpty = true; });
+
+  const duplicateSubset = (config.duplicate_subset ?? []) as string[];
+  duplicateSubset.forEach((col) => { ensure(col).noDuplicates = true; });
+
+  const expectedDtypes = (config.expected_dtypes ?? {}) as Record<string, string>;
+  Object.entries(expectedDtypes).forEach(([col, t]) => { ensure(col).typeCheck = t; });
+
+  const rangeChecks = (config.range_checks ?? {}) as Record<string, { min?: number; max?: number }>;
+  Object.entries(rangeChecks).forEach(([col, bounds]) => {
+    const c = ensure(col);
+    if (bounds?.min !== undefined) c.min = String(bounds.min);
+    if (bounds?.max !== undefined) c.max = String(bounds.max);
+  });
+
+  const patternChecks = (config.pattern_checks ?? {}) as Record<string, string>;
+  Object.keys(patternChecks).forEach((col) => { ensure(col).format = "pattern"; });
+
+  const allowedValues = (config.allowed_values ?? {}) as Record<string, string[]>;
+  Object.entries(allowedValues).forEach(([col, vals]) => {
+    ensure(col).allowedValues = (vals ?? []).join(", ");
+  });
+
+  return checks;
+}
+
 // Converts a friendly SQL-LIKE pattern ("%" = any characters, "_" = one
 // character) into the regex the backend's pattern_checks actually runs,
 // so users never have to type regex themselves.
@@ -171,7 +211,9 @@ export function buildQualityFromChecks(
 // Any connector type — the backend's /preview_source dispatches to the
 // right connector function based on `connector` + whatever fields are in
 // `params` (a saved connection_id, or freshly-typed credentials/query).
-export type PreviewConnector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
+// export type PreviewConnector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "s3" | "snowflake";
+
+export type PreviewConnector = "csv" | "excel" | "google_sheets" | "api" | "postgres" | "mysql" | "oracle" | "mongodb" | "s3" | "snowflake" | "salesforce" | "hubspot" | "zoho";
 
 interface Props {
   connector: PreviewConnector;
@@ -185,29 +227,69 @@ interface Props {
   // url...), so auto=false waits for an explicit "Preview" click instead
   // of firing a real query/API call on every keystroke.
   auto?: boolean;
+  // Pre-populate from a previously-saved df_quality_config — used when
+  // editing an existing pipeline instead of creating a new one. Only read
+  // once, on mount; the component owns the state after that (same as any
+  // other "defaultValue"-style prop).
+  initialConfig?: Record<string, unknown> | null;
+  initialOnFail?: "warn" | "block";
   onChange: (result: BuiltQuality) => void;
+  // When set (e.g. from "Fix in Configure" on a failed check), the matching
+  // column's accordion opens and scrolls into view automatically instead of
+  // making the person hunt through every collapsed column to find it. A
+  // bump on `focusToken` re-triggers the open+scroll even if the same
+  // column was already the target (so clicking "Fix in Configure" again
+  // for the same failing column still scrolls back to it).
+  focusColumn?: string | null;
+  focusToken?: number;
 }
 
 // A friendly, no-jargon replacement for the old "pre-ingest / post-load"
 // checkbox pair: upload → see your data → tick the checks you want, in
 // plain language, right next to the column they apply to. Everything
 // still runs before the data is written to the table, same as before.
-export const DataQualityBuilder = ({ connector, params, auto = true, onChange }: Props) => {
-  const [checks, setChecks] = useState<Record<string, ColumnCheckState>>({});
-  const [onFail, setOnFail] = useState<"warn" | "block">("warn");
+export const DataQualityBuilder = ({ connector, params, auto = true, initialConfig, initialOnFail, onChange, focusColumn, focusToken }: Props) => {
+  const [checks, setChecks] = useState<Record<string, ColumnCheckState>>(() => checksFromConfig(initialConfig));
+  const [onFail, setOnFail] = useState<"warn" | "block">(initialOnFail ?? "warn");
   const [openColumn, setOpenColumn] = useState<string | null>(null);
   const [manualTrigger, setManualTrigger] = useState(false);
+  const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const paramsKey = params ? JSON.stringify(params) : "";
 
+  // Key used ONLY to decide whether the per-column checks should reset —
+  // deliberately excludes password/token/secret fields. Editing an existing
+  // pipeline never gets the real secret back from the backend (see the
+  // "re-enter the credential above" note below), so the very first thing a
+  // person does when fixing a failed check is often to re-type the
+  // password just to get the preview working again. That's the *same*
+  // source, not a new one — it must not be treated like switching to a
+  // different table/query, or every already-configured check silently
+  // vanishes the moment the password field is touched.
+  const paramsResetKey = params
+    ? JSON.stringify(
+        Object.fromEntries(
+          Object.entries(params).filter(([key]) => !/password|token|secret/i.test(key)),
+        ),
+      )
+    : "";
+
   // Reset per-column checks — and require a fresh "Preview" click for
-  // manual connectors — whenever the source itself changes, so stale
-  // checks/preview data from a previous file or query never carry over.
+  // manual connectors — whenever the source *identity* actually changes
+  // (host/db/table/query/url/...), so stale checks/preview data from a
+  // previous file or query never carry over. Skipped on the very first run
+  // so an initialConfig passed in on mount (editing an existing pipeline)
+  // doesn't get wiped out immediately.
+  const skippedFirstReset = useRef(false);
   useEffect(() => {
+    if (!skippedFirstReset.current) {
+      skippedFirstReset.current = true;
+      return;
+    }
     setChecks({});
     setOpenColumn(null);
     setManualTrigger(false);
-  }, [connector, paramsKey]);
+  }, [connector, paramsResetKey]);
 
   const shouldFetch = !!params && (auto || manualTrigger);
 
@@ -222,6 +304,20 @@ export const DataQualityBuilder = ({ connector, params, auto = true, onChange }:
   });
 
   const columns = preview.data?.columns ?? [];
+
+  // Open + scroll to the column a failed check pointed at, once its preview
+  // data has actually loaded (columns start empty while the preview query
+  // is in flight, so this waits rather than firing against an empty list).
+  useEffect(() => {
+    if (!focusColumn) return;
+    if (!columns.some((c) => c.name === focusColumn)) return;
+    setOpenColumn(focusColumn);
+    // Let the accordion render open before scrolling to it.
+    requestAnimationFrame(() => {
+      columnRefs.current[focusColumn]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusColumn, focusToken, columns.length]);
 
   const updateCol = (col: string, patch: Partial<ColumnCheckState>) =>
     setChecks((cur) => ({ ...cur, [col]: { ...(cur[col] ?? blankCheck), ...patch } }));
@@ -334,8 +430,14 @@ export const DataQualityBuilder = ({ connector, params, auto = true, onChange }:
               const isOpen = openColumn === col.name;
               const Icon = typeMeta[col.type].icon;
 
+              const isFocused = focusColumn === col.name;
+
               return (
-                <div key={col.name} className={isOpen ? "bg-muted/10" : ""}>
+                <div
+                  key={col.name}
+                  ref={(el) => { columnRefs.current[col.name] = el; }}
+                  className={`${isOpen ? "bg-muted/10" : ""} ${isFocused ? "ring-2 ring-inset ring-indigo-400" : ""}`}
+                >
                   <button
                     type="button"
                     onClick={() => setOpenColumn(isOpen ? null : col.name)}
@@ -353,6 +455,11 @@ export const DataQualityBuilder = ({ connector, params, auto = true, onChange }:
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
+                      {isFocused && (
+                        <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                          <TriangleAlert className="h-3.5 w-3.5" /> Failing check
+                        </span>
+                      )}
                       {activeCount > 0 && (
                         <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
                           <CheckCircle2 className="h-3.5 w-3.5" /> {activeCount} check{activeCount > 1 ? "s" : ""}

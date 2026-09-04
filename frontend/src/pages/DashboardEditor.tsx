@@ -55,6 +55,7 @@ import {
   renameChart,
   updateChartDescription,
   fetchDashboardHistory,
+  restoreDashboardVersion,
   undoDashboard,
 } from "@/lib/api";
 import { HistoryPanel } from "@/components/console/HistoryPanel";
@@ -715,7 +716,9 @@ export const DashboardEditor = () => {
 
       {historyOpen ? (
         <HistoryPanel
-          dashboardId={dashboardId}
+          queryKey={["dashboard-history", dashboardId]}
+          fetchHistory={() => fetchDashboardHistory(dashboardId)}
+          restoreVersion={(versionId) => restoreDashboardVersion(dashboardId, versionId)}
           onClose={() => setHistoryOpen(false)}
           onRestored={refreshAfterChange}
         />
