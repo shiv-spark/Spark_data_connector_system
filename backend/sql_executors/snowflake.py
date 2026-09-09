@@ -119,14 +119,15 @@ class SnowflakeSqlExecutor(BaseSqlExecutor):
         Raises:
             QueryError: If query is not read-only or execution fails
         """
-        if not self._is_read_only_query(query):
+        if self._is_blocked_query(query):
             raise QueryError(
                 error_type="security",
-                message="Only SELECT and WITH queries are allowed. "
-                        "Write operations (INSERT, UPDATE, DELETE, DDL) are not permitted."
+                message="DROP, TRUNCATE, ALTER, CREATE, GRANT, and REVOKE are not permitted "
+                        "from the SQL Editor. SELECT and INSERT/UPDATE/DELETE are allowed."
             )
 
-        query_with_limit = self._inject_limit(query, limit)
+        is_write = self._is_write_query(query)
+        query_to_run = query if is_write else self._inject_limit(query, limit)
         query_id = self._generate_query_id()
 
         def _run_query_sync():
@@ -142,7 +143,29 @@ class SnowflakeSqlExecutor(BaseSqlExecutor):
                 )
 
                 start_time = time.perf_counter()
-                cursor.execute(query_with_limit)
+                cursor.execute(query_to_run)
+
+                if is_write:
+                    # cursor.rowcount is the accurate "rows affected" figure
+                    # for INSERT/UPDATE/DELETE/MERGE. Snowflake's DML
+                    # statements also return a one-row result set of their
+                    # own (e.g. "number of rows updated") if you fetchall()
+                    # them, which is a different, confusing number — rowcount
+                    # is the one that matches what Postgres/MySQL report.
+                    end_time = time.perf_counter()
+                    execution_time_ms = int((end_time - start_time) * 1000)
+                    affected = cursor.rowcount if cursor.rowcount is not None and cursor.rowcount >= 0 else 0
+
+                    return QueryResult(
+                        columns=[],
+                        rows=[],
+                        row_count=affected,
+                        truncated=False,
+                        execution_time_ms=execution_time_ms,
+                        query_id=query_id,
+                        is_write=True,
+                    )
+
                 rows = cursor.fetchall()
                 end_time = time.perf_counter()
 

@@ -18,6 +18,9 @@ class QueryResult:
     truncated: bool
     execution_time_ms: int
     query_id: str
+    is_write: bool = False  # True for INSERT/UPDATE/DELETE/MERGE — row_count then
+                             # means "rows affected", not "rows returned" (there's
+                             # no result set to show for these).
 
 
 class QueryError(Exception):
@@ -122,11 +125,7 @@ class BaseSqlExecutor(ABC):
         Returns:
             True if query is read-only
         """
-        import re
-
-        cleaned = re.sub(r'--.*$', '', query, flags=re.MULTILINE)
-        cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
-        cleaned = cleaned.strip().upper()
+        cleaned = self._clean_query(query)
 
         if cleaned.startswith('SELECT'):
             return True
@@ -136,8 +135,40 @@ class BaseSqlExecutor(ABC):
             return True
         if cleaned.startswith('VALUES'):
             return True
+        if cleaned.startswith(('SHOW', 'DESCRIBE', 'DESC ', 'EXPLAIN')):
+            return True
 
         return False
+
+    # ── Write queries (INSERT/UPDATE/DELETE/MERGE) — allowed, but they
+    # don't return a result set, so the executor needs to know to ask the
+    # DB driver for an "N rows affected" count instead of fetching rows. ──
+    _WRITE_PREFIXES = ('INSERT', 'UPDATE', 'DELETE', 'MERGE')
+
+    def _is_write_query(self, query: str) -> bool:
+        cleaned = self._clean_query(query)
+        return cleaned.startswith(self._WRITE_PREFIXES)
+
+    # ── Schema-changing / irreversible statements — always blocked from the
+    # SQL Editor regardless of the read/write setting above. If a person
+    # genuinely needs these, that's a job for a migration tool, not an ad
+    # hoc query box. ──────────────────────────────────────────────────────
+    _BLOCKED_PREFIXES = ('DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE')
+
+    def _is_blocked_query(self, query: str) -> bool:
+        cleaned = self._clean_query(query)
+        return cleaned.startswith(self._BLOCKED_PREFIXES)
+
+    @staticmethod
+    def _clean_query(query: str) -> str:
+        """Strip comments and normalize for prefix-matching. Shared by all
+        three classifiers above so they always agree on what "the query"
+        actually starts with."""
+        import re
+
+        cleaned = re.sub(r'--.*$', '', query, flags=re.MULTILINE)
+        cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
+        return cleaned.strip().upper()
 
     def _inject_limit(self, query: str, limit: int) -> str:
         """

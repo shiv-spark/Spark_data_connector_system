@@ -19,6 +19,9 @@ export interface SqlExecuteResponse {
   truncated: boolean;
   execution_time_ms: number;
   query_id: string;
+  // True for INSERT/UPDATE/DELETE/MERGE — row_count then means "rows
+  // affected", not "rows returned" (there's no result set to show).
+  is_write?: boolean;
 }
 
 export interface QueryHistoryItem {

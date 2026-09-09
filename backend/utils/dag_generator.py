@@ -202,7 +202,6 @@ def _render_template(cfg: dict) -> str:
     api_config      = cfg.get("api_config") or {}
     sync_mode          = cfg.get("sync_mode")          or "full"
     incremental_column = cfg.get("incremental_column") or None
-
     src_pg_host     = cfg.get("src_pg_host")     or None
     src_pg_db       = cfg.get("src_pg_db")       or None
     src_pg_user     = cfg.get("src_pg_user")     or None
@@ -283,6 +282,14 @@ def _render_template(cfg: dict) -> str:
     # When set, columns listed here get their SQL type/coercion enforced instead
     # of the auto-detected dtype. See utils/schema_applier.py.
     custom_schema           = cfg.get("custom_schema") or None
+
+    # Destination (where the loaded data gets WRITTEN to) — see
+    # backend/destinations/. Defaults to postgres so a request that
+    # doesn't set these (or a DAG generated before this feature existed)
+    # keeps behaving exactly as before.
+    destination_type          = cfg.get("destination_type") or "postgres"
+    destination_connection_id = cfg.get("destination_connection_id")
+    destination_config        = cfg.get("destination_config")
 
     def q(val):
         if val is None:
@@ -388,6 +395,11 @@ def _render_template(cfg: dict) -> str:
         "",
         # ── Optional user-defined schema override ────────────────────────────
         f"CUSTOM_SCHEMA          = {custom_schema!r}",
+        "",
+        # ── Destination (where the loaded data gets WRITTEN to) ───────────────
+        f'DESTINATION_TYPE           = "{destination_type}"',
+        f"DESTINATION_CONNECTION_ID  = {destination_connection_id!r}",
+        f"DESTINATION_CONFIG         = {destination_config!r}",
         "",
         # ── Path translation variables injected into every generated DAG ──────
         #
@@ -672,6 +684,11 @@ def list_dag_files() -> list:
 
                 # ── User-defined schema override ─────────────────────────────
                 "custom_schema":         read_dict_var(content, "CUSTOM_SCHEMA"),
+
+                # ── Destination ────────────────────────────────────────────
+                "destination_type":           read_var(content, "DESTINATION_TYPE", "postgres"),
+                "destination_connection_id":  read_int_var(content, "DESTINATION_CONNECTION_ID"),
+                "destination_config":         read_dict_var(content, "DESTINATION_CONFIG"),
             })
     return result
 # def list_dag_files() -> list:
@@ -843,6 +860,9 @@ def get_dag_config(pipeline_name: str) -> dict | None:
         "df_quality_config": read_dict_var("DF_QUALITY_CONFIG"),
         "df_quality_on_fail": read_var("DF_QUALITY_ON_FAIL", "warn"),
         "custom_schema": read_dict_var("CUSTOM_SCHEMA"),
+        "destination_type": read_var("DESTINATION_TYPE", "postgres"),
+        "destination_connection_id": read_int_var("DESTINATION_CONNECTION_ID"),
+        "destination_config": read_dict_var("DESTINATION_CONFIG"),
     }
 
 
@@ -1035,6 +1055,7 @@ def edit_dag_file(pipeline_name: str, updates: dict) -> dict:
         "zoho_criteria":      "ZOHO_CRITERIA",
         "quality_on_fail":    "QUALITY_ON_FAIL",
         "df_quality_on_fail": "DF_QUALITY_ON_FAIL",
+        "destination_type":   "DESTINATION_TYPE",
     }
     if "api_config" in updates:
         new_cfg = updates["api_config"] or {}
@@ -1089,6 +1110,26 @@ def edit_dag_file(pipeline_name: str, updates: dict) -> dict:
             if new_content != content:
                 changed.append(f"{var_name} → updated")
                 content = new_content
+
+    # ── Destination — dict/int-valued, same repr() treatment as
+    # custom_schema/quality_connection_id above (not plain strings, so the
+    # generic field_map string-substitution path below would mis-write them).
+    if "destination_config" in updates:
+        new_cfg = updates["destination_config"] or None
+        pattern     = r'^(DESTINATION_CONFIG\s*=\s*).*$'
+        new_content = _re.sub(pattern, lambda m: f"{m.group(1)}{new_cfg!r}", content, flags=_re.MULTILINE)
+        if new_content != content:
+            changed.append("DESTINATION_CONFIG → updated")
+            content = new_content
+
+    if "destination_connection_id" in updates:
+        new_id = updates["destination_connection_id"]
+        new_id = int(new_id) if new_id not in (None, "") else None
+        pattern     = r'^(DESTINATION_CONNECTION_ID\s*=\s*).*$'
+        new_content = _re.sub(pattern, lambda m: f"{m.group(1)}{new_id!r}", content, flags=_re.MULTILINE)
+        if new_content != content:
+            changed.append("DESTINATION_CONNECTION_ID → updated")
+            content = new_content
 
     if "quality_connection_id" in updates:
         new_id = updates["quality_connection_id"]

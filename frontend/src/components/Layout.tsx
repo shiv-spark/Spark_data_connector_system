@@ -56,13 +56,13 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/app/reverse-etl", label: "Reverse ETL", icon: ArrowUpFromLine, badge: "New" },
     ],
   },
-  {
-    label: "Data",
-    items: [
-      { to: "/app/ingest", label: "Direct Ingest", icon: Download },
-      { to: "/app/preview", label: "Preview", icon: Database },
-    ],
-  },
+  // {
+  //   label: "Data",
+  //   items: [
+  //     { to: "/app/ingest", label: "Direct Ingest", icon: Download },
+  //     { to: "/app/preview", label: "Preview", icon: Database },
+  //   ],
+  // },
   
   {
   label: "Data",

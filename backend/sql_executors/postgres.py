@@ -93,14 +93,18 @@ class PostgresSqlExecutor(BaseSqlExecutor):
         Raises:
             QueryError: If query is not read-only or execution fails
         """
-        if not self._is_read_only_query(query):
+        if self._is_blocked_query(query):
             raise QueryError(
                 error_type="security",
-                message="Only SELECT and WITH queries are allowed. "
-                        "Write operations (INSERT, UPDATE, DELETE, DDL) are not permitted."
+                message="DROP, TRUNCATE, ALTER, CREATE, GRANT, and REVOKE are not permitted "
+                        "from the SQL Editor. SELECT and INSERT/UPDATE/DELETE are allowed."
             )
 
-        query_with_limit = self._inject_limit(query, limit)
+        is_write = self._is_write_query(query)
+        # Injecting LIMIT into a write statement would either be invalid
+        # SQL or silently limit which rows get updated/deleted — neither is
+        # safe, so only SELECT-shaped queries get a limit at all.
+        query_to_run = query if is_write else self._inject_limit(query, limit)
         query_id = self._generate_query_id()
 
         await self._ensure_pool()
@@ -113,7 +117,31 @@ class PostgresSqlExecutor(BaseSqlExecutor):
                     )
 
                     start_time = time.perf_counter()
-                    rows = await conn.fetch(query_with_limit)
+
+                    if is_write:
+                        # conn.execute() (not .fetch()) is the correct call
+                        # for INSERT/UPDATE/DELETE — .fetch() always returns
+                        # an empty row list for these regardless of how many
+                        # rows were actually affected, which is exactly the
+                        # "shows 0 rows even though the UPDATE worked" bug.
+                        # asyncpg instead returns a command tag string like
+                        # "UPDATE 3" / "DELETE 5" / "INSERT 0 2" that we
+                        # parse for the real affected-row count.
+                        command_tag = await conn.execute(query_to_run)
+                        end_time = time.perf_counter()
+                        execution_time_ms = int((end_time - start_time) * 1000)
+
+                        return QueryResult(
+                            columns=[],
+                            rows=[],
+                            row_count=self._parse_command_tag(command_tag),
+                            truncated=False,
+                            execution_time_ms=execution_time_ms,
+                            query_id=query_id,
+                            is_write=True,
+                        )
+
+                    rows = await conn.fetch(query_to_run)
                     end_time = time.perf_counter()
 
                     execution_time_ms = int((end_time - start_time) * 1000)
@@ -180,6 +208,24 @@ class PostgresSqlExecutor(BaseSqlExecutor):
             )
         finally:
             self._running_queries.pop(query_id, None)
+
+    @staticmethod
+    def _parse_command_tag(tag: str) -> int:
+        """asyncpg's conn.execute() returns a command tag string, not a row
+        count directly: "UPDATE 3", "DELETE 5", "INSERT 0 2" (oid, then
+        count — the middle number is a legacy OID field, always 0 for
+        modern Postgres), or occasionally just "UPDATE" with no count.
+        Pulls out the actual affected-row number from whichever shape it is."""
+        if not tag:
+            return 0
+        parts = tag.split()
+        if not parts:
+            return 0
+        if parts[0].upper() == "INSERT" and len(parts) >= 3:
+            return int(parts[2])
+        if len(parts) >= 2 and parts[-1].isdigit():
+            return int(parts[-1])
+        return 0
 
     async def cancel(self, query_id: str) -> None:
         """Cancel a running query."""

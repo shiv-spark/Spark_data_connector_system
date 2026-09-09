@@ -631,15 +631,35 @@ def test_snowflake_conn(req: SnowflakeTestRequest):
 def root():
     return {"message": "SparkBrains Data Connector API Running — Ready to ingest data into Airflow pipelines!"}
 
+
+# ─────────────────────────────────────────────
+# DESTINATIONS — supported ingest targets (Postgres/MySQL/Oracle/MongoDB/
+# Snowflake) so the frontend can render a destination picker (dropdown +
+# manual-entry field list) instead of hardcoding Postgres. Actual
+# credentials still come from either a saved_connections id
+# (destination_connection_id) or an inline destination_config — see
+# backend/destinations/__init__.py.
+# ─────────────────────────────────────────────
+
+@app.get("/destinations/types")
+def get_destination_types():
+    from destinations import list_supported_destinations
+    return {"destinations": list_supported_destinations()}
+
 # ─────────────────────────────────────────────
 # VALIDATION
 # ─────────────────────────────────────────────
 
-def validate_inputs(option, table_name):
+def validate_inputs(option, table_name, file_path: str | None = None):
     if option not in ["1", "2", "3"]:
         raise HTTPException(status_code=400, detail="Invalid option. Use 1, 2, or 3")
     if not table_name:
         raise HTTPException(status_code=400, detail="table_name is required")
+    if file_path is not None:
+         if not file_path.strip():
+             raise HTTPException(status_code=400, detail="file_path is required and cannot be empty")
+         if not os.path.exists(file_path):
+             raise HTTPException(status_code=400, detail=f"file_path does not exist on the server: {file_path}")
 
 # ─────────────────────────────────────────────
 # CSV
@@ -661,6 +681,9 @@ class CSVRequest(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 def _resolve_saved_connection(connection_id: int) -> tuple[dict, str]:
@@ -683,7 +706,7 @@ def _resolve_saved_connection(connection_id: int) -> tuple[dict, str]:
 
 @app.post("/ingest_csv")
 def ingest_csv(req: CSVRequest):
-    validate_inputs(req.option, req.table_name)
+    validate_inputs(req.option, req.table_name, req.file_path)
     return run_ingestion(
         csv_connector,
         req.file_path,
@@ -700,6 +723,9 @@ def ingest_csv(req: CSVRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -724,11 +750,14 @@ class ExcelRequest(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_excel")
 def ingest_excel(req: ExcelRequest):
-    validate_inputs(req.option, req.table_name)
+    validate_inputs(req.option, req.table_name, req.file_path)
     return run_ingestion(
         excel_connector,
         req.file_path,
@@ -747,6 +776,9 @@ def ingest_excel(req: ExcelRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -769,6 +801,9 @@ class GoogleSheetRequest(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_google_sheet")
@@ -795,6 +830,9 @@ def ingest_google_sheet(req: GoogleSheetRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -817,6 +855,9 @@ class GoogleSheetMultiRequest(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_google_sheets_multi")
@@ -846,6 +887,9 @@ def ingest_google_sheets_multi(req: GoogleSheetMultiRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -869,6 +913,9 @@ class APIRequest(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
     # ── auth ──
@@ -957,6 +1004,9 @@ def ingest_api(req: APIRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -985,6 +1035,9 @@ class PostgresRequest(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_postgres")
@@ -1017,6 +1070,9 @@ def ingest_postgres(req: PostgresRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -1043,6 +1099,9 @@ class MySQLRequest(BaseModel):
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_mysql")
@@ -1075,6 +1134,9 @@ def ingest_mysql(req: MySQLRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -1101,6 +1163,9 @@ class OracleRequest(BaseModel):
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_oracle")
@@ -1133,6 +1198,9 @@ def ingest_oracle(req: OracleRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -1161,6 +1229,9 @@ class MongoDBRequest(BaseModel):
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_mongodb")
@@ -1197,6 +1268,9 @@ def ingest_mongodb(req: MongoDBRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -1227,6 +1301,9 @@ class SalesforceRequest(BaseModel):
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_salesforce")
@@ -1261,6 +1338,9 @@ def ingest_salesforce(req: SalesforceRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
         access_token=access_token,
         instance_url=instance_url,
         login_url=login_url,
@@ -1294,6 +1374,9 @@ class HubSpotRequest(BaseModel):
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_hubspot")
@@ -1319,6 +1402,9 @@ def ingest_hubspot(req: HubSpotRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
         access_token=access_token,
         object_type=req.object_type,
         properties=req.properties,
@@ -1350,6 +1436,9 @@ class ZohoRequest(BaseModel):
     df_quality_config: dict | None = None
     df_quality_on_fail: str = "warn"
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_zoho")
@@ -1382,6 +1471,9 @@ def ingest_zoho(req: ZohoRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
         access_token=access_token,
         refresh_token=refresh_token,
         client_id=client_id,
@@ -1417,6 +1509,9 @@ class S3Request(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 @app.post("/ingest_s3")
@@ -1449,6 +1544,9 @@ def ingest_s3(req: S3Request):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 # ─────────────────────────────────────────────
@@ -1478,6 +1576,9 @@ class SnowflakeRequest(BaseModel):
     df_quality_config: dict | None = None       # see quality.dataframe_checks.run_dataframe_quality_checks
     df_quality_on_fail: str = "warn"             # "warn" (log only) | "block" (skip ingest entirely)
     custom_schema: dict | None = None          # optional {"column": "type"} to enforce a user-defined schema (type in integer|float|boolean|date|timestamp|text|json) instead of auto-detected types
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: int | None = None  # saved_connections id to use as the destination (takes priority over destination_config)
+    destination_config: dict | None = None        # inline destination config (host/user/password, or engine-specific fields) — used when destination_connection_id is not supplied
 
 
 
@@ -1516,6 +1617,9 @@ def ingest_snowflake(req: SnowflakeRequest):
         df_quality_config      = req.df_quality_config,
         df_quality_on_fail     = req.df_quality_on_fail,
         custom_schema          = req.custom_schema,
+        destination_type           = req.destination_type,
+        destination_connection_id  = req.destination_connection_id,
+        destination_config         = req.destination_config,
     )
 
 @app.get("/runs")
@@ -1683,6 +1787,18 @@ class CreatePipelineRequest(BaseModel):
     api_url:         Optional[str] = None
     api_config:      Optional[dict] = None
     connection_id:   Optional[int] = None    # ID of saved connection to use
+    quality_connection_id: Optional[int] = None
+    quality_config:  Optional[dict] = None
+    quality_on_fail: str = "warn"
+    df_quality_config: Optional[dict] = None
+    df_quality_on_fail: str = "warn"
+    custom_schema:   Optional[dict] = None   # optional {"column": "type"} — see utils/schema_applier.py
+    # ── Destination (where the scheduled loads get WRITTEN to). See
+    # backend/destinations/. Defaults to postgres, so existing pipelines
+    # created before this field existed keep working unchanged. ──────────
+    destination_type: str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id: Optional[int] = None  # saved_connections id (takes priority over destination_config)
+    destination_config: Optional[dict] = None        # inline destination config — used when destination_connection_id is not supplied
 
     # ── Postgres fields ──────────────────
     src_pg_host:     Optional[str] = None
@@ -2041,6 +2157,11 @@ class MultiSourcePipelineRequest(BaseModel):
     sync_mode:     str          = "full"
     incremental_column: Optional[str] = None
     sources:       List[SourceConfig]  # ← multiple sources
+    # ── Destination (where ALL sources load into) — one table, one
+    # destination for the whole pipeline. See backend/destinations/.
+    destination_type:           str = "postgres"           # postgres | mysql | oracle | mongodb | snowflake
+    destination_connection_id:  Optional[int] = None         # saved_connections id (takes priority over destination_config)
+    destination_config:         Optional[dict] = None        # inline config — used when destination_connection_id is not supplied
 
 def _resolve_source_connection(source: SourceConfig) -> dict:
     """Fetch connection config for a single source and merge with request fields."""

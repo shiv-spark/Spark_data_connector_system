@@ -124,6 +124,7 @@ def run_ingestion(connector_func, source, connector_name, *args,
                   quality_connection_id=None, quality_config=None, quality_on_fail="warn",
                   df_quality_config=None, df_quality_on_fail="warn",
                   custom_schema=None,
+                  destination_type="postgres", destination_connection_id=None, destination_config=None,
                   **connector_kwargs):
 
     conn     = psycopg2.connect(**DB_CONFIG)
@@ -144,6 +145,7 @@ def run_ingestion(connector_func, source, connector_name, *args,
         "SalesforceConnector":  "salesforce",
         "HubSpotConnector":     "hubspot",
         "ZohoConnector":        "zoho",
+        "SnowflakeConnector":   "snowflake",
     }
     connector_type = connector_type_map.get(connector_name, connector_name)
     file_name = os.path.basename(source) if (source and os.path.exists(source)) else (source[:50] if source else None)
@@ -170,13 +172,16 @@ def run_ingestion(connector_func, source, connector_name, *args,
         # ── User-defined schema (optional) ────────────────────────────────
         # Any source, any shape — if the user has defined their own
         # {column: type} schema, coerce the data toward it here (before the
-        # quality gates and the DB write), and hand the resolved SQL types
-        # down to load_to_db() so CREATE/ALTER TABLE use them too.
-        custom_schema_sql = None
+        # quality gates and the DB write), and hand the resolved CANONICAL
+        # types (integer/float/boolean/date/timestamp/text/json) down to
+        # load_to_db() — every destination adapter maps canonical -> its
+        # own native SQL type, so this works unchanged for any destination
+        # (see backend/destinations/).
+        custom_schema_canonical = None
         if custom_schema:
             df, schema_report = apply_custom_schema(df, custom_schema)
             row_count = df.shape[0]
-            custom_schema_sql = custom_schema_to_sql(resolve_custom_schema(custom_schema))
+            custom_schema_canonical = resolve_custom_schema(custom_schema)
             logger.log(
                 "INFO",
                 f"Custom schema applied to columns: {list(schema_report['applied'].keys())}",
@@ -222,7 +227,10 @@ def run_ingestion(connector_func, source, connector_name, *args,
             file_name          = file_name,
             sync_mode          = sync_mode,
             incremental_column = incremental_column,
-            custom_schema_sql  = custom_schema_sql,
+            custom_schema      = custom_schema_canonical,
+            destination_type            = destination_type,
+            destination_connection_id   = destination_connection_id,
+            destination_config          = destination_config,
         )
 
         logger.log("INFO", "Data loaded to DB")

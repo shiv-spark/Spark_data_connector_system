@@ -18,6 +18,49 @@ import { LiveTablePicker } from "@/components/LiveTablePicker";
 const splitList = (value: string): string[] =>
   value.split(",").map((v) => v.trim()).filter(Boolean);
 
+// ── Safely turn any backend error shape into a plain string for rendering.
+// FastAPI's own validation errors (422) return `detail` as an ARRAY of
+// {loc, msg, type} objects, not a string — handing that array straight to
+// React as a child throws "Objects are not valid as a React child" and
+// blanks the whole page (no error boundary catches it). Everything else
+// (HTTPException(detail="...") or detail={"error": "..."}) still works too. ──
+const formatApiError = (error: unknown): string => {
+  const detail = (error as any)?.response?.data?.detail;
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d: any) => {
+        if (typeof d === "string") return d;
+        const field = Array.isArray(d?.loc) ? d.loc.filter((p: any) => p !== "body").join(".") : null;
+        return field ? `${field}: ${d?.msg ?? "invalid value"}` : (d?.msg ?? JSON.stringify(d));
+      })
+      .join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    return detail.error ?? JSON.stringify(detail);
+  }
+  if (typeof detail === "string" && detail) {
+    return detail;
+  }
+  return (error as Error)?.message ?? "Something went wrong.";
+};
+
+// ── Destination (where all sources load into) — see DirectIngest.tsx for
+// the same constants; kept in sync deliberately. ──────────────────────
+const FALLBACK_DESTINATIONS: { type: string; label: string; fields: string[] }[] = [
+  { type: "postgres", label: "PostgreSQL", fields: ["host", "port", "database", "user", "password"] },
+  { type: "mysql", label: "MySQL", fields: ["host", "port", "database", "user", "password"] },
+  { type: "oracle", label: "Oracle", fields: ["host", "port", "database", "user", "password"] },
+  { type: "mongodb", label: "MongoDB", fields: ["connection_string"] },
+  { type: "snowflake", label: "Snowflake", fields: ["account", "user", "password", "warehouse", "database", "schema", "role"] },
+];
+
+const DESTINATION_FIELD_LABELS: Record<string, string> = {
+  host: "Host", port: "Port", database: "Database", user: "User", password: "Password",
+  connection_string: "Connection string (mongodb:// or mongodb+srv://)",
+  account: "Account", warehouse: "Warehouse", schema: "Schema", role: "Role (optional)",
+};
+
 const CONNECTOR_TO_SOURCE_TYPE: Record<string, string> = {
   csv: "local_folder",
   excel: "local_folder",
@@ -264,10 +307,32 @@ export const MultiSource = () => {
   const [stepError, setStepError] = useState("");
   const [activeSourceTab, setActiveSourceTab] = useState(0);
 
+  // ── Destination (where ALL sources load into — one table, one
+  // destination for the whole pipeline). Same "new vs saved connection"
+  // UX as the source connections below. ──────────────────────────────
+  const [destinationType, setDestinationType] = useState<string>("postgres");
+  const [useSavedDestination, setUseSavedDestination] = useState(false);
+  const [selectedDestinationConnectionId, setSelectedDestinationConnectionId] = useState<string>("");
+  const [destinationManualConfig, setDestinationManualConfig] = useState<Record<string, string>>({});
+  const [destinationError, setDestinationError] = useState<string>("");
+
+  const destinationTypesQuery = useQuery({
+    queryKey: ["destination-types"],
+    queryFn: async () => (await api.get("/destinations/types")).data.destinations ?? [],
+  });
+
   const connections = useQuery({
     queryKey: ["connections"],
     queryFn: async () => (await api.get("/connections")).data.connections ?? [],
   });
+
+  const destinationTypes = destinationTypesQuery.data?.length ? destinationTypesQuery.data : FALLBACK_DESTINATIONS;
+  const activeDestination = destinationTypes.find((d: any) => d.type === destinationType) ?? destinationTypes[0];
+  const filteredDestinationConnections = connections.data?.filter(
+    (conn: any) => conn.source_type === destinationType
+  ) ?? [];
+  const updateDestinationField = (key: string, value: string) =>
+    setDestinationManualConfig((current) => ({ ...current, [key]: value }));
 
   const getFilteredConnections = (connectorType: string) => {
     const sourceType = CONNECTOR_TO_SOURCE_TYPE[connectorType];
@@ -629,6 +694,23 @@ export const MultiSource = () => {
 
   const create = useMutation({
     mutationFn: async () => {
+      if (useSavedDestination && !selectedDestinationConnectionId) {
+        setDestinationError("Please select a saved destination connection");
+        throw new Error("No destination connection selected");
+      }
+
+      const destinationFields = useSavedDestination
+        ? {
+            destination_type: destinationType,
+            destination_connection_id: parseInt(selectedDestinationConnectionId, 10),
+            destination_config: null,
+          }
+        : {
+            destination_type: destinationType,
+            destination_connection_id: null,
+            destination_config: destinationManualConfig,
+          };
+
       const sourcesWithConnectionId = sources.map((source, index) => {
         const connState = sourceConnectionStates[index];
         const connectionId = connState?.useExisting && connState?.selectedConnectionId
@@ -658,9 +740,13 @@ export const MultiSource = () => {
             ? buildSnowflakeSelectQuery(source.sf_source_table)
             : source.sf_query;
         }
-        if (source.connector_type === "hubspot") {
-          cleaned.hs_properties = splitList(source.hs_properties).length ? splitList(source.hs_properties) : null;
-        }
+        // Every source carries hs_properties (only meaningful for HubSpot),
+        // but the backend model expects Optional[List[str]] — a raw ""
+        // string fails validation. Normalize it for ALL source types, not
+        // just HubSpot, so non-HubSpot sources send null instead of "".
+        cleaned.hs_properties = source.connector_type === "hubspot"
+          ? (splitList(source.hs_properties).length ? splitList(source.hs_properties) : null)
+          : null;
 
         if (connectionId) {
           for (const field of SECRET_FIELDS) {
@@ -698,6 +784,7 @@ export const MultiSource = () => {
         timezone: schedule.timezone,
         sync_mode: "full",
         sources: sourcesWithConnectionId,
+        ...destinationFields,
       });
       return response.data;
     },
@@ -949,6 +1036,79 @@ export const MultiSource = () => {
                 <p className="text-xs text-muted-foreground md:col-span-3">
                   Note: only the first source uses this load option. Every subsequent source always appends, so it can't overwrite rows from earlier sources.
                 </p>
+
+                {/* ── Destination — one table, one destination for the
+                     whole pipeline, applies to every source above. ── */}
+                <div className="md:col-span-3 rounded-md border border-border bg-card p-4 space-y-3">
+                  <div className="text-sm font-medium text-foreground">Destination</div>
+                  <label className="block max-w-xs space-y-1 text-sm font-medium text-foreground">
+                    Write to
+                    <select
+                      className="select-control"
+                      value={destinationType}
+                      onChange={(e) => { setDestinationType(e.target.value); setDestinationManualConfig({}); setSelectedDestinationConnectionId(""); setDestinationError(""); }}
+                    >
+                      {destinationTypes.map((d: any) => (
+                        <option key={d.type} value={d.type}>{d.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input
+                        type="radio"
+                        name="multiDestinationMode"
+                        checked={!useSavedDestination}
+                        onChange={() => { setUseSavedDestination(false); setSelectedDestinationConnectionId(""); setDestinationError(""); }}
+                      />
+                      <Link2Off className="h-4 w-4" /> New connection
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input
+                        type="radio"
+                        name="multiDestinationMode"
+                        checked={useSavedDestination}
+                        onChange={() => { setUseSavedDestination(true); setDestinationError(""); }}
+                      />
+                      <Link2 className="h-4 w-4" /> Use saved connection
+                    </label>
+                  </div>
+
+                  {useSavedDestination ? (
+                    <div className="space-y-1">
+                      <select
+                        className="select-control max-w-md"
+                        value={selectedDestinationConnectionId}
+                        onChange={(e) => setSelectedDestinationConnectionId(e.target.value)}
+                      >
+                        <option value="">Select a saved {activeDestination?.label ?? destinationType} connection…</option>
+                        {filteredDestinationConnections.map((c: any) => (
+                          <option key={c.id} value={String(c.id)}>{c.name}</option>
+                        ))}
+                      </select>
+                      {filteredDestinationConnections.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          No saved {activeDestination?.label ?? destinationType} connections yet — add one on the Connections page, or use "New connection" instead.
+                        </p>
+                      )}
+                      {destinationError && <p className="text-xs text-rose-600 dark:text-rose-400">{destinationError}</p>}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                      {(activeDestination?.fields ?? []).map((field: string) => (
+                        <Input
+                          key={field}
+                          type={field === "password" ? "password" : "text"}
+                          placeholder={DESTINATION_FIELD_LABELS[field] ?? field}
+                          value={destinationManualConfig[field] ?? (field === "schema" ? "PUBLIC" : "")}
+                          onChange={(e) => updateDestinationField(field, e.target.value)}
+                          required={field !== "role" && field !== "connection_string"}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1569,9 +1729,7 @@ export const MultiSource = () => {
              <div className="space-y-1">
                <p className="font-medium text-rose-900 dark:text-rose-100">Couldn't create pipeline</p>
                <p className="text-sm text-rose-800 dark:text-rose-200">
-                 {(create.error as any)?.response?.data?.detail?.error
-                   || (create.error as any)?.response?.data?.detail
-                   || (create.error as Error).message}
+                 {formatApiError(create.error)}
                </p>
              </div>
            </CardContent>

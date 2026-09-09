@@ -10,7 +10,11 @@ RUN apt-get update && apt-get install -y \
 
 # Python dependencies
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    --retries 10 \
+    -r requirements.txt
 
 # Project files
 COPY backend/connectors/     ./connectors/
@@ -26,6 +30,7 @@ COPY backend/metadata/       ./metadata/
 COPY backend/quality/        ./quality/
 COPY backend/lineage/        ./lineage/
 COPY backend/reverse_etl/    ./reverse_etl/
+COPY backend/destinations/    ./destinations/
 COPY backend/sql_router.py   .
 COPY backend/main.py         .
 COPY backend/run.py          .

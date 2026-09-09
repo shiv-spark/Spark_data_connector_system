@@ -81,6 +81,8 @@ class SqlExecuteResponse(BaseModel):
     truncated: bool
     execution_time_ms: int
     query_id: str
+    is_write: bool = False  # True for INSERT/UPDATE/DELETE/MERGE — row_count
+                             # means "rows affected" here, not "rows returned"
 
 
 class QueryHistoryItem(BaseModel):
@@ -126,7 +128,9 @@ async def execute_sql(
     Execute a SQL query against a saved connection.
 
     Credentials are retrieved from the saved_connections table.
-    Only SELECT/WITH queries are allowed (read-only mode).
+    SELECT/WITH and INSERT/UPDATE/DELETE/MERGE are allowed. Schema-changing
+    statements (DROP/TRUNCATE/ALTER/CREATE/GRANT/REVOKE) are always blocked —
+    see BaseSqlExecutor._is_blocked_query().
     """
     user_id = 1  # TODO: replace with actual user ID from authentication
 
@@ -192,7 +196,8 @@ async def execute_sql(
             row_count=result.row_count,
             truncated=result.truncated,
             execution_time_ms=result.execution_time_ms,
-            query_id=result.query_id
+            query_id=result.query_id,
+            is_write=result.is_write,
         )
 
     except SqlQueryError as e:

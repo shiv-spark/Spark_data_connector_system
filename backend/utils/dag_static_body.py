@@ -485,6 +485,18 @@ def _process_one_source(cfg, source_label=None):
         "custom_schema":         cfg.get("CUSTOM_SCHEMA"),
     }
 
+    # ── Destination (where the loaded data gets WRITTEN to) — see
+    # backend/destinations/. Pipeline-level, not per-source (a
+    # multi-source pipeline still loads into ONE table/destination), so
+    # every source's payload gets the same three fields. Defaults to
+    # postgres when not set, matching every /ingest_* endpoint's default —
+    # a DAG generated before this feature existed just keeps working.
+    destination_payload_fields = {
+        "destination_type":          cfg.get("DESTINATION_TYPE") or "postgres",
+        "destination_connection_id": cfg.get("DESTINATION_CONNECTION_ID"),
+        "destination_config":        cfg.get("DESTINATION_CONFIG"),
+    }
+
     label = source_label or PIPELINE_ID
     print(f"\n{'='*60}\nProcessing: {label} ({connector_type})\n{'='*60}")
 
@@ -573,6 +585,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=60)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -599,6 +612,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -682,6 +696,7 @@ def _process_one_source(cfg, source_label=None):
                     "incremental_column": incremental_column,
                     "pipeline_id": PIPELINE_ID,
                     **quality_payload_fields,
+                    **destination_payload_fields,
                 }
                 res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
 
@@ -716,6 +731,7 @@ def _process_one_source(cfg, source_label=None):
                 "incremental_column": incremental_column,
                 "pipeline_id": PIPELINE_ID,
                 **quality_payload_fields,
+                **destination_payload_fields,
             }
             res = requests.post(f"{BASE_URL}/ingest_s3", json=payload, timeout=120)
             if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -744,6 +760,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_postgres", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -770,6 +787,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_mysql", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -796,6 +814,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_oracle", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -825,6 +844,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_mongodb", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -853,6 +873,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_snowflake", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -885,6 +906,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_salesforce", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -909,6 +931,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_hubspot", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -939,6 +962,7 @@ def _process_one_source(cfg, source_label=None):
             "incremental_column": incremental_column,
             "pipeline_id": PIPELINE_ID,
             **quality_payload_fields,
+            **destination_payload_fields,
         }
         res = requests.post(f"{BASE_URL}/ingest_zoho", json=payload, timeout=120)
         if res.status_code == 200 and res.json().get("status") != "FAILED":
@@ -1025,6 +1049,13 @@ def run_connector(**context):
             # (see dag_generator.py) — Create Pipeline runs silently ignored
             # the user's custom schema and fell back to auto-detected dtypes.
             "CUSTOM_SCHEMA":         CUSTOM_SCHEMA,
+            # Destination (where the loaded data gets WRITTEN to) — see
+            # backend/destinations/. Written into the generated DAG file by
+            # utils/dag_generator.py; _process_one_source() (shared with
+            # multi-source DAGs) reads it the same way either way.
+            "DESTINATION_TYPE":            DESTINATION_TYPE,
+            "DESTINATION_CONNECTION_ID":   DESTINATION_CONNECTION_ID,
+            "DESTINATION_CONFIG":          DESTINATION_CONFIG,
         }
 
         result_status = _process_one_source(cfg)

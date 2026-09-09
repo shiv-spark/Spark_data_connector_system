@@ -170,7 +170,10 @@ def validate_multi_pipeline_config(config: dict) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_source_entry(src: dict, index: int, table_name: str, sync_mode: str,
-                         inc_col, pipeline_option: str) -> dict:
+                         inc_col, pipeline_option: str,
+                         destination_type: str = "postgres",
+                         destination_connection_id=None,
+                         destination_config=None) -> dict:
     ct = src["connector_type"]
     # First source uses the pipeline-level option (append/overwrite/create).
     # Every subsequent source always appends, so it can't stomp on the
@@ -190,6 +193,13 @@ def _build_source_entry(src: dict, index: int, table_name: str, sync_mode: str,
         "DF_QUALITY_ON_FAIL":    src.get("df_quality_on_fail") or "warn",
         # Per-source user-defined schema override — {"column": "type"}.
         "CUSTOM_SCHEMA":         src.get("custom_schema") or None,
+        # Destination is PIPELINE-level (one table, many sources), not
+        # per-source — same value duplicated onto every source's entry so
+        # _process_one_source() (shared with single-source DAGs) can stay
+        # source-agnostic and just read cfg.get("DESTINATION_*").
+        "DESTINATION_TYPE":            destination_type,
+        "DESTINATION_CONNECTION_ID":   destination_connection_id,
+        "DESTINATION_CONFIG":          destination_config,
     }
 
     if ct in ("csv", "excel"):
@@ -301,9 +311,13 @@ def _render_multi_template(config: dict) -> str:
     inc_col     = _clean(config.get("incremental_column"))
     option      = config.get("option", "1")
     sources_cfg = config["sources"]
+    destination_type          = config.get("destination_type") or "postgres"
+    destination_connection_id = config.get("destination_connection_id")
+    destination_config        = config.get("destination_config")
 
     sources = [
-        _build_source_entry(src, i, table_name, sync_mode, inc_col, option)
+        _build_source_entry(src, i, table_name, sync_mode, inc_col, option,
+                             destination_type, destination_connection_id, destination_config)
         for i, src in enumerate(sources_cfg)
     ]
 

@@ -51,6 +51,22 @@ const CONNECTOR_LABELS: Record<Connector, string> = {
 
 const SUPPORTS_CONNECTIONS: Connector[] = ["csv", "excel", "google_sheets", "api", "postgres", "mysql", "oracle", "mongodb", "s3", "snowflake", "salesforce", "hubspot", "zoho"];
 
+// ── Destination (where every scheduled run WRITES to) — same constants as
+// DirectIngest.tsx/MultiSource.tsx, kept in sync deliberately. ────────────
+const FALLBACK_DESTINATIONS: { type: string; label: string; fields: string[] }[] = [
+  { type: "postgres", label: "PostgreSQL", fields: ["host", "port", "database", "user", "password"] },
+  { type: "mysql", label: "MySQL", fields: ["host", "port", "database", "user", "password"] },
+  { type: "oracle", label: "Oracle", fields: ["host", "port", "database", "user", "password"] },
+  { type: "mongodb", label: "MongoDB", fields: ["connection_string"] },
+  { type: "snowflake", label: "Snowflake", fields: ["account", "user", "password", "warehouse", "database", "schema", "role"] },
+];
+
+const DESTINATION_FIELD_LABELS: Record<string, string> = {
+  host: "Host", port: "Port", database: "Database", user: "User", password: "Password",
+  connection_string: "Connection string (mongodb:// or mongodb+srv://)",
+  account: "Account", warehouse: "Warehouse", schema: "Schema", role: "Role (optional)",
+};
+
 const STEPS = [
   { id: 1, label: "Basic Info" },
   { id: 2, label: "Source Config" },
@@ -148,6 +164,13 @@ export const CreatePipeline = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [stepError, setStepError] = useState<string>("");
 
+  // ── Destination — same "new vs saved connection" UX as the source above. ──
+  const [destinationType, setDestinationType] = useState<string>("postgres");
+  const [useSavedDestination, setUseSavedDestination] = useState(false);
+  const [selectedDestinationConnectionId, setSelectedDestinationConnectionId] = useState<string>("");
+  const [destinationManualConfig, setDestinationManualConfig] = useState<Record<string, string>>({});
+  const [destinationError, setDestinationError] = useState<string>("");
+
   // ── Table-vs-query mode for Postgres / Snowflake / MySQL / Oracle ─────
   const [pgMode, setPgMode] = useState<"table" | "query">("table");
   const [pgTableInput, setPgTableInput] = useState("");
@@ -177,6 +200,28 @@ export const CreatePipeline = () => {
   const filteredConnections = connections.data?.filter(
     (conn: any) => conn.source_type === CONNECTOR_TO_SOURCE_TYPE[form.connector_type as Connector]
   ) ?? [];
+
+  const destinationTypesQuery = useQuery({
+    queryKey: ["destination-types"],
+    queryFn: async () => (await api.get("/destinations/types")).data.destinations ?? [],
+  });
+  const destinationTypes = destinationTypesQuery.data?.length ? destinationTypesQuery.data : FALLBACK_DESTINATIONS;
+  const activeDestination = destinationTypes.find((d: any) => d.type === destinationType) ?? destinationTypes[0];
+
+  // Same saved_connections list, filtered for the DESTINATION engine
+  // instead of the source connector.
+  const filteredDestinationConnections = connections.data?.filter(
+    (conn: any) => conn.source_type === destinationType
+  ) ?? [];
+
+  const updateDestinationField = (key: string, value: string) =>
+    setDestinationManualConfig((current) => ({ ...current, [key]: value }));
+
+  useEffect(() => {
+    setDestinationManualConfig({});
+    setSelectedDestinationConnectionId("");
+    setDestinationError("");
+  }, [destinationType]);
 
   const populateFromConnection = (connId: string) => {
     if (!connId) return;
@@ -432,6 +477,10 @@ export const CreatePipeline = () => {
         setConnectionError("Please select a saved connection");
         throw new Error("No connection selected");
       }
+      if (useSavedDestination && !selectedDestinationConnectionId) {
+        setDestinationError("Please select a saved destination connection");
+        throw new Error("No destination connection selected");
+      }
 
       let parsedApiConfig: Record<string, unknown> | null = null;
       if (form.connector_type === "api" && form.api_config.trim()) {
@@ -478,6 +527,20 @@ export const CreatePipeline = () => {
         ? { custom_schema: customSchema.schema }
         : {};
 
+      // ── Destination — where every scheduled run WRITES to. Either a
+      // saved connection id, or an inline manual config — never both.
+      const destinationFields = useSavedDestination
+        ? {
+            destination_type: destinationType,
+            destination_connection_id: parseInt(selectedDestinationConnectionId, 10),
+            destination_config: null,
+          }
+        : {
+            destination_type: destinationType,
+            destination_connection_id: null,
+            destination_config: destinationManualConfig,
+          };
+
       const payload = {
         ...form,
         pg_query: finalPgQuery,
@@ -495,6 +558,7 @@ export const CreatePipeline = () => {
         connection_id: useExistingConnection ? parseInt(selectedConnectionId) : null,
         ...dfQualityFields,
         ...customSchemaFields,
+        ...destinationFields,
       };
       const response = await api.post("/create_pipeline", payload);
       return response.data;
@@ -533,6 +597,13 @@ export const CreatePipeline = () => {
       if (!form.table_name.trim()) return "Target table is required.";
       if (form.option === "3" && !form.after_first_run) return "Select what happens after the first run.";
       if (form.sync_mode === "incremental" && !form.incremental_column.trim()) return "Incremental column is required.";
+      if (useSavedDestination && !selectedDestinationConnectionId) return "Please select a saved destination connection, or switch to New connection.";
+      if (!useSavedDestination) {
+        const missing = (activeDestination?.fields ?? []).filter(
+          (f: string) => f !== "role" && f !== "connection_string" && !destinationManualConfig[f]?.trim()
+        );
+        if (missing.length > 0) return `Destination: ${missing.map((f: string) => DESTINATION_FIELD_LABELS[f] ?? f).join(", ")} required.`;
+      }
       return "";
     }
     if (step === 2) {
@@ -766,6 +837,80 @@ export const CreatePipeline = () => {
                     <Input value={form.incremental_column} onChange={(e) => update("incremental_column", e.target.value)} placeholder="e.g. updated_at" />
                   </label>
                 )}
+
+                {/* ── Destination — where every scheduled run of this pipeline
+                     WRITES to. Separate from the source `connector` above.
+                     Same UX as Direct Ingest / Multi-Source. ── */}
+                <div className="rounded-md border border-border bg-card p-4 dark:border-border dark:bg-card space-y-3">
+                  <div className="text-sm font-medium text-foreground">Destination</div>
+                  <label className="block max-w-xs space-y-1 text-sm font-medium text-foreground">
+                    Write to
+                    <select
+                      className="select-control"
+                      value={destinationType}
+                      onChange={(e) => setDestinationType(e.target.value)}
+                    >
+                      {destinationTypes.map((d: any) => (
+                        <option key={d.type} value={d.type}>{d.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input
+                        type="radio"
+                        name="destinationMode"
+                        checked={!useSavedDestination}
+                        onChange={() => { setUseSavedDestination(false); setSelectedDestinationConnectionId(""); setDestinationError(""); }}
+                      />
+                      <Link2Off className="h-4 w-4" /> New connection
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input
+                        type="radio"
+                        name="destinationMode"
+                        checked={useSavedDestination}
+                        onChange={() => { setUseSavedDestination(true); setDestinationError(""); }}
+                      />
+                      <Link2 className="h-4 w-4" /> Use saved connection
+                    </label>
+                  </div>
+
+                  {useSavedDestination ? (
+                    <div className="space-y-1">
+                      <select
+                        className="select-control max-w-md"
+                        value={selectedDestinationConnectionId}
+                        onChange={(e) => setSelectedDestinationConnectionId(e.target.value)}
+                      >
+                        <option value="">Select a saved {activeDestination?.label ?? destinationType} connection…</option>
+                        {filteredDestinationConnections.map((c: any) => (
+                          <option key={c.id} value={String(c.id)}>{c.name}</option>
+                        ))}
+                      </select>
+                      {filteredDestinationConnections.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          No saved {activeDestination?.label ?? destinationType} connections yet — add one on the Connections page, or use "New connection" instead.
+                        </p>
+                      )}
+                      {destinationError && <p className="text-xs text-rose-600 dark:text-rose-400">{destinationError}</p>}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                      {(activeDestination?.fields ?? []).map((field: string) => (
+                        <Input
+                          key={field}
+                          type={field === "password" ? "password" : "text"}
+                          placeholder={DESTINATION_FIELD_LABELS[field] ?? field}
+                          value={destinationManualConfig[field] ?? (field === "schema" ? "PUBLIC" : "")}
+                          onChange={(e) => updateDestinationField(field, e.target.value)}
+                          required={field !== "role" && field !== "connection_string"}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1239,6 +1384,15 @@ export const CreatePipeline = () => {
                     <div><dt className="text-muted-foreground">Load option</dt><dd className="font-medium text-foreground">{{ "1": "Append", "2": "Overwrite", "3": "Create new" }[form.option]}</dd></div>
                     <div><dt className="text-muted-foreground">Sync mode</dt><dd className="font-medium text-foreground capitalize">{form.sync_mode}</dd></div>
                     <div><dt className="text-muted-foreground">Schedule</dt><dd className="font-medium text-foreground">{buildCron(schedule)} ({schedule.timezone})</dd></div>
+                    <div>
+                      <dt className="text-muted-foreground">Destination</dt>
+                      <dd className="font-medium text-foreground">
+                        {activeDestination?.label ?? destinationType}
+                        {useSavedDestination
+                          ? ` — saved connection (#${selectedDestinationConnectionId || "—"})`
+                          : " — new connection"}
+                      </dd>
+                    </div>
                     <div>
                       <dt className="text-muted-foreground">Data quality checks</dt>
                       <dd className="font-medium text-foreground">

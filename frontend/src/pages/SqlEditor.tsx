@@ -16,6 +16,7 @@ import {
   Pencil,
   Check,
   X as XIcon,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   executeQuery,
@@ -469,8 +470,9 @@ export default function SqlEditor() {
                 {results && (
                   <>
                     <span className="text-xs text-muted-foreground">
-                      {results.row_count} row{results.row_count !== 1 ? 's' : ''}
-                      {results.truncated && ' (truncated)'}
+                      {results.is_write
+                        ? `${results.row_count} row${results.row_count !== 1 ? 's' : ''} affected`
+                        : `${results.row_count} row${results.row_count !== 1 ? 's' : ''}${results.truncated ? ' (truncated)' : ''}`}
                     </span>
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3 h-3" />
@@ -490,7 +492,15 @@ export default function SqlEditor() {
 
             {/* Results Table */}
             <div className="flex-1 overflow-auto" ref={parentRef}>
-              {results && results.rows.length > 0 ? (
+              {results && results.is_write ? (
+                <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-4">
+                  <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
+                  <p className="font-medium text-foreground">Query executed successfully</p>
+                  <p className="text-sm text-muted-foreground">
+                    {results.row_count} row{results.row_count !== 1 ? 's' : ''} affected
+                  </p>
+                </div>
+              ) : results && results.rows.length > 0 ? (
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-muted/50">
                     <tr>
